@@ -76,6 +76,13 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 	m.keyhints = appshell.NewKeyHintBarModel(th, 80)
 	m.layout = appshell.NewLayoutModel(80, 24)
 
+	// Activate loading indicator upfront when we know a file will be loaded.
+	// Init() is a value receiver and cannot mutate the model, so we initialise
+	// this here instead.
+	if sourceName != "" && !followMode {
+		m.loading = m.loading.Start()
+	}
+
 	return m
 }
 
@@ -88,7 +95,6 @@ func (m Model) Init() tea.Cmd {
 	if m.followMode {
 		return logsource.TailFile(m.sourceName, 1)
 	}
-	m.loading = m.loading.Start()
 	return logsource.LoadFile(m.sourceName)
 }
 
@@ -315,7 +321,7 @@ func (m Model) openPane(entry logsource.Entry) Model {
 func (m Model) relayout() Model {
 	l := appshell.ApplyToLayout(m.resize, m.paneHeight.Ratio(), m.pane.IsOpen())
 	m.layout = m.layout.SetDetailPane(m.pane.IsOpen(), m.paneHeight.PaneHeight())
-	_, _ = m.list.Update(tea.WindowSizeMsg{
+	m.list, _ = m.list.Update(tea.WindowSizeMsg{
 		Width:  m.resize.Width(),
 		Height: l.EntryListHeight(),
 	})
