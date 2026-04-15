@@ -94,6 +94,14 @@ func (fs *FilterSet) GetAll() []Filter {
 	return out
 }
 
+// GetIDs returns a copy of all filter IDs in their current order.
+// The i-th ID corresponds to the i-th filter returned by GetAll().
+func (fs *FilterSet) GetIDs() []int {
+	out := make([]int, len(fs.ids))
+	copy(out, fs.ids)
+	return out
+}
+
 // GetEnabled returns only enabled filters.
 func (fs *FilterSet) GetEnabled() []Filter {
 	var out []Filter
