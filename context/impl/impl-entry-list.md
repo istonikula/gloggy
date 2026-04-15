@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-15T21:49:00Z"
 ---
 # Implementation Tracking: entry-list
 
@@ -20,3 +20,5 @@ Build site: context/plans/build-site.md
 | T-033 | DONE | 'm' toggles mark via MarkSet; 'u'/'U' next/prev mark; '* ' visual indicator in View() |
 | T-034 | DONE | SelectionMsg emitted on every cursor movement in ListModel.Update() |
 | T-040 | DONE | Mouse handling: left-click selects row, wheel scrolls, re-click on selected → OpenDetailPaneMsg |
+| T-075 | DONE | Mark indicator uses lipgloss.NewStyle().Foreground(th.Mark) instead of plain "* " |
+| T-076 | DONE | Timestamp-based double-click: lastClickRow+lastClickTime, 500ms window, resets after trigger |

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-15T21:49:00Z"
 ---
 # Implementation Tracking: log-source
 
@@ -18,3 +18,5 @@ Build site: context/plans/build-site.md
 | T-017 | DONE | reader_test.go — ProducesEntries, NonexistentError, ReadStdin, LineNumbers, MixedContent |
 | T-027 | DONE | logsource/loader.go — LoadFile() channel-polling background load; EntryBatchMsg/LoadProgressMsg/LoadDoneMsg |
 | T-028 | DONE | logsource/tail.go — TailFile() with fsnotify; IsTailableFromStdin()=false; continuing line numbers |
+| T-070 | DONE | scanner.Err() checked in scanEntries, streamEntries, TailFile skip+event loops |
+| T-073 | DONE | TailFile accepts context.Context; goroutine exits on ctx.Done(); test verifies cleanup |

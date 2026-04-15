@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-15T21:49:00Z"
 ---
 # Implementation Tracking: app-shell
 
@@ -18,3 +18,4 @@ Build site: context/plans/build-site.md
 | T-052 | DONE | appshell/mouse.go — MouseRouter: zones header/entrylist/divider/detailpane/statusbar |
 | T-053 | DONE | appshell/resize.go — ResizeModel + ApplyToLayout: WindowSizeMsg, proportional pane |
 | T-054 | DONE | appshell/clipboard.go — CopyMarkedEntries: JSONL, original order, no-op on empty marks |
+| T-072 | DONE | cachedVisibleCount field; updated in refilter() and SetEntries(); no more O(n²) Apply |

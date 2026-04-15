@@ -1,8 +1,14 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-15T21:49:00Z"
 ---
 # Loop Log
+
+### Iteration 10 — 2026-04-16
+- T-069,T-071,T-074,T-077: Filter engine fixes — DONE. Files: internal/filter/{match,filter}.go + tests. Build P, Tests P.
+- T-070,T-073: Log source fixes — DONE. Files: internal/logsource/{reader,loader,tail}.go + tests, cmd/gloggy/main.go. Build P, Tests P.
+- T-072,T-075,T-076: UI fixes — DONE. Files: internal/ui/app/model.go, internal/ui/entrylist/list.go, tests/integration/tail_test.go. Build P, Tests P.
+- Next: Tier 6 HUMAN sign-off (T-061..T-068) — cannot be automated
 
 ### Iteration 9 — 2026-04-15
 - T-055..T-060: Tier 5 integration tests — DONE. Files: tests/integration/*.go. Build P, Tests P. Next: T-061..T-068 (HUMAN sign-off)
