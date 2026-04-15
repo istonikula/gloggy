@@ -121,7 +121,7 @@ cat app.log | gloggy    # read from stdin
 
 ## How It Was Built
 
-gloggy was built entirely with **[Claude Code](https://claude.ai/code)** using the **[Cavekit](https://github.com/JuliusBrussee/cavekit)** methodology in **quality mode** — Claude Opus 4.6 for reasoning, planning, and architecture; Claude Sonnet 4.6 for implementation and execution:
+gloggy was built entirely with **[Claude Code](https://claude.ai/code)** running **Claude Sonnet 4.6**, using the **[Cavekit](https://github.com/JuliusBrussee/cavekit)** methodology in quality mode:
 
 1. **Design phase** — product requirements were translated into implementation-agnostic *kits* covering 6 domains: log source, entry list, detail pane, filter engine, config, and app shell. 49 requirements, 210 acceptance criteria.
 2. **Architecture phase** — Cavekit generated a concrete implementation plan from the kits: a 68-task dependency graph, tier-ordered for safe parallel execution.
