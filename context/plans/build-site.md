@@ -15,9 +15,9 @@ last_edited: "2026-04-15T00:00:00Z"
 | Source Kits | 6 domains |
 | Requirements | 49 |
 | Acceptance Criteria | 207 |
-| Plan Tasks | 68 |
+| Plan Tasks | 77 |
 | Human Sign-off Tasks | 8 |
-| Tiers | 7 (0 through 6) |
+| Tiers | 8 (0 through 7) |
 
 ---
 
@@ -127,6 +127,22 @@ These tasks can all run in parallel. They establish the Go module, data models, 
 | T-066 | [HUMAN] Filtered-out entry indicator | entry-list/R8 | T-032, T-060 | S | Human verifies the "filtered-out but visible" indicator from level-jump is clearly distinguishable. |
 | T-067 | [HUMAN] Mark wrap indicator visibility | entry-list/R9 | T-033, T-060 | S | Human verifies mark/level-jump wrap indicators are visible and clear. |
 | T-068 | [HUMAN] Detail pane syntax highlighting per theme | detail-pane/R2 | T-061, T-062, T-063 | S | Covered by T-061/T-062/T-063. This is a tracking entry confirming all three themes pass. |
+
+### Tier 7 -- Code Review Fixes
+
+Bug fixes and hardening from full codebase review (2026-04-16).
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-069 | Guard nil Extra map in filter match | filter-engine/R2 | T-018 | S | `internal/filter/match.go:34` — accessing `entry.Extra[field]` panics when `Extra` is nil. Add `if entry.Extra == nil { return "", false }` before the map lookup. Add test with nil-Extra entry. |
+| T-070 | Check scanner.Err() after Scan loops | log-source/R1, R7, R8 | T-015, T-027, T-028 | S | Three locations silently drop I/O errors: `reader.go` `scanEntries()`, `loader.go` `streamEntries()`, `tail.go` both scan loops. Check `scanner.Err()` after each loop and propagate or log the error. Add tests for mid-read I/O failure. |
+| T-071 | Cache compiled regexes in filter | filter-engine/R2 | T-018 | S | `internal/filter/match.go:50-55` — `regexp.Compile(pattern)` is called on every `Match()` invocation. Cache the compiled regex (e.g. in a `sync.Map` or on the `Filter` struct). Add benchmark proving improvement. |
+| T-072 | Cache visibleCount during loading | app-shell/R2 | T-046 | S | `internal/ui/app/model.go:332` — `visibleCount()` calls `filter.Apply()` on every `EntryBatchMsg`, resulting in O(n²) work during background loading. Cache the count; invalidate on filter change. |
+| T-073 | Add cancellation to TailFile | log-source/R8 | T-028 | M | `internal/logsource/tail.go:29-77` — the goroutine, file handle, and fsnotify watcher leak if the caller stops consuming messages. Accept a `context.Context` or stop channel; close watcher and file on cancellation. Add test verifying cleanup after cancel. |
+| T-074 | Fix ToggleAll with modified filter set | filter-engine/R6 | T-026 | S | `internal/filter/filter.go:120-139` — if filters are added or removed while `globallyDisabled == true`, `savedEnabled` goes out of sync. Either track per-filter saved state by ID, or sync `savedEnabled` in `Add()`/`Remove()`. Add test: add filter while globally disabled, re-enable, verify correct state. |
+| T-075 | Use theme Mark color in list rendering | entry-list/R9 | T-033 | S | `internal/ui/entrylist/list.go:354` — mark indicator uses plain `"* "` string instead of `th.Mark` color. Apply `lipgloss.NewStyle().Foreground(th.Mark)` to the mark indicator. The `Mark` color is defined in all 3 themes but currently unused. |
+| T-076 | Fix double-click detection in entry list | entry-list/R10 | T-040 | M | `internal/ui/entrylist/list.go:273-289` — current code opens the detail pane on any click to an already-selected row (single-click-on-cursor), not actual double-click. Either implement timestamp-based double-click detection, or remove the click-to-open path and require Enter. |
+| T-077 | Proper JSON string unquoting in filter match | filter-engine/R2 | T-018 | S | `internal/filter/match.go:40-42` — naive `s[1:len(s)-1]` doesn't handle JSON escape sequences (`\"`, `\\`, `\n`). Use `json.Unmarshal` into a `string` for correct unquoting. Add test with escaped quotes in field value. |
 
 ---
 
@@ -256,6 +272,17 @@ graph LR
     T-061 --> T-068
     T-062 --> T-068
     T-063 --> T-068
+    T-018 --> T-069
+    T-015 --> T-070
+    T-027 --> T-070
+    T-028 --> T-070
+    T-018 --> T-071
+    T-046 --> T-072
+    T-028 --> T-073
+    T-026 --> T-074
+    T-033 --> T-075
+    T-040 --> T-076
+    T-018 --> T-077
 ```
 
 ---
