@@ -16,15 +16,15 @@ func ReadFile(path string) ([]Entry, error) {
 		return nil, fmt.Errorf("open log file: %w", err)
 	}
 	defer f.Close()
-	return scanEntries(f), nil
+	return scanEntries(f)
 }
 
 // ReadStdin reads all log entries from the provided reader (typically os.Stdin).
-func ReadStdin(r io.Reader) []Entry {
+func ReadStdin(r io.Reader) ([]Entry, error) {
 	return scanEntries(r)
 }
 
-func scanEntries(r io.Reader) []Entry {
+func scanEntries(r io.Reader) ([]Entry, error) {
 	var entries []Entry
 	scanner := bufio.NewScanner(r)
 	lineNum := 0
@@ -41,5 +41,8 @@ func scanEntries(r io.Reader) []Entry {
 			entries = append(entries, NewRawEntry(lineCopy, lineNum))
 		}
 	}
-	return entries
+	if err := scanner.Err(); err != nil {
+		return entries, fmt.Errorf("scan entries: %w", err)
+	}
+	return entries, nil
 }

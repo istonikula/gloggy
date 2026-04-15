@@ -79,7 +79,10 @@ func run(args []string) error {
 	// For stdin: read synchronously before starting the TUI so the full entry
 	// list is available immediately (stdin can't be re-read inside the program).
 	if parsed.FromStdin {
-		entries := logsource.ReadStdin(os.Stdin)
+		entries, err := logsource.ReadStdin(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: error reading stdin: %v\n", err)
+		}
 		model = model.SetEntries(entries)
 	}
 

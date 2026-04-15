@@ -2,8 +2,10 @@ package entrylist
 
 import (
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -36,8 +38,10 @@ type ListModel struct {
 	th          theme.Theme
 	cfg         config.Config
 	width       int
-	marks       *MarkSet
-	wrapDir     WrapDirection // last wrap direction, reset on next navigation
+	marks         *MarkSet
+	wrapDir       WrapDirection // last wrap direction, reset on next navigation
+	lastClickRow  int
+	lastClickTime time.Time
 }
 
 // NewListModel creates a ListModel.
@@ -269,15 +273,13 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 				cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
 			}
 		}
-		// Double-click: action == MouseActionMotion with double-click bit, or explicit.
+		// Timestamp-based double-click detection.
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			// Check for double-click via the Alt modifier (Bubble Tea represents double-click
-			// differently). In practice, double-click emits two quick Press events.
-			// Implement a proper double-click by checking if the click cell matches the cursor.
 			row := m.rowForY(msg.Y)
-			if row >= 0 && row == m.scroll.Cursor && n > 0 {
-				// This is a click on the already-selected row — treat as potential double-click.
-				// Emit OpenDetailPaneMsg so the parent can decide.
+			now := time.Now()
+			if row >= 0 && row == m.lastClickRow &&
+				now.Sub(m.lastClickTime) < 500*time.Millisecond && n > 0 {
+				// Double-click on same row within 500ms — open detail pane.
 				entry := vis[m.scroll.Cursor]
 				existingCmd := cmd
 				cmd = func() tea.Msg {
@@ -286,6 +288,10 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 					}
 					return OpenDetailPaneMsg{Entry: entry}
 				}
+				m.lastClickTime = time.Time{} // reset to prevent triple-click
+			} else if row >= 0 {
+				m.lastClickRow = row
+				m.lastClickTime = now
 			}
 		}
 
@@ -350,7 +356,7 @@ func (m ListModel) View() string {
 	for i := start; i < end; i++ {
 		mark := ""
 		if m.marks.IsMarked(vis[i].LineNumber) {
-			mark = "* "
+			mark = lipgloss.NewStyle().Foreground(m.th.Mark).Render("* ")
 		}
 		row := mark + RenderCompactRow(vis[i], m.width, m.th, m.cfg)
 		sb.WriteString(row)

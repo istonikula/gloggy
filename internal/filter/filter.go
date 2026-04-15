@@ -36,7 +36,7 @@ type FilterSet struct {
 	ids              []int
 	nextID           int
 	globallyDisabled bool
-	savedEnabled     []bool // saved Enabled per filter index at time of global disable
+	savedEnabled     map[int]bool // saved Enabled per filter ID at time of global disable
 }
 
 // NewFilterSet creates an empty FilterSet.
@@ -48,6 +48,11 @@ func NewFilterSet() *FilterSet {
 func (fs *FilterSet) Add(f Filter) int {
 	id := fs.nextID
 	fs.nextID++
+	// If globally disabled, save the new filter's state and disable it.
+	if fs.globallyDisabled {
+		fs.savedEnabled[id] = f.Enabled
+		f.Enabled = false
+	}
 	fs.filters = append(fs.filters, f)
 	fs.ids = append(fs.ids, id)
 	return id
@@ -59,6 +64,8 @@ func (fs *FilterSet) Remove(id int) bool {
 		if fid == id {
 			fs.filters = append(fs.filters[:i], fs.filters[i+1:]...)
 			fs.ids = append(fs.ids[:i], fs.ids[i+1:]...)
+			// Clean up saved state if tracking.
+			delete(fs.savedEnabled, id)
 			return true
 		}
 	}
@@ -119,18 +126,21 @@ func (fs *FilterSet) GetEnabled() []Filter {
 // after the second call.
 func (fs *FilterSet) ToggleAll() {
 	if !fs.globallyDisabled {
-		// Save enabled state and disable all.
-		fs.savedEnabled = make([]bool, len(fs.filters))
-		for i := range fs.filters {
-			fs.savedEnabled[i] = fs.filters[i].Enabled
+		// Save enabled state by ID and disable all.
+		fs.savedEnabled = make(map[int]bool, len(fs.filters))
+		for i, id := range fs.ids {
+			fs.savedEnabled[id] = fs.filters[i].Enabled
 			fs.filters[i].Enabled = false
 		}
 		fs.globallyDisabled = true
 	} else {
-		// Restore saved enabled states.
-		for i := range fs.filters {
-			if i < len(fs.savedEnabled) {
-				fs.filters[i].Enabled = fs.savedEnabled[i]
+		// Restore saved enabled states by ID.
+		for i, id := range fs.ids {
+			if saved, ok := fs.savedEnabled[id]; ok {
+				fs.filters[i].Enabled = saved
+			} else {
+				// Filter added while disabled without saved state; default to enabled.
+				fs.filters[i].Enabled = true
 			}
 		}
 		fs.savedEnabled = nil

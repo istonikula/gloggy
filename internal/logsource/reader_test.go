@@ -29,7 +29,10 @@ func TestReadFile_NonexistentReturnsError(t *testing.T) {
 // T-016: stdin (io.Reader) → entries
 func TestReadStdin_ProducesEntries(t *testing.T) {
 	r := strings.NewReader("hello\nworld\n")
-	entries := ReadStdin(r)
+	entries, err := ReadStdin(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}

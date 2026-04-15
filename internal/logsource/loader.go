@@ -2,6 +2,7 @@ package logsource
 
 import (
 	"bufio"
+	"log/slog"
 	"os"
 	"time"
 
@@ -82,6 +83,9 @@ func streamEntries(scanner *bufio.Scanner, ch chan<- tea.Msg) {
 		}
 	}
 	flush()
+	if err := scanner.Err(); err != nil {
+		slog.Error("stream entries scan error", "error", err)
+	}
 	ch <- LoadDoneMsg{}
 }
 

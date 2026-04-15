@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -22,7 +23,9 @@ func TestTailMode_NewEntriesAppear(t *testing.T) {
 	f.Close()
 
 	// Start tail (begins at line 2 since line 1 already loaded).
-	cmd := logsource.TailFile(name, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := logsource.TailFile(ctx, name, 2)
 	if cmd == nil {
 		t.Fatal("TailFile should return a non-nil Cmd")
 	}

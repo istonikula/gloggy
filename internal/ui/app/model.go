@@ -2,6 +2,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,8 @@ type Model struct {
 	// source
 	sourceName string
 	followMode bool
+	tailCtx    context.Context
+	tailCancel context.CancelFunc
 	entries    []logsource.Entry
 
 	// subsystems
@@ -43,7 +46,8 @@ type Model struct {
 	layout      appshell.LayoutModel
 	resize      appshell.ResizeModel
 
-	focus appshell.FocusTarget
+	focus              appshell.FocusTarget
+	cachedVisibleCount int
 }
 
 // New creates the root model from parsed CLI args and loaded config.
@@ -51,6 +55,7 @@ type Model struct {
 func New(sourceName string, followMode bool, configPath string, cfgResult config.LoadResult) Model {
 	th := theme.GetTheme(cfgResult.Config.Theme)
 	fs := filter.NewFilterSet()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	m := Model{
 		cfg:         cfgResult,
@@ -58,6 +63,8 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 		configPath:  configPath,
 		sourceName:  sourceName,
 		followMode:  followMode,
+		tailCtx:     ctx,
+		tailCancel:  cancel,
 		filterSet:   fs,
 		filterPanel: uifilter.New(fs),
 		help:        appshell.NewHelpOverlayModel(),
@@ -93,7 +100,7 @@ func (m Model) Init() tea.Cmd {
 		return nil
 	}
 	if m.followMode {
-		return logsource.TailFile(m.sourceName, 1)
+		return logsource.TailFile(m.tailCtx, m.sourceName, 1)
 	}
 	return logsource.LoadFile(m.sourceName)
 }
@@ -198,6 +205,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global quit.
 	if msg.String() == "q" && m.focus == appshell.FocusEntryList {
+		if m.tailCancel != nil {
+			m.tailCancel()
+		}
 		return m, tea.Quit
 	}
 
@@ -305,6 +315,7 @@ func (m Model) View() string {
 // SetEntries loads entries synchronously (used for stdin).
 func (m Model) SetEntries(entries []logsource.Entry) Model {
 	m.entries = entries
+	m.cachedVisibleCount = len(entries)
 	m.list = m.list.SetEntries(entries)
 	m.header = m.header.WithCounts(len(entries), len(entries))
 	return m
@@ -330,13 +341,12 @@ func (m Model) relayout() Model {
 
 func (m Model) refilter() Model {
 	indices := filter.Apply(m.filterSet, m.entries)
+	m.cachedVisibleCount = len(indices)
 	m.list = m.list.SetFilter(indices)
 	m.header = m.header.WithCounts(len(m.entries), len(indices))
 	return m
 }
 
 func (m Model) visibleCount() int {
-	// If no filter active, all entries are visible.
-	indices := filter.Apply(m.filterSet, m.entries)
-	return len(indices)
+	return m.cachedVisibleCount
 }

@@ -1,6 +1,7 @@
 package logsource
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +33,9 @@ func TestTailFile_DetectsNewLines(t *testing.T) {
 	f.Close()
 
 	// Start tail from end of initial content.
-	tailCmd := TailFile(path, initialLines)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tailCmd := TailFile(ctx, path, initialLines)
 	cmd := func() interface{} { return tailCmd() }
 
 	// Give the watcher time to set up before writing.
@@ -79,5 +82,52 @@ func TestTailFile_DetectsNewLines(t *testing.T) {
 		if e.LineNumber != want {
 			t.Errorf("tailEntries[%d].LineNumber = %d, want %d", i, e.LineNumber, want)
 		}
+	}
+}
+
+// T-073: cancelling context cleans up goroutine/watcher/file.
+func TestTailFile_CancelCleansUp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cancel.jsonl")
+	if err := os.WriteFile(path, []byte("line\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tailCmd := TailFile(ctx, path, 1)
+
+	// Give watcher time to set up.
+	time.Sleep(100 * time.Millisecond)
+
+	// Cancel context.
+	cancel()
+
+	// The tail cmd should eventually yield TailStopMsg (channel closes).
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		raw := tailCmd()
+		// Drain until we get stop or channel-closed.
+		for {
+			switch m := raw.(type) {
+			case TailStreamMsg:
+				if _, ok := m.Unwrap().(TailStopMsg); ok {
+					return
+				}
+				nextCmd := m.Next()
+				raw = nextCmd()
+			case TailStopMsg:
+				return
+			default:
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-done:
+		// OK — goroutine cleaned up.
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout: TailFile goroutine did not clean up after cancel")
 	}
 }

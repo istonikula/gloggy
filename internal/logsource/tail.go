@@ -2,6 +2,7 @@ package logsource
 
 import (
 	"bufio"
+	"context"
 	"os"
 
 	"github.com/fsnotify/fsnotify"
@@ -22,9 +23,12 @@ func IsTailableFromStdin() bool { return false }
 // initial load. startLineNum is the count of lines already read; new entries
 // are numbered startLineNum+1, startLineNum+2, etc.
 //
+// The ctx parameter allows cancellation; when cancelled, the goroutine closes
+// the watcher and file and returns.
+//
 // The returned cmd yields TailStreamMsg values; call TailStreamMsg.Next()
 // to keep watching. When a TailStopMsg is received, tailing has ended.
-func TailFile(path string, startLineNum int) tea.Cmd {
+func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 	ch := make(chan tea.Msg, 64)
 	go func() {
 		defer close(ch)
@@ -47,6 +51,10 @@ func TailFile(path string, startLineNum int) tea.Cmd {
 		scanner.Buffer(make([]byte, 0, 512*1024), 512*1024)
 		for i := 0; i < startLineNum && scanner.Scan(); i++ {
 		}
+		if err := scanner.Err(); err != nil {
+			ch <- TailStopMsg{Err: err}
+			return
+		}
 
 		lineNum := startLineNum
 
@@ -55,23 +63,41 @@ func TailFile(path string, startLineNum int) tea.Cmd {
 			return
 		}
 
-		for event := range watcher.Events {
-			if event.Op&fsnotify.Write == 0 {
-				continue
-			}
-			for scanner.Scan() {
-				lineNum++
-				line := scanner.Bytes()
-				lineCopy := make([]byte, len(line))
-				copy(lineCopy, line)
-				var e Entry
-				switch Classify(lineCopy) {
-				case LineTypeJSONL:
-					e = ParseJSONL(lineCopy, lineNum)
-				default:
-					e = NewRawEntry(lineCopy, lineNum)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
 				}
-				ch <- TailMsg{Entry: e}
+				if event.Op&fsnotify.Write == 0 {
+					continue
+				}
+				for scanner.Scan() {
+					lineNum++
+					line := scanner.Bytes()
+					lineCopy := make([]byte, len(line))
+					copy(lineCopy, line)
+					var e Entry
+					switch Classify(lineCopy) {
+					case LineTypeJSONL:
+						e = ParseJSONL(lineCopy, lineNum)
+					default:
+						e = NewRawEntry(lineCopy, lineNum)
+					}
+					ch <- TailMsg{Entry: e}
+				}
+				if err := scanner.Err(); err != nil {
+					ch <- TailStopMsg{Err: err}
+					return
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				ch <- TailStopMsg{Err: err}
+				return
 			}
 		}
 	}()
