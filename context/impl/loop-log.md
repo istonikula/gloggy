@@ -4,5 +4,41 @@ last_edited: "2026-04-15T00:00:00Z"
 ---
 # Loop Log
 
+### Iteration 9 — 2026-04-15
+- T-055..T-060: Tier 5 integration tests — DONE. Files: tests/integration/*.go. Build P, Tests P. Next: T-061..T-068 (HUMAN sign-off)
+
+### Iteration 8 — 2026-04-15
+- T-052,T-053,T-054: MouseRouter, ResizeModel, CopyMarkedEntries — DONE. Files: appshell/mouse.go, resize.go, clipboard.go + tests, go.mod. Build P, Tests P.
+
+### Iteration 7 — 2026-04-15
+- T-047..T-051: HeaderModel, LoadingModel, ParseArgs CLI, KeyHintBarModel, HelpOverlayModel — DONE. Files: appshell/header.go, loading.go, keyhints.go, helpoverlay.go + tests, cmd/gloggy/main.go. Build P, Tests P.
+- T-044,T-046: PromptModel (filter add), LayoutModel (appshell) — DONE. Files: ui/filter/prompt.go, appshell/layout.go + tests. Build P, Tests P.
+- T-045: FieldClickMsg, fieldAtLine, handleMouseClick — DONE. Files: detailpane/fieldclick.go + tests. Build P, Tests P.
+
+### Iteration 6 — 2026-04-15
+- T-042,T-043: HeightModel, SearchModel — DONE. Files: detailpane/height.go, search.go + tests. Build P, Tests P.
+- T-041: PaneModel activation/dismissal — DONE. Files: detailpane/model.go + tests. Build P, Tests P.
+
+### Iteration 5 — 2026-04-15
+- T-040: Mouse handling in ListModel — DONE. Files: entrylist/list.go. Build P, Tests P.
+
+### Iteration 4 — 2026-04-15
+- T-029,T-030: ListModel virtual rendering, CursorModel two-level nav — DONE. Files: list.go, cursor.go + tests. Build P, Tests P.
+- T-031,T-032,T-033,T-034: filtered view, level-jump, marks, selection signal — DONE. Files: leveljump.go, list.go updated. Build P, Tests P. Next: Tier 3 (T-040..T-048)
+
+### Iteration 3 — 2026-04-15
+- T-019,T-020: Apply()/FilteredIndex — DONE. Files: filter/index.go, index_test.go. Build P, Tests P.
+- T-022,T-023: RenderCompactRow/level badge colors — DONE. Files: entrylist/row.go, row_test.go. Build P, Tests P.
+- T-027,T-028: LoadFile/TailFile — DONE. Files: logsource/loader.go, tail.go + tests, go.mod. Build P, Tests P.
+- T-037,T-038,T-039: ScrollModel/VisibilityModel/filter panel — DONE. Files: detailpane/scroll.go, visibility.go, filter/panel.go + tests. Build P, Tests P. Next: T-029..T-034 (Tier 2 remaining)
+
+### Iteration 2 — 2026-04-15
+- T-015,T-016,T-017: ReadFile/ReadStdin/tests — DONE. Files: internal/logsource/reader.go, reader_test.go. Build P, Tests P.
+- T-018: filter/match.go Match() — DONE. Files: internal/filter/match.go, match_test.go. Build P, Tests P.
+- T-026: FilterSet.ToggleAll() — DONE. Files: internal/filter/filter.go. Build P, Tests P.
+- T-021: AbbreviateLogger — DONE. Files: internal/ui/entrylist/logger.go, logger_test.go. Build P, Tests P.
+- T-024,T-025: config writeback tests — DONE. Files: internal/config/writeback_test.go. Build P, Tests P.
+- T-035,T-036: RenderJSON/RenderRaw — DONE. Files: internal/ui/detailpane/render.go, render_test.go. Build P, Tests P (11/11). Next: T-019,T-020,T-022,T-023,T-027..T-034,T-037..T-039 (Tier 1-2)
+
 ### Iteration 1 — 2026-04-15
 - T-001..T-014: Tier 0 — DONE. Files: go.mod, cmd/gloggy/main.go, internal/logsource/{entry,classify,parse}.go, internal/config/config.go, internal/theme/theme.go, internal/filter/filter.go, internal/ui/entrylist/{scroll,marks}.go, internal/ui/appshell/help.go + tests. Build P, Tests P (all packages). Next: T-015..T-026 (Tier 1)

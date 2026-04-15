@@ -10,3 +10,13 @@ Build site: context/plans/build-site.md
 |------|--------|-------|
 | T-012 | DONE | GoTop/GoBottom/HalfPageDown/HalfPageUp pure functions on ScrollState |
 | T-013 | DONE | MarkSet keyed by entry ID; Toggle/IsMarked/NextMark/PrevMark with wrap |
+| T-021 | DONE | AbbreviateLogger() in logger.go — keeps last depth segments full, abbreviates earlier to first char |
+| T-022 | DONE | ui/entrylist/row.go — RenderCompactRow() with time/level/logger/msg; non-JSON dim; zero-time placeholder |
+| T-023 | DONE | Level badge colors via theme tokens; colorANSI() helper avoids termenv hex-rounding diff |
+| T-029 | DONE | list.go — ListModel virtual rendering; only offset±renderBuffer rows rendered; SelectionMsg on move |
+| T-030 | DONE | cursor.go — CursorModel two-level nav; j/k event level, l/Tab/→ sub-row, h/←/Esc exit; SubRows() |
+| T-031 | DONE | ListModel.SetFilter() — wires FilteredIndex; cursor preserved if passing else nearest |
+| T-032 | DONE | leveljump.go — NextLevel/PrevLevel with WrapDirection; e/E/w/W keys; WrapDir() indicator |
+| T-033 | DONE | 'm' toggles mark via MarkSet; 'u'/'U' next/prev mark; '* ' visual indicator in View() |
+| T-034 | DONE | SelectionMsg emitted on every cursor movement in ListModel.Update() |
+| T-040 | DONE | Mouse handling: left-click selects row, wheel scrolls, re-click on selected → OpenDetailPaneMsg |

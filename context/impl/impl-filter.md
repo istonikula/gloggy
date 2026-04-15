@@ -9,3 +9,9 @@ Build site: context/plans/build-site.md
 | Task | Status | Notes |
 |------|--------|-------|
 | T-011 | DONE | Filter struct, FilterSet with Add/Remove/Enable/Disable/GetAll/GetEnabled; Mode as typed enum |
+| T-018 | DONE | match.go — Match() with regex/literal dispatch; entryFieldValue handles known fields + Extra |
+| T-026 | DONE | FilterSet.ToggleAll() — global disable saves/restores per-filter Enabled state |
+| T-019 | DONE | filter/index.go — Apply() include/exclude logic; disabled filters ignored |
+| T-020 | DONE | FilteredIndex type with Recompute() |
+| T-039 | DONE | ui/filter/panel.go — Bubble Tea model: j/k nav, Space toggle, d delete, mouse click; FilterChangedMsg |
+| T-044 | DONE | ui/filter/prompt.go — PromptModel: pre-fill field/pattern, Tab toggle mode, Enter confirm, Esc cancel |

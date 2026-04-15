@@ -13,3 +13,5 @@ Build site: context/plans/build-site.md
 | T-008 | DONE | rawData preserved in LoadResult; Save merges struct into raw map |
 | T-009 | DONE | Theme struct + 3 themes in internal/theme/theme.go |
 | T-010 | DONE | Default values: theme=tokyo-night, fields=[time,level,logger,msg], depth=2, ratio=0.30 |
+| T-024 | DONE | writeback_test.go — HiddenFieldsUpdatePersists, ProducesValidTOML (Save already existed) |
+| T-025 | DONE | writeback_test.go — PreservesUnknownKeys, UnknownKeyDoesNotError (rawData mechanism already existed) |

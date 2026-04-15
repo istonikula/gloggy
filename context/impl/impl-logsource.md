@@ -13,3 +13,8 @@ Build site: context/plans/build-site.md
 | T-003 | DONE | Classify() in classify.go + 5 tests |
 | T-004 | DONE | ParseJSONL() in parse.go + 5 tests |
 | T-005 | DONE | NewRawEntry() in parse.go + 2 tests |
+| T-015 | DONE | ReadFile() in reader.go — opens file, delegates to scanEntries |
+| T-016 | DONE | ReadStdin(io.Reader) in reader.go — same scan path as ReadFile |
+| T-017 | DONE | reader_test.go — ProducesEntries, NonexistentError, ReadStdin, LineNumbers, MixedContent |
+| T-027 | DONE | logsource/loader.go — LoadFile() channel-polling background load; EntryBatchMsg/LoadProgressMsg/LoadDoneMsg |
+| T-028 | DONE | logsource/tail.go — TailFile() with fsnotify; IsTailableFromStdin()=false; continuing line numbers |
