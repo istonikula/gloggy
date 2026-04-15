@@ -4,6 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/istonikula/gloggy/internal/config"
+	"github.com/istonikula/gloggy/internal/logsource"
+	"github.com/istonikula/gloggy/internal/ui/app"
 )
 
 func main() {
@@ -51,15 +57,37 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	// Placeholder: real app would launch the Bubble Tea program here.
-	if parsed.FromStdin {
-		fmt.Println("reading from stdin")
-	} else {
-		mode := ""
-		if parsed.FollowMode {
-			mode = " (follow)"
-		}
-		fmt.Printf("reading file: %s%s\n", parsed.FilePath, mode)
+
+	// Load config.
+	cfgPath, err := config.DefaultConfigPath()
+	if err != nil {
+		cfgPath = ""
 	}
-	return nil
+	cfgResult := config.Load(cfgPath)
+	for _, w := range cfgResult.Warnings {
+		fmt.Fprintln(os.Stderr, "config warning:", w)
+	}
+
+	// Determine source name for the header.
+	sourceName := parsed.FilePath
+	if parsed.FromStdin {
+		sourceName = ""
+	}
+
+	model := app.New(sourceName, parsed.FollowMode, cfgPath, cfgResult)
+
+	// For stdin: read synchronously before starting the TUI so the full entry
+	// list is available immediately (stdin can't be re-read inside the program).
+	if parsed.FromStdin {
+		entries := logsource.ReadStdin(os.Stdin)
+		model = model.SetEntries(entries)
+	}
+
+	p := tea.NewProgram(
+		model,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
+	_, err = p.Run()
+	return err
 }
