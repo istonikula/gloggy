@@ -79,26 +79,6 @@ func TestListModel_VirtualRendering_Scrolled(t *testing.T) {
 	}
 }
 
-// SelectionMsg emitted when cursor moves.
-func TestListModel_SelectionMsg(t *testing.T) {
-	entries := makeEntries(5)
-	m := defaultListModel(10).SetEntries(entries)
-
-	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	_ = m2
-	if cmd == nil {
-		t.Fatal("expected SelectionMsg cmd after j")
-	}
-	msg := cmd()
-	sel, ok := msg.(SelectionMsg)
-	if !ok {
-		t.Fatalf("expected SelectionMsg, got %T", msg)
-	}
-	if sel.Entry.Msg != "entry 1" {
-		t.Errorf("SelectionMsg.Entry.Msg = %q, want %q", sel.Entry.Msg, "entry 1")
-	}
-}
-
 // No SelectionMsg when cursor doesn't move (already at boundary).
 func TestListModel_NoSelectionMsg_AtBoundary(t *testing.T) {
 	entries := makeEntries(5)

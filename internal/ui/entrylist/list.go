@@ -17,22 +17,31 @@ type SelectionMsg struct {
 	Entry logsource.Entry
 }
 
+// WrapIndicator is emitted when a level-jump or mark navigation wraps around.
+type WrapIndicator struct {
+	Direction WrapDirection
+}
+
 // ListModel is the virtual-rendering entry list Bubble Tea model.
 // It only renders visible rows plus a small buffer, regardless of total entry count.
 type ListModel struct {
-	entries  []logsource.Entry
-	scroll   ScrollState
-	th       theme.Theme
-	cfg      config.Config
-	width    int
+	entries     []logsource.Entry
+	filtered    []int // filtered indices; nil means show all entries
+	scroll      ScrollState
+	th          theme.Theme
+	cfg         config.Config
+	width       int
+	marks       *MarkSet
+	wrapDir     WrapDirection // last wrap direction, reset on next navigation
 }
 
 // NewListModel creates a ListModel.
 func NewListModel(th theme.Theme, cfg config.Config, width, height int) ListModel {
 	return ListModel{
-		th:    th,
-		cfg:   cfg,
-		width: width,
+		th:     th,
+		cfg:    cfg,
+		width:  width,
+		marks:  NewMarkSet(),
 		scroll: ScrollState{ViewportHeight: height},
 	}
 }
@@ -64,18 +73,70 @@ func (m ListModel) SelectedEntry() (logsource.Entry, bool) {
 	return m.entries[m.scroll.Cursor], true
 }
 
+// SetFilter applies a filtered index (slice of entry indices that pass filters).
+// On filter change, keeps selection if still passing, else moves to nearest.
+func (m ListModel) SetFilter(indices []int) ListModel {
+	// Check if current cursor entry still passes.
+	current := m.scroll.Cursor
+	found := false
+	nearest := 0
+	for i, idx := range indices {
+		if idx == current {
+			found = true
+			nearest = i
+			break
+		}
+		if idx <= current {
+			nearest = i
+		}
+	}
+	m.filtered = indices
+	if found {
+		m.scroll.Cursor = current
+	} else if len(indices) > 0 {
+		m.scroll.Cursor = indices[nearest]
+	}
+	m.scroll.TotalEntries = len(indices)
+	m.scroll.Offset = clampOffset(m.scroll.Offset, len(indices), m.scroll.ViewportHeight)
+	return m
+}
+
+// ClearFilter removes the filter, showing all entries.
+func (m ListModel) ClearFilter() ListModel {
+	m.filtered = nil
+	m.scroll.TotalEntries = len(m.entries)
+	return m
+}
+
+// visibleEntries returns the entries to display (filtered or all).
+func (m ListModel) visibleEntries() []logsource.Entry {
+	if m.filtered == nil {
+		return m.entries
+	}
+	out := make([]logsource.Entry, len(m.filtered))
+	for i, idx := range m.filtered {
+		out[i] = m.entries[idx]
+	}
+	return out
+}
+
+// Marks returns the mark set.
+func (m ListModel) Marks() *MarkSet { return m.marks }
+
 // Init satisfies tea.Model.
 func (m ListModel) Init() tea.Cmd { return nil }
 
 // Update handles keyboard navigation.
 func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
-	n := len(m.entries)
+	vis := m.visibleEntries()
+	n := len(vis)
 	if n == 0 {
 		return m, nil
 	}
 
 	var cmd tea.Cmd
 	prev := m.scroll.Cursor
+	m.wrapDir = NoWrap
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -92,14 +153,66 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 			m.scroll = HalfPageDown(m.scroll)
 		case "ctrl+u":
 			m.scroll = HalfPageUp(m.scroll)
+		case "m":
+			// Toggle mark on current visible entry.
+			if m.scroll.Cursor < len(vis) {
+				id := vis[m.scroll.Cursor].LineNumber
+				m.marks.Toggle(id)
+			}
+		case "u":
+			// Next mark with wrap.
+			visIDs := make([]int, len(vis))
+			for i, e := range vis {
+				visIDs[i] = e.LineNumber
+			}
+			if next := m.marks.NextMark(m.scroll.Cursor, visIDs); next >= 0 {
+				if next <= m.scroll.Cursor {
+					m.wrapDir = WrapForward
+				}
+				m.scroll.Cursor = next
+			}
+		case "U":
+			// Previous mark with wrap.
+			visIDs := make([]int, len(vis))
+			for i, e := range vis {
+				visIDs[i] = e.LineNumber
+			}
+			if prev := m.marks.PrevMark(m.scroll.Cursor, visIDs); prev >= 0 {
+				if prev >= m.scroll.Cursor {
+					m.wrapDir = WrapBack
+				}
+				m.scroll.Cursor = prev
+			}
+		case "e":
+			// Next ERROR in full entries set.
+			newIdx, dir := NextLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "ERROR")
+			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
+			m.wrapDir = dir
+		case "E":
+			// Previous ERROR in full entries set.
+			newIdx, dir := PrevLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "ERROR")
+			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
+			m.wrapDir = dir
+		case "w":
+			// Next WARN in full entries set.
+			newIdx, dir := NextLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "WARN")
+			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
+			m.wrapDir = dir
+		case "W":
+			// Previous WARN in full entries set.
+			newIdx, dir := PrevLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "WARN")
+			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
+			m.wrapDir = dir
 		}
 		// Keep cursor visible in viewport.
 		m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
 		m.scroll.Offset = clampOffset(m.scroll.Offset, n, m.scroll.ViewportHeight)
 
 		if m.scroll.Cursor != prev {
-			entry := m.entries[m.scroll.Cursor]
-			cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
+			if m.scroll.Cursor < len(vis) {
+				entry := vis[m.scroll.Cursor]
+				cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -110,9 +223,42 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 	return m, cmd
 }
 
+// entryIndexForVisible converts a visible-list cursor position to an index
+// into the full m.entries slice.
+func (m ListModel) entryIndexForVisible(visIdx int) int {
+	if m.filtered == nil {
+		return visIdx
+	}
+	if visIdx >= 0 && visIdx < len(m.filtered) {
+		return m.filtered[visIdx]
+	}
+	return visIdx
+}
+
+// visibleIndexForEntry converts a full-entries index to the best visible index.
+// If the entry is not in the filtered set, returns the current cursor.
+func (m ListModel) visibleIndexForEntry(entryIdx int) int {
+	if m.filtered == nil {
+		return entryIdx
+	}
+	// Find the entry in the filtered list.
+	for vi, fi := range m.filtered {
+		if fi == entryIdx {
+			return vi
+		}
+	}
+	// Entry is filtered out — show its position indicator by keeping current cursor.
+	// The view can check wrapDir != NoWrap or similar for indicator.
+	return m.scroll.Cursor
+}
+
+// WrapDir returns the last wrap direction from a level-jump or mark nav.
+func (m ListModel) WrapDir() WrapDirection { return m.wrapDir }
+
 // View renders only the visible rows plus a small buffer.
 func (m ListModel) View() string {
-	n := len(m.entries)
+	vis := m.visibleEntries()
+	n := len(vis)
 	if n == 0 {
 		return ""
 	}
@@ -128,7 +274,11 @@ func (m ListModel) View() string {
 
 	var sb strings.Builder
 	for i := start; i < end; i++ {
-		row := RenderCompactRow(m.entries[i], m.width, m.th, m.cfg)
+		mark := ""
+		if m.marks.IsMarked(vis[i].LineNumber) {
+			mark = "* "
+		}
+		row := mark + RenderCompactRow(vis[i], m.width, m.th, m.cfg)
 		sb.WriteString(row)
 		if i < end-1 {
 			sb.WriteByte('\n')
@@ -140,7 +290,8 @@ func (m ListModel) View() string {
 // RenderedRowCount returns how many rows were rendered in the last View() call.
 // Used for benchmark validation.
 func (m ListModel) RenderedRowCount() int {
-	n := len(m.entries)
+	vis := m.visibleEntries()
+	n := len(vis)
 	if n == 0 {
 		return 0
 	}
