@@ -1,0 +1,132 @@
+---
+created: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-15T00:00:00Z"
+---
+
+# Cavekit: Entry List
+
+## Scope
+
+The primary scrollable list of log entries displayed in a compact format. Covers row rendering, two-level cursor navigation, virtual scrolling, level-jump navigation, marks/bookmarks, entry selection signaling, and mouse interactions within the list. All visual styling defers to the active theme.
+
+## Requirements
+
+### R1: Compact Row Format
+**Description:** Each JSONL entry row shows time (HH:MM:SS), level badge, abbreviated logger, and truncated message. Non-JSON entries show dimmed raw text. Which fields appear in the compact row is determined by config.
+**Acceptance Criteria:**
+- [ ] [auto] A JSONL entry row contains the time formatted as HH:MM:SS
+- [ ] [auto] A JSONL entry row contains the level value
+- [ ] [auto] A JSONL entry row contains the logger abbreviated to the configured depth
+- [ ] [auto] A JSONL entry row contains the message, truncated to fit the available width
+- [ ] [auto] A non-JSON entry row shows the raw text
+- [ ] [human] Non-JSON entry rows are visually dimmed compared to JSONL rows
+- [ ] [auto] An entry with zero time displays a placeholder (e.g. blank or dashes) in the time column
+**Dependencies:** cavekit-log-source (entry model), cavekit-config (field visibility, logger depth, theme)
+
+### R2: Logger Abbreviation
+**Description:** Logger names are abbreviated by showing the last N segments at full length and abbreviating earlier segments to their first character. The segment depth is configurable.
+**Acceptance Criteria:**
+- [ ] [auto] With depth 2, `org.springframework.data.repository.RepositoryDelegate` abbreviates to `o.s.d.repository.RepositoryDelegate` (last 2 segments kept full, all prior segments abbreviated to their first character)
+- [ ] [auto] With depth 2, `arina.server.ArinaServerKt` abbreviates to `a.server.ArinaServerKt`
+- [ ] [auto] With depth 1, `arina.server.ArinaServerKt` abbreviates to `a.s.ArinaServerKt`
+- [ ] [auto] A logger with fewer segments than the configured depth is shown unabbreviated
+**Dependencies:** cavekit-config (logger abbreviation depth)
+
+### R3: Level Badge Colors
+**Description:** Level badges are styled using colors from the active theme. ERROR uses the theme's error color, WARN uses warning color, INFO uses default color, DEBUG uses dim color. No color values are hardcoded — all resolved from the active theme's tokens.
+**Acceptance Criteria:**
+- [ ] [auto] Rendering an ERROR entry with the default theme produces ANSI output containing the default theme's error color token value
+- [ ] [auto] Rendering a WARN entry with the default theme produces ANSI output containing the default theme's warning color token value
+- [ ] [auto] Rendering an INFO entry with the default theme produces ANSI output containing the default theme's info color token value
+- [ ] [auto] Rendering a DEBUG entry with the default theme produces ANSI output containing the default theme's dim color token value
+- [ ] [auto] Switching the active theme changes the ANSI color codes in the rendered output to match the new theme's tokens
+- [ ] [human] One-time visual sign-off per bundled theme: level badge colors are perceptually correct and readable
+**Dependencies:** cavekit-config (theme)
+
+### R4: Two-Level Cursor Navigation
+**Description:** Navigation uses a magit-style two-level model. At event level, `j`/`k` move between entries. Entering sub-level with `l`/right/Tab reveals per-field sub-rows for the current entry. `h`/left/Esc returns to event level. Sub-rows show one configured field per row, indented.
+**Acceptance Criteria:**
+- [ ] [auto] Pressing `j` moves the cursor to the next entry
+- [ ] [auto] Pressing `k` moves the cursor to the previous entry
+- [ ] [auto] `j`/`k` never land the cursor on a sub-row
+- [ ] [auto] Pressing `l`, right arrow, or Tab on an entry enters sub-row level, displaying sub-rows for the configured fields
+- [ ] [auto] Sub-rows are displayed indented beneath their parent entry
+- [ ] [auto] Each sub-row shows one field name and its value
+- [ ] [auto] Pressing `h`, left arrow, or Esc while in sub-row level returns to event level
+- [ ] [auto] At event level, entries with sub-row fields show a visual boundary whether expanded or collapsed
+- [ ] [human] Event boundaries are visually clear and readable
+**Dependencies:** cavekit-config (sub-row fields)
+
+### R5: Scroll Navigation
+**Description:** `g` jumps to the first entry, `G` jumps to the last entry, `Ctrl-d` scrolls half a page down, `Ctrl-u` scrolls half a page up.
+**Acceptance Criteria:**
+- [ ] [auto] Pressing `g` moves the cursor to the first entry and scrolls to top
+- [ ] [auto] Pressing `G` moves the cursor to the last entry and scrolls to bottom
+- [ ] [auto] Pressing `Ctrl-d` scrolls approximately half the visible height downward
+- [ ] [auto] Pressing `Ctrl-u` scrolls approximately half the visible height upward
+**Dependencies:** none
+
+### R6: Virtual Rendering
+**Description:** Only the visible rows plus a small buffer are rendered, regardless of total entry count. This ensures the list remains responsive with large files.
+**Acceptance Criteria:**
+- [ ] [auto] With 100,000 entries loaded, the number of rendered rows does not exceed the visible height plus a fixed buffer
+- [ ] [auto] Scrolling through a large dataset does not degrade in responsiveness (render time per frame stays below 16ms)
+**Dependencies:** none
+
+### R7: Filtered View
+**Description:** The list displays only entries that pass the active filter set. When filters change, the list updates to reflect the new filtered set while preserving cursor position where possible.
+**Acceptance Criteria:**
+- [ ] [auto] When a filter excludes an entry, that entry does not appear in the list
+- [ ] [auto] When filters change, the list updates to show only passing entries
+- [ ] [auto] If the previously selected entry still passes filters, it remains selected after filter change
+- [ ] [auto] If the previously selected entry is filtered out, the cursor moves to the nearest passing entry
+**Dependencies:** cavekit-filter-engine (filtered entry index)
+
+### R8: Level-Jump Navigation
+**Description:** `e`/`E` navigate to the next/previous ERROR entry. `w`/`W` navigate to the next/previous WARN entry. Search spans the full entry set regardless of active filters, and wraps around with an indicator. If the target entry is currently excluded by filters it is still navigated to and shown, with a visual indicator that it would be hidden under the current filter set.
+**Acceptance Criteria:**
+- [ ] [auto] Pressing `e` moves the cursor to the next entry with level ERROR in the full entry set
+- [ ] [auto] Pressing `E` moves the cursor to the previous entry with level ERROR in the full entry set
+- [ ] [auto] Pressing `w` moves the cursor to the next entry with level WARN in the full entry set
+- [ ] [auto] Pressing `W` moves the cursor to the previous entry with level WARN in the full entry set
+- [ ] [auto] When no more matching entries exist in the search direction, the search wraps to the other end
+- [ ] [auto] When a wrap occurs, an indicator is shown
+- [ ] [auto] When level-jump lands on an entry that is excluded by active filters, the entry is shown and a visual indicator communicates it is outside the current filter
+- [ ] [human] The "filtered-out but visible" indicator is clearly distinguishable from normal entries
+**Dependencies:** cavekit-log-source (entry level field), cavekit-filter-engine (filtered entry index)
+
+### R9: Marks and Bookmarks
+**Description:** `m` toggles a mark on the current entry. Marked entries show a visual indicator in the list. `u`/`U` navigate to the next/previous marked entry.
+**Acceptance Criteria:**
+- [ ] [auto] Pressing `m` on an unmarked entry marks it; pressing `m` again unmarks it
+- [ ] [auto] Marked entries display a visual indicator in their row
+- [ ] [auto] Pressing `u` moves the cursor to the next marked entry
+- [ ] [auto] Pressing `U` moves the cursor to the previous marked entry
+- [ ] [auto] Mark navigation wraps with an indicator when reaching the end/beginning
+**Dependencies:** none
+
+### R10: Entry Selection and Mouse
+**Description:** The currently selected entry emits a signal consumed by the detail pane. Mouse click selects an entry, scroll wheel scrolls the list, double-click opens the detail pane.
+**Acceptance Criteria:**
+- [ ] [auto] When the cursor moves to a new entry, a selection signal is emitted with that entry's data
+- [ ] [auto] Clicking on an entry row with the mouse selects that entry
+- [ ] [auto] Mouse scroll wheel scrolls the list
+- [ ] [auto] Double-clicking an entry opens the detail pane for that entry
+**Dependencies:** cavekit-detail-pane (receives selection signal), cavekit-app-shell (mouse routing)
+
+## Out of Scope
+
+- Detail pane rendering (handled by detail-pane)
+- Filter logic and filter panel (handled by filter-engine)
+- Deciding which fields are sub-rows (handled by config)
+- Clipboard operations (handled by app-shell)
+
+## Cross-References
+
+- See also: cavekit-log-source.md (provides entry data)
+- See also: cavekit-detail-pane.md (receives entry selection)
+- See also: cavekit-filter-engine.md (provides filtered entry index)
+- See also: cavekit-config.md (field visibility, sub-row fields, logger depth, theme)
+- See also: cavekit-app-shell.md (layout, mouse routing)
+
+## Changelog
