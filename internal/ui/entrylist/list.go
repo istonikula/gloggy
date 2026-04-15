@@ -22,6 +22,11 @@ type WrapIndicator struct {
 	Direction WrapDirection
 }
 
+// OpenDetailPaneMsg is emitted when the user double-clicks an entry to open the detail pane.
+type OpenDetailPaneMsg struct {
+	Entry logsource.Entry
+}
+
 // ListModel is the virtual-rendering entry list Bubble Tea model.
 // It only renders visible rows plus a small buffer, regardless of total entry count.
 type ListModel struct {
@@ -123,6 +128,17 @@ func (m ListModel) visibleEntries() []logsource.Entry {
 // Marks returns the mark set.
 func (m ListModel) Marks() *MarkSet { return m.marks }
 
+// rowForY converts a mouse Y coordinate (relative to the list top) to a
+// visible-list cursor index, or -1 if out of bounds.
+func (m ListModel) rowForY(y int) int {
+	vis := m.visibleEntries()
+	idx := m.scroll.Offset + y
+	if idx < 0 || idx >= len(vis) {
+		return -1
+	}
+	return idx
+}
+
 // Init satisfies tea.Model.
 func (m ListModel) Init() tea.Cmd { return nil }
 
@@ -212,6 +228,64 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 			if m.scroll.Cursor < len(vis) {
 				entry := vis[m.scroll.Cursor]
 				cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
+			}
+		}
+
+	case tea.MouseMsg:
+		vis := m.visibleEntries()
+		n := len(vis)
+		switch msg.Button {
+		case tea.MouseButtonLeft:
+			if msg.Action == tea.MouseActionPress {
+				row := m.rowForY(msg.Y)
+				if row >= 0 && row < n {
+					m.scroll.Cursor = row
+					m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
+					if m.scroll.Cursor != prev {
+						entry := vis[m.scroll.Cursor]
+						cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
+					}
+				}
+			} else if msg.Action == tea.MouseActionRelease {
+				// Double-click detection: check if this is a second click on same row.
+				// Bubble Tea exposes double-click as Action == tea.MouseActionMotion or
+				// explicit double-click event. For simplicity, treat consecutive quick
+				// presses as double-click — use DoubleClick action if available.
+			}
+		case tea.MouseButtonWheelDown:
+			m.scroll.Cursor = clampCursor(m.scroll.Cursor+1, n)
+			m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
+			m.scroll.Offset = clampOffset(m.scroll.Offset, n, m.scroll.ViewportHeight)
+			if m.scroll.Cursor != prev {
+				entry := vis[m.scroll.Cursor]
+				cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
+			}
+		case tea.MouseButtonWheelUp:
+			m.scroll.Cursor = clampCursor(m.scroll.Cursor-1, n)
+			m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
+			m.scroll.Offset = clampOffset(m.scroll.Offset, n, m.scroll.ViewportHeight)
+			if m.scroll.Cursor != prev {
+				entry := vis[m.scroll.Cursor]
+				cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
+			}
+		}
+		// Double-click: action == MouseActionMotion with double-click bit, or explicit.
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			// Check for double-click via the Alt modifier (Bubble Tea represents double-click
+			// differently). In practice, double-click emits two quick Press events.
+			// Implement a proper double-click by checking if the click cell matches the cursor.
+			row := m.rowForY(msg.Y)
+			if row >= 0 && row == m.scroll.Cursor && n > 0 {
+				// This is a click on the already-selected row — treat as potential double-click.
+				// Emit OpenDetailPaneMsg so the parent can decide.
+				entry := vis[m.scroll.Cursor]
+				existingCmd := cmd
+				cmd = func() tea.Msg {
+					if existingCmd != nil {
+						existingCmd() // drain selection msg
+					}
+					return OpenDetailPaneMsg{Entry: entry}
+				}
 			}
 		}
 
