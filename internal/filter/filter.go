@@ -32,9 +32,11 @@ type Filter struct {
 
 // FilterSet holds multiple filters with add/remove/toggle operations.
 type FilterSet struct {
-	filters []Filter
-	ids     []int
-	nextID  int
+	filters          []Filter
+	ids              []int
+	nextID           int
+	globallyDisabled bool
+	savedEnabled     []bool // saved Enabled per filter index at time of global disable
 }
 
 // NewFilterSet creates an empty FilterSet.
@@ -101,4 +103,29 @@ func (fs *FilterSet) GetEnabled() []Filter {
 		}
 	}
 	return out
+}
+
+// ToggleAll disables all filters globally on the first call, then re-enables
+// only the ones that were individually enabled before on the second call.
+// Filters that were individually disabled before the first call remain disabled
+// after the second call.
+func (fs *FilterSet) ToggleAll() {
+	if !fs.globallyDisabled {
+		// Save enabled state and disable all.
+		fs.savedEnabled = make([]bool, len(fs.filters))
+		for i := range fs.filters {
+			fs.savedEnabled[i] = fs.filters[i].Enabled
+			fs.filters[i].Enabled = false
+		}
+		fs.globallyDisabled = true
+	} else {
+		// Restore saved enabled states.
+		for i := range fs.filters {
+			if i < len(fs.savedEnabled) {
+				fs.filters[i].Enabled = fs.savedEnabled[i]
+			}
+		}
+		fs.savedEnabled = nil
+		fs.globallyDisabled = false
+	}
 }
