@@ -43,7 +43,7 @@ A modern JSONL-focused TUI log analyzer is a genuine gap in the tooling space �
 - Storing full pretty-printed JSON strings in memory for every entry — compute on demand only for the selected entry.
 - Rendering full JSON in the list row — always truncate `msg` to terminal width; show ellipsis if overflowing.
 - Blocking the update loop (Bubble Tea) or main thread (Ratatui) with file I/O or JSON parsing.
-- Hardcoding known field names in detail pane — the format includes arbitrary extra fields (`arinaConfig`, etc.). Show all fields dynamically.
+- Hardcoding known field names in detail pane — the format includes arbitrary extra fields (e.g. a large `appConfig` blob, etc.). Show all fields dynamically.
 - Ignoring terminal resize events — recalculate layout on `tea.WindowSizeMsg` / terminal size change.
 - Using `time.RFC3339` instead of `time.RFC3339Nano` — nanosecond timestamps won't parse.
 - Over-engineering filter v1 — start with substring match on `msg`; add `logger:`, `level:`, `thread:` field filters in v2.
@@ -72,7 +72,7 @@ A modern JSONL-focused TUI log analyzer is a genuine gap in the tooling space �
 - **Compact list row by default**: show only the most useful fields — time, level badge, short logger, truncated msg. Not verbose.
 - **Field visibility control**: user can configure which fields appear in the list row; some hidden by default (thread, extra fields)
 - **Expand to full detail**: pressing Enter (or similar) expands the selected entry into a detail pane with all fields pretty-printed (syntax-highlighted JSON)
-- **Field show/hide in detail pane**: ability to hide noisy fields even in the detail view (e.g. hide `arinaConfig` which is a 4KB config dump on every startup)
+- **Field show/hide in detail pane**: ability to hide noisy fields even in the detail view (e.g. hide a large `appConfig` field which may be a multi-KB config dump on every startup)
 - The distinction between "compact list row" and "full detail" is core to the UX — list scans fast, detail gives full context
 
 ### Multi-row entry display (inline expansion)

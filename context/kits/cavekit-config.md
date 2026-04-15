@@ -12,9 +12,9 @@ Loading, validating, and persisting application configuration from a TOML file. 
 ## Requirements
 
 ### R1: Config File Location and Defaults
-**Description:** Configuration is read from `~/.config/logtui/config.toml`. If the file does not exist on first run, it is created with default values.
+**Description:** Configuration is read from `~/.config/gloggy/config.toml`. If the file does not exist on first run, it is created with default values.
 **Acceptance Criteria:**
-- [ ] [auto] When no config file exists, one is created at `~/.config/logtui/config.toml` with default values
+- [ ] [auto] When no config file exists, one is created at `~/.config/gloggy/config.toml` with default values
 - [ ] [auto] The created default config file is valid TOML
 - [ ] [auto] When the config file exists, its values are loaded and used
 **Dependencies:** none

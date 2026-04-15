@@ -3,7 +3,7 @@ created: "2026-04-15T00:00:00Z"
 last_edited: "2026-04-15T00:00:00Z"
 ---
 
-# Cavekit Overview: logtui
+# Cavekit Overview: gloggy
 
 A terminal UI tool for interactively analyzing JSONL log files during local development. Single binary, single file input only.
 

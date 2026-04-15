@@ -14,9 +14,9 @@ The top-level application entry point, layout management, domain wiring, mouse r
 ### R1: Entry Points
 **Description:** The application supports three invocation modes: a file path argument for reading a file, a tail flag with a file path for follow mode, and no arguments for reading from stdin.
 **Acceptance Criteria:**
-- [ ] [auto] `logtui <file>` starts the application reading from the specified file
-- [ ] [auto] `logtui -f <file>` starts the application in tail mode on the specified file
-- [ ] [auto] `logtui` with piped stdin starts the application reading from stdin
+- [ ] [auto] `gloggy <file>` starts the application reading from the specified file
+- [ ] [auto] `gloggy -f <file>` starts the application in tail mode on the specified file
+- [ ] [auto] `gloggy` with piped stdin starts the application reading from stdin
 - [ ] [auto] Invalid arguments (e.g. both stdin pipe and file, or `-f` without file) produce a clear error message
 **Dependencies:** cavekit-log-source (input handling)
 

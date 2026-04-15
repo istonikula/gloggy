@@ -37,6 +37,6 @@
 ### Q5: Language choice for local dev TUI tool in 2026
 
 - Found: **Go is the pragmatic winner** for this use case: single binary distribution (no runtime deps), fast startup, excellent TUI ecosystem (Charm), strong JSON stdlib, goroutines for concurrent file reading. User already has Go projects (hetu-go, hrs-go, realworld-go). [confidence: HIGH]
-- Found: Go `go install` makes it trivial to install: `go install github.com/user/logtui@latest` → one binary in $GOPATH/bin. No Docker, no pip, no brew needed. [confidence: HIGH]
+- Found: Go `go install` makes it trivial to install: `go install github.com/user/gloggy@latest` → one binary in $GOPATH/bin. No Docker, no pip, no brew needed. [confidence: HIGH]
 - Found: Python Textual is compelling if the user prefers Python, but packaging as a single executable requires PyInstaller or similar — more friction than Go. [confidence: HIGH]
 - Found: Rust + Ratatui produces the fastest, smallest binary but development velocity is lower for a UI-heavy tool. Better suited for a tool that needs extreme performance or will be distributed widely. [confidence: HIGH]

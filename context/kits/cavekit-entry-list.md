@@ -27,8 +27,8 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 **Description:** Logger names are abbreviated by showing the last N segments at full length and abbreviating earlier segments to their first character. The segment depth is configurable.
 **Acceptance Criteria:**
 - [ ] [auto] With depth 2, `org.springframework.data.repository.RepositoryDelegate` abbreviates to `o.s.d.repository.RepositoryDelegate` (last 2 segments kept full, all prior segments abbreviated to their first character)
-- [ ] [auto] With depth 2, `arina.server.ArinaServerKt` abbreviates to `a.server.ArinaServerKt`
-- [ ] [auto] With depth 1, `arina.server.ArinaServerKt` abbreviates to `a.s.ArinaServerKt`
+- [ ] [auto] With depth 2, `com.example.server.AppServerKt` abbreviates to `s.AppServerKt`
+- [ ] [auto] With depth 1, `com.example.server.AppServerKt` abbreviates to `c.e.s.AppServerKt`
 - [ ] [auto] A logger with fewer segments than the configured depth is shown unabbreviated
 **Dependencies:** cavekit-config (logger abbreviation depth)
 

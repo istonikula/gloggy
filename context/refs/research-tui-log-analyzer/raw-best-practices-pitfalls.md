@@ -25,7 +25,7 @@
 
 - Found: **Parsing all lines on startup for large files.** A 100MB log file with 500k lines will cause multi-second startup delay if parsed synchronously. Load in chunks or background goroutine with a loading indicator. [confidence: HIGH]
 - Found: **Storing full raw JSON in memory for every entry.** Store only parsed fields + raw string for detail view. A `[]byte` raw copy per entry is fine but avoid redundant string allocations. [confidence: MEDIUM]
-- Found: **Rendering full JSON in the list row.** Long JSON (like the arinaConfig dump) will overflow the terminal width and slow rendering. Always truncate in list view. [confidence: HIGH]
+- Found: **Rendering full JSON in the list row.** Long JSON (like a large startup config dump) will overflow the terminal width and slow rendering. Always truncate in list view. [confidence: HIGH]
 - Found: **Blocking the Bubble Tea update loop.** Any slow operation in `Update()` freezes the UI. File reading, JSON parsing, filtering must all happen in `tea.Cmd` goroutines. [confidence: HIGH]
 - Found: **Hardcoding field names.** The JSONL format has standard fields (time/msg/logger/thread/level) but also arbitrary extra fields. The detail pane must handle unknown fields gracefully — show all key-value pairs, not just known ones. [confidence: HIGH]
 - Found: **Ignoring terminal resize events.** Bubble Tea sends `tea.WindowSizeMsg` — handle it to recalculate layout. Split-pane layouts are especially prone to breaking on resize. [confidence: HIGH]
