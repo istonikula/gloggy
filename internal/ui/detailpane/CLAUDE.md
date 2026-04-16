@@ -10,4 +10,4 @@ Implements:
 - cavekit-detail-pane.md R7 (In-Pane Search)
 - cavekit-detail-pane.md R8 (Mouse Filter Interaction)
 
-Build tasks: T-035, T-036, T-037, T-038, T-041, T-042, T-043, T-045 (build-site.md)
+Build tasks: T-035, T-036, T-037, T-038, T-041, T-042, T-043, T-045, T-082 (build-site.md)

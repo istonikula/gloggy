@@ -1,8 +1,17 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T21:49:00Z"
+last_edited: "2026-04-16T20:09:25+03:00"
 ---
 # Loop Log
+
+### Iteration 11 — 2026-04-16
+- T-078: Theme tokens CursorHighlight/HeaderBg/FocusBorder — DONE. Files: internal/theme/theme.go, theme_test.go. Build P, Tests P.
+- T-080: CursorPosition() on ListModel — DONE. Files: internal/ui/entrylist/list.go, list_test.go. Build P, Tests P.
+- T-079: Cursor row highlight — DONE. Files: internal/ui/entrylist/list.go, list_test.go. Build P, Tests P.
+- T-081: Header bg+bold+cursor pos — DONE. Files: internal/ui/appshell/header.go, header_test.go. Build P, Tests P.
+- T-082: Detail pane top border — DONE. Files: internal/ui/detailpane/model.go, model_test.go. Build P, Tests P.
+- T-083: Focus indicator on panes — DONE. Files: internal/ui/app/model.go, detailpane/model.go. Build P, Tests P.
+- All Tier 8 tasks DONE. Next: completion.
 
 ### Iteration 10 — 2026-04-16
 - T-069,T-071,T-074,T-077: Filter engine fixes — DONE. Files: internal/filter/{match,filter}.go + tests. Build P, Tests P.

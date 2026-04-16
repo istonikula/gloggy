@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-16T20:09:25+03:00"
 ---
 # Implementation Tracking: detail-pane
 
@@ -16,3 +16,4 @@ Build site: context/plans/build-site.md
 | T-042 | DONE | detailpane/height.go — HeightModel ratio-based height, +/- keys, resize via WindowSizeMsg |
 | T-043 | DONE | detailpane/search.go — SearchModel /, n/N navigation, HighlightLines(), wrap indicator |
 | T-045 | DONE | detailpane/fieldclick.go — fieldAtLine() parser, FieldClickMsg on left-click |
+| T-082 | DONE | Top border separator via NormalBorder BorderTop + FocusBorder color; test verifies "─" |

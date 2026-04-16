@@ -10,5 +10,6 @@ Implements:
 - cavekit-app-shell.md R7 (Terminal Resize)
 - cavekit-app-shell.md R8 (Loading Indicator)
 - cavekit-app-shell.md R9 (Clipboard)
+- cavekit-app-shell.md R10 (Focus Indicator)
 
-Build tasks: T-014, T-046, T-047, T-048, T-050, T-051, T-052, T-053, T-054 (build-site.md)
+Build tasks: T-014, T-046, T-047, T-048, T-050, T-051, T-052, T-053, T-054, T-072, T-081, T-083 (build-site.md)

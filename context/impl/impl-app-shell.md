@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T21:49:00Z"
+last_edited: "2026-04-16T20:09:25+03:00"
 ---
 # Implementation Tracking: app-shell
 
@@ -19,3 +19,5 @@ Build site: context/plans/build-site.md
 | T-053 | DONE | appshell/resize.go — ResizeModel + ApplyToLayout: WindowSizeMsg, proportional pane |
 | T-054 | DONE | appshell/clipboard.go — CopyMarkedEntries: JSONL, original order, no-op on empty marks |
 | T-072 | DONE | cachedVisibleCount field; updated in refilter() and SetEntries(); no more O(n²) Apply |
+| T-081 | DONE | Header bar: HeaderBg background, Bold, WithCursorPos(); cursor/visible + visible/total display |
+| T-083 | DONE | Focus indicator: colored left border on focused pane via FocusBorder; updates on focus change |

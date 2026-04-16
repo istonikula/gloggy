@@ -11,6 +11,6 @@ Implements:
 - cavekit-entry-list.md R8 (Level Jump Navigation)
 - cavekit-entry-list.md R9 (Marks)
 - cavekit-entry-list.md R10 (Selection Signal)
-- cavekit-entry-list.md R11 (Mouse Handling)
+- cavekit-entry-list.md R11 (Cursor Position Readout)
 
-Build tasks: T-012, T-013, T-021, T-022, T-023, T-029, T-030, T-031, T-032, T-033, T-034, T-040 (build-site.md)
+Build tasks: T-012, T-013, T-021, T-022, T-023, T-029, T-030, T-031, T-032, T-033, T-034, T-040, T-075, T-076, T-079, T-080 (build-site.md)

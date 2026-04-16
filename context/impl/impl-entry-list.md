@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T21:49:00Z"
+last_edited: "2026-04-16T20:09:25+03:00"
 ---
 # Implementation Tracking: entry-list
 
@@ -22,3 +22,5 @@ Build site: context/plans/build-site.md
 | T-040 | DONE | Mouse handling: left-click selects row, wheel scrolls, re-click on selected → OpenDetailPaneMsg |
 | T-075 | DONE | Mark indicator uses lipgloss.NewStyle().Foreground(th.Mark) instead of plain "* " |
 | T-076 | DONE | Timestamp-based double-click: lastClickRow+lastClickTime, 500ms window, resets after trigger |
+| T-079 | DONE | Cursor row highlight via CursorHighlight background in View(); test verifies ANSI styling |
+| T-080 | DONE | CursorPosition() returns 1-based index; 0 when empty; tests for j/k, g/G, filter |
