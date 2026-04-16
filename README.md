@@ -103,6 +103,22 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 go install github.com/istonikula/gloggy/cmd/gloggy@latest
 ```
 
+### Build from source
+
+```sh
+git clone https://github.com/istonikula/gloggy.git
+cd gloggy
+make install        # installs to $GOBIN (or $GOPATH/bin)
+```
+
+Or build without installing:
+
+```sh
+make build          # produces dist/gloggy
+```
+
+Run `make help` to see all available targets.
+
 ## Usage
 
 ```sh

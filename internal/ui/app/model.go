@@ -143,7 +143,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.entries = append(m.entries, inner.Entries...)
 			m.list = m.list.AppendEntries(inner.Entries)
 			m.loading = m.loading.Update(len(m.entries))
+			if len(m.filterSet.GetEnabled()) == 0 {
+				m.cachedVisibleCount = len(m.entries)
+			}
 			m.header = m.header.WithCounts(len(m.entries), m.visibleCount())
+			cmd = msg.Next()
+		case logsource.LoadProgressMsg:
+			m.loading = m.loading.Update(inner.Count)
 			cmd = msg.Next()
 		case logsource.LoadDoneMsg:
 			m.loading = m.loading.Done()
