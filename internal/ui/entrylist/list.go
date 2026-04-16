@@ -74,6 +74,15 @@ func (m ListModel) AppendEntries(entries []logsource.Entry) ListModel {
 // Cursor returns the current cursor index into entries.
 func (m ListModel) Cursor() int { return m.scroll.Cursor }
 
+// CursorPosition returns 1-based cursor position within visible set, or 0 when empty.
+func (m ListModel) CursorPosition() int {
+	vis := m.visibleEntries()
+	if len(vis) == 0 {
+		return 0
+	}
+	return m.scroll.Cursor + 1
+}
+
 // SelectedEntry returns the entry at the cursor, or zero value if empty.
 func (m ListModel) SelectedEntry() (logsource.Entry, bool) {
 	if len(m.entries) == 0 || m.scroll.Cursor >= len(m.entries) {

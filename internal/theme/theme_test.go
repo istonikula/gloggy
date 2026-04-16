@@ -19,6 +19,9 @@ func TestGetTheme_AllBuiltins(t *testing.T) {
 			if string(th.Mark) == "" || string(th.Dim) == "" || string(th.SearchHighlight) == "" {
 				t.Error("UI colors not populated")
 			}
+			if string(th.CursorHighlight) == "" || string(th.HeaderBg) == "" || string(th.FocusBorder) == "" {
+				t.Error("visual-polish tokens not populated")
+			}
 		})
 	}
 }

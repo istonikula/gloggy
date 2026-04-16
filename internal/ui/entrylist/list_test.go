@@ -90,3 +90,48 @@ func TestListModel_NoSelectionMsg_AtBoundary(t *testing.T) {
 		t.Error("expected nil cmd when cursor cannot move")
 	}
 }
+
+// T-080: R11 — CursorPosition returns 1-based index
+func TestCursorPosition_EmptyList(t *testing.T) {
+	m := defaultListModel(10)
+	if pos := m.CursorPosition(); pos != 0 {
+		t.Fatalf("CursorPosition on empty = %d, want 0", pos)
+	}
+}
+
+func TestCursorPosition_JK(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(5))
+	if pos := m.CursorPosition(); pos != 1 {
+		t.Fatalf("initial CursorPosition = %d, want 1", pos)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if pos := m.CursorPosition(); pos != 2 {
+		t.Fatalf("after j: CursorPosition = %d, want 2", pos)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	if pos := m.CursorPosition(); pos != 1 {
+		t.Fatalf("after k: CursorPosition = %d, want 1", pos)
+	}
+}
+
+func TestCursorPosition_gG(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(5))
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	if pos := m.CursorPosition(); pos != 5 {
+		t.Fatalf("after G: CursorPosition = %d, want 5", pos)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	if pos := m.CursorPosition(); pos != 1 {
+		t.Fatalf("after g: CursorPosition = %d, want 1", pos)
+	}
+}
+
+func TestCursorPosition_AfterFilter(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(5))
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	// Filter to indices 0,1 → cursor clamps
+	m = m.SetFilter([]int{0, 1})
+	if pos := m.CursorPosition(); pos != 2 {
+		t.Fatalf("after filter: CursorPosition = %d, want 2", pos)
+	}
+}
