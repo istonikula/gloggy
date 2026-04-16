@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-16T19:52:00+03:00"
 ---
 
 # Build Site: gloggy
@@ -13,11 +13,11 @@ last_edited: "2026-04-15T00:00:00Z"
 | Metric | Value |
 |---|---|
 | Source Kits | 6 domains |
-| Requirements | 49 |
-| Acceptance Criteria | 207 |
-| Plan Tasks | 77 |
-| Human Sign-off Tasks | 8 |
-| Tiers | 8 (0 through 7) |
+| Requirements | 51 |
+| Acceptance Criteria | 225 |
+| Plan Tasks | 83 |
+| Human Sign-off Tasks | 12 |
+| Tiers | 9 (0 through 8) |
 
 ---
 
@@ -143,6 +143,19 @@ Bug fixes and hardening from full codebase review (2026-04-16).
 | T-075 | Use theme Mark color in list rendering | entry-list/R9 | T-033 | S | `internal/ui/entrylist/list.go:354` — mark indicator uses plain `"* "` string instead of `th.Mark` color. Apply `lipgloss.NewStyle().Foreground(th.Mark)` to the mark indicator. The `Mark` color is defined in all 3 themes but currently unused. |
 | T-076 | Fix double-click detection in entry list | entry-list/R10 | T-040 | M | `internal/ui/entrylist/list.go:273-289` — current code opens the detail pane on any click to an already-selected row (single-click-on-cursor), not actual double-click. Either implement timestamp-based double-click detection, or remove the click-to-open path and require Enter. |
 | T-077 | Proper JSON string unquoting in filter match | filter-engine/R2 | T-018 | S | `internal/filter/match.go:40-42` — naive `s[1:len(s)-1]` doesn't handle JSON escape sequences (`\"`, `\\`, `\n`). Use `json.Unmarshal` into a `string` for correct unquoting. Add test with escaped quotes in field value. |
+
+### Tier 8 -- Visual Polish (Cursor, Header, Focus, Borders)
+
+New tasks from 2026-04-16 kit revision. All prior tiers are complete; these address UI gaps found during manual testing.
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-078 | Add theme tokens: CursorHighlight, HeaderBg, FocusBorder | config/R4 | T-009 | S | Add three new fields to `Theme` struct in `internal/theme/theme.go`: `CursorHighlight lipgloss.Color` (background for selected row), `HeaderBg lipgloss.Color` (header bar background), `FocusBorder lipgloss.Color` (accent color for focused pane border). Define appropriate values for all 3 bundled themes (tokyo-night, catppuccin-mocha, material-dark). Unit tests: verify each theme defines non-empty values for all three new tokens. |
+| T-079 | Cursor row highlight in entry list | entry-list/R1 | T-078, T-022, T-029 | M | In `internal/ui/entrylist/list.go` `View()`, apply `lipgloss.NewStyle().Background(th.CursorHighlight).Width(m.width)` to the row where the cursor is. The highlight must span the full row width. Unit test: render a list, verify the cursor row's ANSI output contains the CursorHighlight color as background. Human sign-off: cursor row is clearly distinguishable. |
+| T-080 | Expose cursor position from list model | entry-list/R11 | T-029 | S | Add `CursorPosition() int` method to `ListModel` returning 1-based index of the cursor within the visible (filtered) entry set. Update on cursor move and filter change. Unit tests: verify position after j/k, g/G, and after filter change. |
+| T-081 | Header bar styling and cursor position display | app-shell/R3 | T-078, T-047, T-080 | M | In `internal/ui/appshell/header.go`: (1) Apply `lipgloss.NewStyle().Background(th.HeaderBg).Bold(true).Width(m.width)` to the header. (2) Add `WithCursorPos(pos int)` method. (3) Display cursor position as `{pos}/{visible}` alongside existing counts. Unit tests: verify header ANSI output contains HeaderBg color; verify cursor position renders correctly. Human sign-off: header is clearly distinguishable from log lines. |
+| T-082 | Detail pane top border/separator | detail-pane/R1 | T-078, T-041 | S | In `internal/ui/detailpane/model.go` `View()`, prepend a horizontal rule or top border line using `lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderTop(true).BorderForeground(th.FocusBorder)` (or equivalent). The separator visually divides the entry list from the detail pane. Unit test: verify pane View output starts with a border character. Human sign-off: boundary is clearly visible. |
+| T-083 | Focus indicator on panes | app-shell/R10 | T-078, T-046, T-041 | M | When the detail pane is open, indicate which pane (entry list vs detail pane) is focused. Options: (a) render a colored left border on the focused pane using `th.FocusBorder`, (b) show a title bar on the focused pane. The indicator must update immediately when focus changes (Enter to open pane, Esc to close). Unit tests: render with focus on detail pane, verify focus indicator present; switch focus, verify indicator moves. Human sign-off: focused pane is identifiable at a glance. |
 
 ---
 
@@ -283,6 +296,19 @@ graph LR
     T-033 --> T-075
     T-040 --> T-076
     T-018 --> T-077
+    T-009 --> T-078
+    T-078 --> T-079
+    T-022 --> T-079
+    T-029 --> T-079
+    T-029 --> T-080
+    T-078 --> T-081
+    T-047 --> T-081
+    T-080 --> T-081
+    T-078 --> T-082
+    T-041 --> T-082
+    T-078 --> T-083
+    T-046 --> T-083
+    T-041 --> T-083
 ```
 
 ---
@@ -337,7 +363,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R4 | 1 | The default config specifies `tokyo-night` as the active theme | T-009 | COVERED |
 | R4 | 2 | Setting `theme = "catppuccin-mocha"` in config causes that theme's color tokens to be active | T-009 | COVERED |
 | R4 | 3 | Setting `theme = "material-dark"` in config causes that theme's color tokens to be active | T-009 | COVERED |
-| R4 | 4 | Each bundled theme defines color tokens for all required categories: level badges, syntax highlighting, marks, dim, search highlight | T-009 | COVERED |
+| R4 | 4 | Each bundled theme defines color tokens for all required categories: level badges, syntax highlighting, marks, dim, search highlight, cursor highlight, header background, focus border | T-009, T-078 | COVERED |
 | R4 | 5 | Specifying an unknown theme name falls back to `tokyo-night` with a warning | T-009 | COVERED |
 | R4 | 6 | [human] One-time visual sign-off per bundled theme: all color tokens produce a coherent, readable theme | T-061, T-062, T-063 | COVERED |
 | R5 | 1 | The default compact row fields are time, level, logger, and msg | T-010 | COVERED |
@@ -384,7 +410,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R7 | 2 | The index preserves the original entry order | T-020 | COVERED |
 | R7 | 3 | When filters change, the index is recomputed and re-emitted | T-020 | COVERED |
 
-### entry-list (10 requirements, 44 criteria)
+### entry-list (11 requirements, 49 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -395,6 +421,8 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R1 | 5 | A non-JSON entry row shows the raw text | T-022 | COVERED |
 | R1 | 6 | [human] Non-JSON entry rows are visually dimmed compared to JSONL rows | T-064 | COVERED |
 | R1 | 7 | An entry with zero time displays a placeholder in the time column | T-022 | COVERED |
+| R1 | 8 | The cursor row is rendered with the theme's cursor highlight background color applied to the full row width | T-079 | COVERED |
+| R1 | 9 | [human] The cursor row is clearly distinguishable from non-selected rows | T-079 | COVERED |
 | R2 | 1 | With depth 2, `org.springframework...` abbreviated correctly | T-021 | COVERED |
 | R2 | 2 | With depth 2, `com.example.server.AppServerKt` -> `s.AppServerKt` | T-021 | COVERED |
 | R2 | 3 | With depth 1, `com.example.server.AppServerKt` -> `c.e.s.AppServerKt` | T-021 | COVERED |
@@ -441,8 +469,11 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R10 | 2 | Clicking on an entry row with the mouse selects that entry | T-040 | COVERED |
 | R10 | 3 | Mouse scroll wheel scrolls the list | T-040 | COVERED |
 | R10 | 4 | Double-clicking an entry opens the detail pane for that entry | T-040 | COVERED |
+| R11 | 1 | The list model exposes the current cursor position as a 1-based index within the visible entry set | T-080 | COVERED |
+| R11 | 2 | The cursor position updates when the cursor moves (j/k, g/G, level-jump, mark-nav) | T-080 | COVERED |
+| R11 | 3 | When filters change, the cursor position reflects the new filtered set | T-080 | COVERED |
 
-### detail-pane (8 requirements, 31 criteria)
+### detail-pane (8 requirements, 33 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -450,6 +481,8 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R1 | 2 | Double-clicking an entry in the list opens the detail pane showing that entry | T-041 | COVERED |
 | R1 | 3 | Pressing Esc while the detail pane is focused closes it and returns focus to the entry list | T-041 | COVERED |
 | R1 | 4 | Pressing Enter while the detail pane is focused closes it and returns focus to the entry list | T-041 | COVERED |
+| R1 | 5 | When open, the detail pane is rendered with a visible top border or separator line | T-082 | COVERED |
+| R1 | 6 | [human] The boundary between entry list and detail pane is clearly visible | T-082 | COVERED |
 | R2 | 1 | A JSONL entry is rendered as indented, formatted JSON | T-035 | COVERED |
 | R2 | 2 | All fields from the entry are present in the rendered output, including extra fields | T-035 | COVERED |
 | R2 | 3 | Rendering produces ANSI output where JSON keys contain the active theme's key color token value | T-035 | COVERED |
@@ -485,7 +518,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R8 | 2 | The prompt allows choosing include or exclude mode | T-045 | COVERED |
 | R8 | 3 | Confirming the prompt adds the filter to the filter engine | T-045 | COVERED |
 
-### app-shell (9 requirements, 27 criteria)
+### app-shell (10 requirements, 34 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -504,6 +537,9 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R3 | 4 | The header bar shows the total entry count | T-047 | COVERED |
 | R3 | 5 | The header bar shows the visible (filtered) entry count | T-047 | COVERED |
 | R3 | 6 | Counts update as new entries are loaded or filters change | T-047 | COVERED |
+| R3 | 7 | The header bar shows the current cursor position as a 1-based index within the visible set | T-081 | COVERED |
+| R3 | 8 | The header bar is rendered with a distinct background color from the theme | T-081 | COVERED |
+| R3 | 9 | [human] The header bar is clearly distinguishable from the entry list rows below it | T-081 | COVERED |
 | R4 | 1 | When the entry list is focused, the key-hint bar shows entry-list keybindings | T-050 | COVERED |
 | R4 | 2 | When the detail pane is focused, the key-hint bar shows detail-pane keybindings | T-050 | COVERED |
 | R4 | 3 | When the filter panel is focused, the key-hint bar shows filter-panel keybindings | T-050 | COVERED |
@@ -527,6 +563,10 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R9 | 2 | The clipboard content is JSONL: one entry per line in original order | T-054 | COVERED |
 | R9 | 3 | Non-JSON marked entries are included as raw text lines | T-054 | COVERED |
 | R9 | 4 | Pressing `y` with no marked entries does not modify the clipboard | T-054 | COVERED |
+| R10 | 1 | When the detail pane is open and focused, it has a visual indicator distinguishing it from the unfocused entry list | T-083 | COVERED |
+| R10 | 2 | When the entry list is focused and the detail pane is open, the entry list has a visual indicator | T-083 | COVERED |
+| R10 | 3 | The focus indicator updates immediately when focus changes between panes | T-083 | COVERED |
+| R10 | 4 | [human] The focused pane is clearly identifiable at a glance | T-083 | COVERED |
 
 ### Coverage Totals
 
@@ -535,12 +575,12 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | log-source | 8 | 26 | 26 | 0 |
 | config | 7 | 25 | 25 | 0 |
 | filter-engine | 7 | 27 | 27 | 0 |
-| entry-list | 10 | 53 | 53 | 0 |
-| detail-pane | 8 | 38 | 38 | 0 |
-| app-shell | 9 | 38 | 38 | 0 |
-| **Total** | **49** | **207** | **207** | **0** |
+| entry-list | 11 | 58 | 58 | 0 |
+| detail-pane | 8 | 40 | 40 | 0 |
+| app-shell | 10 | 45 | 45 | 0 |
+| **Total** | **51** | **225** | **225** | **0** |
 
-> Note: The overview kit states 210 criteria. Careful enumeration of every bullet in all 6 domain kits yields 207 distinct acceptance criteria. The delta of 3 likely reflects a rounding or counting variance in the overview document. All 207 enumerated criteria are covered by at least one task.
+> All 225 enumerated criteria are covered by at least one task.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-16T19:48:00+03:00"
 ---
 
 # Cavekit: Entry List
@@ -12,7 +12,7 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 ## Requirements
 
 ### R1: Compact Row Format
-**Description:** Each JSONL entry row shows time (HH:MM:SS), level badge, abbreviated logger, and truncated message. Non-JSON entries show dimmed raw text. Which fields appear in the compact row is determined by config.
+**Description:** Each JSONL entry row shows time (HH:MM:SS), level badge, abbreviated logger, and truncated message. Non-JSON entries show dimmed raw text. Which fields appear in the compact row is determined by config. The currently selected (cursor) row is visually highlighted with a distinct background color from the active theme, so the user can always see which row is selected.
 **Acceptance Criteria:**
 - [ ] [auto] A JSONL entry row contains the time formatted as HH:MM:SS
 - [ ] [auto] A JSONL entry row contains the level value
@@ -21,6 +21,8 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] A non-JSON entry row shows the raw text
 - [ ] [human] Non-JSON entry rows are visually dimmed compared to JSONL rows
 - [ ] [auto] An entry with zero time displays a placeholder (e.g. blank or dashes) in the time column
+- [ ] [auto] The cursor row is rendered with the theme's cursor highlight background color applied to the full row width
+- [ ] [human] The cursor row is clearly distinguishable from non-selected rows
 **Dependencies:** cavekit-log-source (entry model), cavekit-config (field visibility, logger depth, theme)
 
 ### R2: Logger Abbreviation
@@ -114,6 +116,14 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] Double-clicking an entry opens the detail pane for that entry
 **Dependencies:** cavekit-detail-pane (receives selection signal), cavekit-app-shell (mouse routing)
 
+### R11: Cursor Position Indicator
+**Description:** The current cursor position within the entry list is communicated to the app shell so it can be displayed in the header or status bar. The position includes the 1-based index of the cursor entry within the visible (filtered) set.
+**Acceptance Criteria:**
+- [ ] [auto] The list model exposes the current cursor position as a 1-based index within the visible entry set
+- [ ] [auto] The cursor position updates when the cursor moves (j/k, g/G, level-jump, mark-nav)
+- [ ] [auto] When filters change, the cursor position reflects the new filtered set
+**Dependencies:** cavekit-app-shell (displays the position)
+
 ## Out of Scope
 
 - Detail pane rendering (handled by detail-pane)
@@ -130,3 +140,8 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - See also: cavekit-app-shell.md (layout, mouse routing)
 
 ## Changelog
+
+### 2026-04-16 — Revision
+- **Affected:** R1, new R11
+- **Summary:** R1 updated to require cursor row highlighting with theme background color. New R11 added for cursor position indicator (1-based index in visible set) to be displayed in header/status bar. Both driven by user observation that cursor row has no visual indication and no position info is shown.
+- **Commits:** manual testing feedback (no commit)

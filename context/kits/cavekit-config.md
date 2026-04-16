@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-16T19:48:00+03:00"
 ---
 
 # Cavekit: Config
@@ -35,12 +35,12 @@ Loading, validating, and persisting application configuration from a TOML file. 
 **Dependencies:** R1
 
 ### R4: Theme Selection
-**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, and search highlights.
+**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, search highlights, cursor highlight (background color for the selected row), header background, and focus border/accent.
 **Acceptance Criteria:**
 - [ ] [auto] The default config specifies `tokyo-night` as the active theme
 - [ ] [auto] Setting `theme = "catppuccin-mocha"` in config causes that theme's color tokens to be active
 - [ ] [auto] Setting `theme = "material-dark"` in config causes that theme's color tokens to be active
-- [ ] [auto] Each bundled theme defines color tokens for all required categories: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim, and search highlight
+- [ ] [auto] Each bundled theme defines color tokens for all required categories: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim, search highlight, cursor highlight, header background, and focus border
 - [ ] [auto] Specifying an unknown theme name falls back to `tokyo-night` with a warning
 - [ ] [human] One-time visual sign-off per bundled theme: all color tokens produce a coherent, readable theme when applied together
 **Dependencies:** R1, R2
@@ -87,3 +87,8 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - See also: cavekit-filter-engine.md (no direct dependency, but future filter presets may use config)
 
 ## Changelog
+
+### 2026-04-16 — Revision
+- **Affected:** R4
+- **Summary:** R4 updated to require three new theme color tokens: cursor highlight (background for selected row), header background, and focus border/accent. All bundled themes must define these tokens. Driven by user observation that cursor row, header bar, and pane focus have no visual distinction.
+- **Commits:** manual testing feedback (no commit)

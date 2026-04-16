@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-16T19:48:00+03:00"
 ---
 
 # Cavekit Overview: gloggy
@@ -12,11 +12,11 @@ A terminal UI tool for interactively analyzing JSONL log files during local deve
 | Domain         | File                        | Reqs | Status | Description                                              |
 |----------------|-----------------------------|------|--------|----------------------------------------------------------|
 | log-source     | cavekit-log-source.md       | 8    | DRAFT  | File/stdin reading, line classification, JSONL parsing   |
-| entry-list     | cavekit-entry-list.md       | 10   | DRAFT  | Compact scrollable list with two-level cursor and marks  |
+| entry-list     | cavekit-entry-list.md       | 11   | DRAFT  | Compact scrollable list with two-level cursor and marks  |
 | detail-pane    | cavekit-detail-pane.md      | 8    | DRAFT  | Pretty-printed JSON detail view with in-pane search      |
 | filter-engine  | cavekit-filter-engine.md    | 7    | DRAFT  | Include/exclude filter model and filter panel overlay    |
 | config         | cavekit-config.md           | 7    | DRAFT  | TOML config with themes, field visibility, live writes   |
-| app-shell      | cavekit-app-shell.md        | 9    | DRAFT  | Top-level layout, wiring, clipboard, help overlay        |
+| app-shell      | cavekit-app-shell.md        | 10   | DRAFT  | Top-level layout, wiring, clipboard, help overlay        |
 
 ## Cross-Reference Map
 
@@ -59,5 +59,5 @@ Parallelizable: `config` and `log-source` can be built concurrently. `filter-eng
 ## Coverage Summary
 
 - **Total domains:** 6
-- **Total requirements:** 49
-- **Total acceptance criteria:** 210
+- **Total requirements:** 51
+- **Total acceptance criteria:** 225

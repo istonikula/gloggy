@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-16T19:48:00+03:00"
 ---
 
 # Cavekit: App Shell
@@ -31,7 +31,7 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-entry-list, cavekit-detail-pane
 
 ### R3: Header Bar
-**Description:** The header bar displays: the file name (or "stdin" indicator), a tail/follow indicator when in tail mode, and counts showing total entries and currently visible (filtered) entries.
+**Description:** The header bar displays: the file name (or "stdin" indicator), a tail/follow indicator when in tail mode, counts showing total entries and currently visible (filtered) entries, and the current cursor position (e.g. "42/110"). The header bar must be visually distinct from the entry list below it — rendered with a background color or inverse styling from the active theme so it does not blend into log lines.
 **Acceptance Criteria:**
 - [ ] [auto] The header bar shows the file name when reading from a file
 - [ ] [auto] The header bar shows a stdin indicator when reading from stdin
@@ -39,7 +39,10 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] The header bar shows the total entry count
 - [ ] [auto] The header bar shows the visible (filtered) entry count
 - [ ] [auto] Counts update as new entries are loaded or filters change
-**Dependencies:** cavekit-log-source (file name, tail status, entry count), cavekit-filter-engine (filtered count)
+- [ ] [auto] The header bar shows the current cursor position as a 1-based index within the visible set (e.g. "42/110")
+- [ ] [auto] The header bar is rendered with a distinct background color from the theme (not plain unstyled text)
+- [ ] [human] The header bar is clearly distinguishable from the entry list rows below it
+**Dependencies:** cavekit-log-source (file name, tail status, entry count), cavekit-filter-engine (filtered count), cavekit-entry-list (cursor position)
 
 ### R4: Context-Sensitive Key-Hint Bar
 **Description:** The bottom status bar shows relevant keybindings for the currently focused component. The hints update as focus changes between components (entry list, detail pane, filter panel, help overlay).
@@ -94,6 +97,15 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] Pressing `y` with no marked entries does not modify the clipboard
 **Dependencies:** cavekit-entry-list (marks)
 
+### R10: Focus Indicator
+**Description:** When multiple panes are visible (entry list + detail pane), the currently focused pane is visually indicated so the user knows which pane will receive keyboard input. This can be achieved through a border, title bar highlight, or other visual distinction on the focused pane.
+**Acceptance Criteria:**
+- [ ] [auto] When the detail pane is open and focused, it has a visual indicator distinguishing it from the unfocused entry list (e.g. highlighted border or title)
+- [ ] [auto] When the entry list is focused and the detail pane is open, the entry list has a visual indicator distinguishing it from the unfocused detail pane
+- [ ] [auto] The focus indicator updates immediately when focus changes between panes
+- [ ] [human] The focused pane is clearly identifiable at a glance
+**Dependencies:** cavekit-entry-list, cavekit-detail-pane
+
 ## Out of Scope
 
 - Domain-specific logic (parsing, filtering, rendering details -- all delegated)
@@ -109,3 +121,8 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-16 — Revision
+- **Affected:** R3, new R10
+- **Summary:** R3 updated to require visually distinct header bar (background color from theme), cursor position display (1-based index), and human sign-off criterion. New R10 added for focus indicator when multiple panes are visible, so user can identify which pane receives keyboard input. Driven by user observation that header blends into log lines and cursor location is unclear after opening detail pane.
+- **Commits:** manual testing feedback (no commit)
