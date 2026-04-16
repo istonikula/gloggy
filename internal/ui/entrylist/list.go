@@ -361,6 +361,8 @@ func (m ListModel) View() string {
 		end = n
 	}
 
+	cursorStyle := lipgloss.NewStyle().Background(m.th.CursorHighlight).Width(m.width)
+
 	var sb strings.Builder
 	for i := start; i < end; i++ {
 		mark := ""
@@ -368,6 +370,9 @@ func (m ListModel) View() string {
 			mark = lipgloss.NewStyle().Foreground(m.th.Mark).Render("* ")
 		}
 		row := mark + RenderCompactRow(vis[i], m.width, m.th, m.cfg)
+		if i == m.scroll.Cursor {
+			row = cursorStyle.Render(row)
+		}
 		sb.WriteString(row)
 		if i < end-1 {
 			sb.WriteByte('\n')

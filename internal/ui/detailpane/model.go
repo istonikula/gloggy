@@ -2,6 +2,7 @@ package detailpane
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
@@ -16,11 +17,12 @@ type BlurredMsg struct{}
 // PaneModel is the Bubble Tea model for the detail pane.
 // It manages open/close state and delegates to ScrollModel for scrolling.
 type PaneModel struct {
-	open   bool
-	entry  logsource.Entry
-	scroll ScrollModel
-	th     theme.Theme
-	height int
+	open    bool
+	entry   logsource.Entry
+	scroll  ScrollModel
+	th      theme.Theme
+	height  int
+	Focused bool // set by app before rendering for focus indicator
 }
 
 // NewPaneModel creates a PaneModel.
@@ -91,9 +93,21 @@ func (m PaneModel) Update(msg tea.Msg) (PaneModel, tea.Cmd) {
 }
 
 // View renders the detail pane content, or empty string when closed.
+// T-082: Prepends a top border separator line.
+// T-083: Adds a colored left border when focused.
 func (m PaneModel) View() string {
 	if !m.open {
 		return ""
 	}
-	return m.scroll.View()
+	content := m.scroll.View()
+
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderTop(true).
+		BorderBottom(false).
+		BorderLeft(m.Focused).
+		BorderRight(false).
+		BorderForeground(m.th.FocusBorder)
+
+	return style.Render(content)
 }

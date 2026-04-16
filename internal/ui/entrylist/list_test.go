@@ -2,6 +2,7 @@ package entrylist
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,5 +134,24 @@ func TestCursorPosition_AfterFilter(t *testing.T) {
 	m = m.SetFilter([]int{0, 1})
 	if pos := m.CursorPosition(); pos != 2 {
 		t.Fatalf("after filter: CursorPosition = %d, want 2", pos)
+	}
+}
+
+// T-079: R1.8 — cursor row rendered with CursorHighlight background.
+func TestView_CursorHighlight(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(3))
+	v := m.View()
+	lines := strings.Split(v, "\n")
+	if len(lines) < 1 {
+		t.Fatal("expected at least 1 line")
+	}
+	// Cursor is at row 0. That row should have ANSI background styling.
+	if !strings.Contains(lines[0], "\x1b[") {
+		t.Errorf("cursor row should have ANSI styling: %q", lines[0])
+	}
+	// Non-cursor rows should not have CursorHighlight background.
+	// (They may have other styling, but not the same background.)
+	if len(lines) > 1 && lines[0] == lines[1] {
+		t.Error("cursor row should differ from non-cursor row")
 	}
 }

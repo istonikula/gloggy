@@ -14,6 +14,7 @@ type HeaderModel struct {
 	followMode   bool   // tail/follow active
 	totalCount   int
 	visibleCount int
+	cursorPos    int // 1-based cursor position in visible set
 	th           theme.Theme
 	width        int
 }
@@ -42,6 +43,12 @@ func (m HeaderModel) WithCounts(total, visible int) HeaderModel {
 	return m
 }
 
+// WithCursorPos sets the 1-based cursor position in the visible list.
+func (m HeaderModel) WithCursorPos(pos int) HeaderModel {
+	m.cursorPos = pos
+	return m
+}
+
 // WithWidth updates the render width.
 func (m HeaderModel) WithWidth(w int) HeaderModel {
 	m.width = w
@@ -60,10 +67,13 @@ func (m HeaderModel) View() string {
 		followBadge = " [FOLLOW]"
 	}
 
-	counts := fmt.Sprintf("  %d/%d entries", m.visibleCount, m.totalCount)
+	counts := fmt.Sprintf("  %d/%d  %d/%d entries", m.cursorPos, m.visibleCount, m.visibleCount, m.totalCount)
 
 	content := source + followBadge + counts
 
-	style := lipgloss.NewStyle().Width(m.width)
+	style := lipgloss.NewStyle().
+		Background(m.th.HeaderBg).
+		Bold(true).
+		Width(m.width)
 	return style.Render(content)
 }

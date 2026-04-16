@@ -1,6 +1,7 @@
 package detailpane
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -92,5 +93,33 @@ func TestPaneModel_Closed_ViewEmpty(t *testing.T) {
 	m := defaultPane(10)
 	if m.View() != "" {
 		t.Error("expected empty view when pane is closed")
+	}
+}
+
+// T-082: R1.5 — open pane View starts with a top border character.
+func TestPaneModel_TopBorder(t *testing.T) {
+	m := defaultPane(10).Open(testEntry())
+	v := m.View()
+	if len(v) == 0 {
+		t.Fatal("expected non-empty view")
+	}
+	// NormalBorder top uses "─" characters.
+	if !strings.Contains(v, "─") {
+		t.Errorf("expected top border character '─' in view: %q", v)
+	}
+}
+
+// T-083: R10.1 — focused detail pane has left border indicator.
+func TestPaneModel_Focused_HasLeftBorder(t *testing.T) {
+	m := defaultPane(10).Open(testEntry())
+	m.Focused = true
+	focused := m.View()
+	m.Focused = false
+	unfocused := m.View()
+	// Focused view should have more "│" (left border) than unfocused.
+	focusCount := strings.Count(focused, "│")
+	unfocusCount := strings.Count(unfocused, "│")
+	if focusCount <= unfocusCount {
+		t.Errorf("focused pane should have more left border chars: focused=%d, unfocused=%d", focusCount, unfocusCount)
 	}
 }

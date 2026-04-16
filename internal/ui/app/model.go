@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/filter"
@@ -302,11 +303,23 @@ func (m Model) View() string {
 		return m.help.View()
 	}
 
-	header := m.header.View()
+	header := m.header.WithCursorPos(m.list.CursorPosition()).View()
 	list := m.list.View()
+
+	// T-083: When detail pane is open, add focus indicator to the focused pane.
+	if m.pane.IsOpen() && m.focus == appshell.FocusEntryList {
+		focusStyle := lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderTop(false).BorderBottom(false).BorderRight(false).
+			BorderLeft(true).
+			BorderForeground(m.th.FocusBorder)
+		list = focusStyle.Render(list)
+	}
 
 	paneView := ""
 	if m.pane.IsOpen() {
+		// T-082/T-083: Set focus state before rendering.
+		m.pane.Focused = (m.focus == appshell.FocusDetailPane)
 		paneView = m.pane.View()
 	}
 
