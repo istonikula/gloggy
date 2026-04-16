@@ -75,7 +75,7 @@ func tokyoNight() Theme {
 		Mark:            lipgloss.Color("#e0af68"),
 		Dim:             lipgloss.Color("#414868"),
 		SearchHighlight: lipgloss.Color("#ff9e64"),
-		CursorHighlight: lipgloss.Color("#292e42"),
+		CursorHighlight: lipgloss.Color("#364a82"),
 		HeaderBg:        lipgloss.Color("#1f2335"),
 		FocusBorder:     lipgloss.Color("#7aa2f7"),
 	}
@@ -97,7 +97,7 @@ func catppuccinMocha() Theme {
 		Mark:            lipgloss.Color("#f9e2af"),
 		Dim:             lipgloss.Color("#45475a"),
 		SearchHighlight: lipgloss.Color("#fab387"),
-		CursorHighlight: lipgloss.Color("#45475a"),
+		CursorHighlight: lipgloss.Color("#585b70"),
 		HeaderBg:        lipgloss.Color("#181825"),
 		FocusBorder:     lipgloss.Color("#89b4fa"),
 	}
@@ -119,7 +119,7 @@ func materialDark() Theme {
 		Mark:            lipgloss.Color("#ffcb6b"),
 		Dim:             lipgloss.Color("#4a4a6a"),
 		SearchHighlight: lipgloss.Color("#f78c6c"),
-		CursorHighlight: lipgloss.Color("#37474f"),
+		CursorHighlight: lipgloss.Color("#4a5568"),
 		HeaderBg:        lipgloss.Color("#1a1a1a"),
 		FocusBorder:     lipgloss.Color("#82aaff"),
 	}

@@ -32,16 +32,15 @@ func defaultListModel(height int) ListModel {
 	return NewListModel(theme.GetTheme("tokyo-night"), config.DefaultConfig(), 80, height)
 }
 
-// T-029: R6.1 — rendered rows ≤ visible+buffer for 100k entries
+// T-029: R6.1 — rendered rows ≤ viewport height for 100k entries
 func TestListModel_VirtualRendering_100k(t *testing.T) {
 	const total = 100_000
 	const height = 40
 	m := defaultListModel(height).SetEntries(makeEntries(total))
 
 	count := m.RenderedRowCount()
-	maxExpected := height + 2*renderBuffer
-	if count > maxExpected {
-		t.Errorf("rendered %d rows for 100k entries, max expected %d (height+2*buffer)", count, maxExpected)
+	if count > height {
+		t.Errorf("rendered %d rows for 100k entries, max expected %d (viewport height)", count, height)
 	}
 	if count == 0 {
 		t.Error("rendered 0 rows — expected at least some")
@@ -63,7 +62,7 @@ func TestListModel_RenderSpeed_100k(t *testing.T) {
 	}
 }
 
-// Virtual rendering: scrolled to middle still only renders window+buffer
+// Virtual rendering: scrolled to middle still only renders viewport height
 func TestListModel_VirtualRendering_Scrolled(t *testing.T) {
 	const total = 1000
 	const height = 20
@@ -74,9 +73,8 @@ func TestListModel_VirtualRendering_Scrolled(t *testing.T) {
 	m.scroll.Offset = 490
 
 	count := m.RenderedRowCount()
-	maxExpected := height + 2*renderBuffer
-	if count > maxExpected {
-		t.Errorf("rendered %d rows when scrolled, max expected %d", count, maxExpected)
+	if count > height {
+		t.Errorf("rendered %d rows when scrolled, max expected %d", count, height)
 	}
 }
 
@@ -153,5 +151,65 @@ func TestView_CursorHighlight(t *testing.T) {
 	// (They may have other styling, but not the same background.)
 	if len(lines) > 1 && lines[0] == lines[1] {
 		t.Error("cursor row should differ from non-cursor row")
+	}
+
+	// Verify background escape code is present for cursor row.
+	// "48;" is the ANSI SGR background prefix.
+	if !strings.Contains(lines[0], "48;") {
+		t.Logf("cursor row (line 0): %q", lines[0])
+		t.Logf("non-cursor row (line 1): %q", lines[1])
+		t.Errorf("cursor row should contain background color escape (48;)")
+	}
+}
+
+// WindowSizeMsg must be processed even when the entry list is empty.
+// The initial resize arrives before async loading finishes.
+func TestWindowSizeMsg_ProcessedWhenEmpty(t *testing.T) {
+	m := defaultListModel(10) // no entries
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
+	if m.width != 200 {
+		t.Errorf("width = %d after WindowSizeMsg on empty list, want 200", m.width)
+	}
+	if m.scroll.ViewportHeight != 50 {
+		t.Errorf("ViewportHeight = %d after WindowSizeMsg on empty list, want 50", m.scroll.ViewportHeight)
+	}
+}
+
+// Messages with embedded newlines must render as exactly one terminal line.
+func TestFlattenNewlines(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"no newlines", "no newlines"},
+		{"line1\nline2", "line1 line2"},
+		{"line1\r\nline2", "line1 line2"},
+		{"tabs\t\there", "tabs\t\there"},
+		{"mixed\n\t\tindent", "mixed indent"},
+		{"trailing\n", "trailing "},
+		{"\nleading", " leading"},
+		{"multi\n\n\nnewlines", "multi newlines"},
+	}
+	for _, tt := range tests {
+		got := flattenNewlines(tt.in)
+		if got != tt.want {
+			t.Errorf("flattenNewlines(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// An entry with embedded newlines in its message renders as one line in the list.
+func TestRenderCompactRow_FlattenNewlines(t *testing.T) {
+	entry := logsource.Entry{
+		IsJSON: true,
+		Time:   time.Now(),
+		Level:  "INFO",
+		Logger: "test",
+		Msg:    "line1\n\tline2\n\tline3",
+		Raw:    []byte(`{}`),
+	}
+	row := RenderCompactRow(entry, 120, theme.GetTheme("tokyo-night"), config.DefaultConfig())
+	if strings.Contains(row, "\n") {
+		t.Errorf("compact row contains newline: %q", row)
 	}
 }

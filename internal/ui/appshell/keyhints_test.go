@@ -8,7 +8,8 @@ import (
 )
 
 func defaultKeyHints() KeyHintBarModel {
-	return NewKeyHintBarModel(theme.GetTheme("tokyo-night"), 80)
+	// Use wide width so truncation doesn't hide hints in tests.
+	return NewKeyHintBarModel(theme.GetTheme("tokyo-night"), 200)
 }
 
 // T-050: R4.1 — entry list focus shows entry-list bindings.

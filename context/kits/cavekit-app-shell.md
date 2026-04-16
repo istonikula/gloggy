@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T19:48:00+03:00"
+last_edited: "2026-04-16T21:49:47+03:00"
 ---
 
 # Cavekit: App Shell
@@ -45,12 +45,13 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-log-source (file name, tail status, entry count), cavekit-filter-engine (filtered count), cavekit-entry-list (cursor position)
 
 ### R4: Context-Sensitive Key-Hint Bar
-**Description:** The bottom status bar shows relevant keybindings for the currently focused component. The hints update as focus changes between components (entry list, detail pane, filter panel, help overlay).
+**Description:** The bottom status bar shows relevant keybindings for the currently focused component. The hints update as focus changes between components (entry list, detail pane, filter panel, help overlay). The key-hint bar must occupy exactly 1 row — content that exceeds the terminal width is truncated (never wrapped), since the layout reserves StatusBarHeight=1.
 **Acceptance Criteria:**
 - [ ] [auto] When the entry list is focused, the key-hint bar shows entry-list keybindings (e.g. j/k, e/w, m, Enter)
 - [ ] [auto] When the detail pane is focused, the key-hint bar shows detail-pane keybindings (e.g. j/k, /, +/-, Esc)
 - [ ] [auto] When the filter panel is focused, the key-hint bar shows filter-panel keybindings (e.g. j/k, Space, d, Esc)
 - [ ] [auto] Key hints update immediately when focus changes
+- [ ] [auto] The key-hint bar renders as exactly 1 terminal row regardless of content length (truncated, not wrapped)
 **Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-filter-engine
 
 ### R5: Help Overlay
@@ -72,12 +73,13 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-entry-list (mouse handling), cavekit-detail-pane (mouse handling)
 
 ### R7: Terminal Resize Handling
-**Description:** When the terminal is resized, all panes reflow to fill the new dimensions. No crashes, no layout corruption, and pane proportions are maintained.
+**Description:** When the terminal is resized, all panes reflow to fill the new dimensions. No crashes, no layout corruption, and pane proportions are maintained. WindowSizeMsg must be processed by all child models even when they have no data yet — the initial resize arrives before async file loading completes.
 **Acceptance Criteria:**
 - [ ] [auto] After a terminal resize, the layout fills the new terminal dimensions
 - [ ] [auto] Pane proportions (e.g. detail pane height ratio) are preserved after resize
 - [ ] [auto] No content is clipped or overlapping after resize
 - [ ] [auto] Resize does not cause a crash or panic
+- [ ] [auto] Child models (e.g. entry list) process WindowSizeMsg even when their data set is empty
 **Dependencies:** cavekit-detail-pane (pane proportions), cavekit-entry-list
 
 ### R8: Loading Indicator
@@ -98,10 +100,10 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-entry-list (marks)
 
 ### R10: Focus Indicator
-**Description:** When multiple panes are visible (entry list + detail pane), the currently focused pane is visually indicated so the user knows which pane will receive keyboard input. This can be achieved through a border, title bar highlight, or other visual distinction on the focused pane.
+**Description:** When multiple panes are visible (entry list + detail pane), the currently focused pane is visually indicated so the user knows which pane will receive keyboard input. The indicator must not alter the pane's rendered dimensions (no post-render border wrapping that adds rows or columns). Acceptable approaches: a colored border rendered as part of the pane's own View(), or a title bar highlight.
 **Acceptance Criteria:**
 - [ ] [auto] When the detail pane is open and focused, it has a visual indicator distinguishing it from the unfocused entry list (e.g. highlighted border or title)
-- [ ] [auto] When the entry list is focused and the detail pane is open, the entry list has a visual indicator distinguishing it from the unfocused detail pane
+- [ ] [auto] The focus indicator does not change the rendered width or height of any pane
 - [ ] [auto] The focus indicator updates immediately when focus changes between panes
 - [ ] [human] The focused pane is clearly identifiable at a glance
 **Dependencies:** cavekit-entry-list, cavekit-detail-pane
@@ -126,3 +128,8 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - **Affected:** R3, new R10
 - **Summary:** R3 updated to require visually distinct header bar (background color from theme), cursor position display (1-based index), and human sign-off criterion. New R10 added for focus indicator when multiple panes are visible, so user can identify which pane receives keyboard input. Driven by user observation that header blends into log lines and cursor location is unclear after opening detail pane.
 - **Commits:** manual testing feedback (no commit)
+
+### 2026-04-16 — Revision (layout fixes)
+- **Affected:** R4, R7, R10
+- **Summary:** R4: added requirement that key-hint bar must be exactly 1 row (truncated, never wrapped) — wrapping to 2 lines overflowed StatusBarHeight=1 and pushed the header off-screen. R7: added requirement that WindowSizeMsg must be processed by child models even when empty — the initial resize arrives before async loading finishes, causing width/height to remain at initialization defaults. R10: clarified that focus indicator must not alter pane dimensions — wrapping a pane's rendered output with a lipgloss border post-render adds rows/columns that corrupt the layout. Removed entry-list-side focus border requirement; only the detail pane shows a focus border (rendered within its own View).
+- **Commits:** uncommitted (session fixes)

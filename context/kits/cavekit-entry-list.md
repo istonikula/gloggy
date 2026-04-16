@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T19:48:00+03:00"
+last_edited: "2026-04-16T21:49:47+03:00"
 ---
 
 # Cavekit: Entry List
@@ -12,7 +12,7 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 ## Requirements
 
 ### R1: Compact Row Format
-**Description:** Each JSONL entry row shows time (HH:MM:SS), level badge, abbreviated logger, and truncated message. Non-JSON entries show dimmed raw text. Which fields appear in the compact row is determined by config. The currently selected (cursor) row is visually highlighted with a distinct background color from the active theme, so the user can always see which row is selected.
+**Description:** Each JSONL entry row shows time (HH:MM:SS), level badge, abbreviated logger, and truncated message. Non-JSON entries show dimmed raw text. Which fields appear in the compact row is determined by config. The currently selected (cursor) row is visually highlighted with a distinct background color from the active theme, so the user can always see which row is selected. Each compact row must occupy exactly one terminal line — embedded newlines in messages or raw text must be flattened to spaces before rendering.
 **Acceptance Criteria:**
 - [ ] [auto] A JSONL entry row contains the time formatted as HH:MM:SS
 - [ ] [auto] A JSONL entry row contains the level value
@@ -21,6 +21,7 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] A non-JSON entry row shows the raw text
 - [ ] [human] Non-JSON entry rows are visually dimmed compared to JSONL rows
 - [ ] [auto] An entry with zero time displays a placeholder (e.g. blank or dashes) in the time column
+- [ ] [auto] An entry whose message contains embedded newlines renders as exactly one terminal line (newlines flattened to spaces)
 - [ ] [auto] The cursor row is rendered with the theme's cursor highlight background color applied to the full row width
 - [ ] [human] The cursor row is clearly distinguishable from non-selected rows
 **Dependencies:** cavekit-log-source (entry model), cavekit-config (field visibility, logger depth, theme)
@@ -69,9 +70,9 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 **Dependencies:** none
 
 ### R6: Virtual Rendering
-**Description:** Only the visible rows plus a small buffer are rendered, regardless of total entry count. This ensures the list remains responsive with large files.
+**Description:** The list View output contains exactly ViewportHeight rows — no more, no less — regardless of total entry count. Shortfalls are padded with empty lines. This ensures the list occupies exactly its allocated layout slot and remains responsive with large files.
 **Acceptance Criteria:**
-- [ ] [auto] With 100,000 entries loaded, the number of rendered rows does not exceed the visible height plus a fixed buffer
+- [ ] [auto] With 100,000 entries loaded, the number of rendered rows equals the viewport height
 - [ ] [auto] Scrolling through a large dataset does not degrade in responsiveness (render time per frame stays below 16ms)
 **Dependencies:** none
 
@@ -145,3 +146,8 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - **Affected:** R1, new R11
 - **Summary:** R1 updated to require cursor row highlighting with theme background color. New R11 added for cursor position indicator (1-based index in visible set) to be displayed in header/status bar. Both driven by user observation that cursor row has no visual indication and no position info is shown.
 - **Commits:** manual testing feedback (no commit)
+
+### 2026-04-16 — Revision (layout fixes)
+- **Affected:** R1, R6
+- **Summary:** R1: added requirement that each compact row must be exactly one terminal line — messages with embedded newlines must be flattened to spaces. Without this, multi-line messages overflow the viewport and corrupt the layout. R6: changed from "visible rows plus a small buffer" to "exactly ViewportHeight rows". The buffer concept is incompatible with Bubble Tea's compositing model where View() output is stacked via JoinVertical — extra rows overflow into adjacent layout zones.
+- **Commits:** uncommitted (session fixes)

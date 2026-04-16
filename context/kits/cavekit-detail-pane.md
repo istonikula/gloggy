@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T19:48:00+03:00"
+last_edited: "2026-04-16T21:49:47+03:00"
 ---
 
 # Cavekit: Detail Pane
@@ -12,13 +12,14 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 ## Requirements
 
 ### R1: Activation and Dismissal
-**Description:** The detail pane opens when the user presses Enter or double-clicks an entry in the list. It closes and returns focus to the entry list on Esc or Enter. When open, the detail pane has a visible top border or separator line so the boundary between the entry list and detail pane is clear.
+**Description:** The detail pane opens when the user presses Enter or double-clicks an entry in the list. It closes and returns focus to the entry list on Esc or Enter. When open, the detail pane has a visible top border or separator line so the boundary between the entry list and detail pane is clear. The border row must be subtracted from the allocated pane height before rendering content, so the total rendered output (border + content) fits exactly within the layout slot.
 **Acceptance Criteria:**
 - [ ] [auto] Pressing Enter while an entry is selected in the list opens the detail pane showing that entry
 - [ ] [auto] Double-clicking an entry in the list opens the detail pane showing that entry
 - [ ] [auto] Pressing Esc while the detail pane is focused closes it and returns focus to the entry list
 - [ ] [auto] Pressing Enter while the detail pane is focused closes it and returns focus to the entry list
 - [ ] [auto] When open, the detail pane is rendered with a visible top border or separator line distinguishing it from the entry list above
+- [ ] [auto] The total rendered height of the detail pane (border + content) equals the allocated pane height — border rows are subtracted from content height before rendering
 - [ ] [human] The boundary between entry list and detail pane is clearly visible
 **Dependencies:** cavekit-entry-list (selection signal), cavekit-app-shell (focus indicator)
 
@@ -110,3 +111,8 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - **Affected:** R1
 - **Summary:** R1 updated to require a visible top border/separator when the detail pane is open, so the boundary between entry list and detail pane is clear. Added human sign-off criterion and dependency on app-shell focus indicator. Driven by user observation that it's unclear where the list ends and details begin.
 - **Commits:** manual testing feedback (no commit)
+
+### 2026-04-16 — Revision (layout fixes)
+- **Affected:** R1
+- **Summary:** R1: added requirement that border rows must be subtracted from content height before rendering. The lipgloss top border adds 1 row to the rendered output; without accounting for it, the pane's total height exceeds the layout allocation and pushes the header off-screen. This is the Bubble Tea golden rule: "Always account for borders — subtract border rows BEFORE rendering panels."
+- **Commits:** uncommitted (session fixes)

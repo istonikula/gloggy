@@ -49,9 +49,11 @@ func (m KeyHintBarModel) View() string {
 	}
 
 	content := strings.Join(parts, "  ")
+	// Truncate to exactly 1 row — never wrap. The layout reserves
+	// StatusBarHeight=1, so wrapping would overflow into adjacent zones.
 	style := lipgloss.NewStyle().
 		Foreground(m.th.Dim).
-		Width(m.width)
+		MaxWidth(m.width)
 	return style.Render(content)
 }
 

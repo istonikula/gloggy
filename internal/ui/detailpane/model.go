@@ -92,6 +92,18 @@ func (m PaneModel) Update(msg tea.Msg) (PaneModel, tea.Cmd) {
 	}
 }
 
+// borderRows returns how many rows the pane border consumes (top border).
+func (m PaneModel) borderRows() int { return 1 }
+
+// ContentHeight returns the height available for content after subtracting borders.
+func (m PaneModel) ContentHeight() int {
+	h := m.height - m.borderRows()
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
 // View renders the detail pane content, or empty string when closed.
 // T-082: Prepends a top border separator line.
 // T-083: Adds a colored left border when focused.
@@ -99,6 +111,8 @@ func (m PaneModel) View() string {
 	if !m.open {
 		return ""
 	}
+	// Use content height (minus border rows) so total output fits allocation.
+	m.scroll.height = m.ContentHeight()
 	content := m.scroll.View()
 
 	style := lipgloss.NewStyle().

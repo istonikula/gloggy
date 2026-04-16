@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T19:48:00+03:00"
+last_edited: "2026-04-16T21:49:47+03:00"
 ---
 
 # Cavekit Overview: gloggy

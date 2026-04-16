@@ -12,8 +12,6 @@ import (
 	"github.com/istonikula/gloggy/internal/theme"
 )
 
-const renderBuffer = 5 // extra rows rendered above/below the visible window
-
 // SelectionMsg is emitted when the cursor moves to a new entry.
 type SelectionMsg struct {
 	Entry logsource.Entry
@@ -157,6 +155,14 @@ func (m ListModel) Init() tea.Cmd { return nil }
 
 // Update handles keyboard navigation.
 func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
+	// Always process WindowSizeMsg, even when entries are empty.
+	// The initial resize arrives before async loading finishes.
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.scroll.ViewportHeight = ws.Height
+		m.width = ws.Width
+		return m, nil
+	}
+
 	vis := m.visibleEntries()
 	n := len(vis)
 	if n == 0 {
@@ -304,9 +310,6 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 			}
 		}
 
-	case tea.WindowSizeMsg:
-		m.scroll.ViewportHeight = msg.Height
-		m.width = msg.Width
 	}
 
 	return m, cmd
@@ -344,44 +347,52 @@ func (m ListModel) visibleIndexForEntry(entryIdx int) int {
 // WrapDir returns the last wrap direction from a level-jump or mark nav.
 func (m ListModel) WrapDir() WrapDirection { return m.wrapDir }
 
-// View renders only the visible rows plus a small buffer.
+// View renders exactly ViewportHeight rows — no more, no less.
+// Rows are taken from offset..offset+ViewportHeight; shortfalls are padded with
+// empty lines so the layout never overflows or underflows.
 func (m ListModel) View() string {
 	vis := m.visibleEntries()
 	n := len(vis)
-	if n == 0 {
+	vh := m.scroll.ViewportHeight
+	if vh <= 0 {
 		return ""
 	}
 
-	start := m.scroll.Offset - renderBuffer
-	if start < 0 {
-		start = 0
-	}
-	end := m.scroll.Offset + m.scroll.ViewportHeight + renderBuffer
+	start := m.scroll.Offset
+	end := start + vh
 	if end > n {
 		end = n
 	}
 
-	cursorStyle := lipgloss.NewStyle().Background(m.th.CursorHighlight).Width(m.width)
-
 	var sb strings.Builder
+	rendered := 0
 	for i := start; i < end; i++ {
+		if rendered > 0 {
+			sb.WriteByte('\n')
+		}
+		isCursor := i == m.scroll.Cursor
 		mark := ""
 		if m.marks.IsMarked(vis[i].LineNumber) {
 			mark = lipgloss.NewStyle().Foreground(m.th.Mark).Render("* ")
 		}
-		row := mark + RenderCompactRow(vis[i], m.width, m.th, m.cfg)
-		if i == m.scroll.Cursor {
-			row = cursorStyle.Render(row)
+		if isCursor {
+			sb.WriteString(mark + RenderCompactRowWithBg(vis[i], m.width, m.th, m.cfg, m.th.CursorHighlight))
+		} else {
+			sb.WriteString(mark + RenderCompactRow(vis[i], m.width, m.th, m.cfg))
 		}
-		sb.WriteString(row)
-		if i < end-1 {
+		rendered++
+	}
+	// Pad remaining lines so the list always occupies exactly ViewportHeight rows.
+	for rendered < vh {
+		if rendered > 0 {
 			sb.WriteByte('\n')
 		}
+		rendered++
 	}
 	return sb.String()
 }
 
-// RenderedRowCount returns how many rows were rendered in the last View() call.
+// RenderedRowCount returns how many entry rows were rendered in the last View() call.
 // Used for benchmark validation.
 func (m ListModel) RenderedRowCount() int {
 	vis := m.visibleEntries()
@@ -389,16 +400,13 @@ func (m ListModel) RenderedRowCount() int {
 	if n == 0 {
 		return 0
 	}
-	start := m.scroll.Offset - renderBuffer
-	if start < 0 {
-		start = 0
-	}
-	end := m.scroll.Offset + m.scroll.ViewportHeight + renderBuffer
+	end := m.scroll.Offset + m.scroll.ViewportHeight
 	if end > n {
 		end = n
 	}
-	if end < start {
+	count := end - m.scroll.Offset
+	if count < 0 {
 		return 0
 	}
-	return end - start
+	return count
 }
