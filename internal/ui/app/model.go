@@ -282,7 +282,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				newR, _ := appshell.NextRatio(m.cfg.Config.DetailPane.WidthRatio, msg.String())
 				m.cfg.Config.DetailPane.WidthRatio = newR
 				m.layout = m.layout.SetWidthRatio(newR)
-				// T-099 hook will write the new ratio back to disk.
 			} else {
 				newR, _ := appshell.NextRatio(m.paneHeight.Ratio(), msg.String())
 				m.paneHeight = m.paneHeight.SetRatio(newR)
@@ -290,6 +289,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
 			}
 			m = m.relayout()
+			m.saveConfig() // T-099: persist ratio change immediately.
 			return m, nil
 		}
 		// In-pane search.
@@ -373,6 +373,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.draggingDivider {
 			if msg.Action == tea.MouseActionRelease {
 				m.draggingDivider = false
+				m.saveConfig() // T-099: persist final width_ratio on drag release.
 				return m, nil
 			}
 			newR := appshell.RatioFromDragX(msg.X, m.resize.Width())
@@ -380,6 +381,23 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.layout = m.layout.SetWidthRatio(newR)
 			m = m.relayout()
 			return m, nil
+		}
+	}
+
+	// T-095: click-to-focus. After a click routes to a visible pane,
+	// transfer focus there so subsequent key events target that pane.
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		switch zone {
+		case appshell.ZoneEntryList:
+			if m.focus != appshell.FocusEntryList {
+				m.focus = appshell.FocusEntryList
+				m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+			}
+		case appshell.ZoneDetailPane:
+			if m.pane.IsOpen() && m.focus != appshell.FocusDetailPane {
+				m.focus = appshell.FocusDetailPane
+				m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+			}
 		}
 	}
 
@@ -394,6 +412,17 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// saveConfig writes the current config to disk (T-099). Errors are
+// intentionally swallowed — a failed write should not interrupt the UI.
+// The user will see their edits take effect live regardless; the next
+// launch picks up whatever the last successful write left on disk.
+func (m Model) saveConfig() {
+	if m.configPath == "" {
+		return
+	}
+	_ = config.Save(m.configPath, m.cfg)
 }
 
 // View composes the full screen.

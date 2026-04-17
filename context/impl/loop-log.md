@@ -1,8 +1,22 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T22:52:48+03:00"
+last_edited: "2026-04-18T00:10:55+03:00"
 ---
 # Loop Log
+
+### Iteration 17 — 2026-04-18
+- T-095: click-to-focus on panes — DONE. Files: app/model.go handleMouse Press+Left zone-switch, model_test.go (+3 tests). Build P, Tests P.
+- T-099: ratio live write-back — DONE. Files: app/model.go saveConfig + ratio key + drag release hooks, model_test.go (+2 tests). Build P, Tests P. Disk persisted ratio = in-memory ratio; height_ratio untouched on width_ratio writes.
+- Next: T-105 (orientation-flip preserves ratios), T-106 (soft wrap), T-108 (resize extension).
+
+### Iteration 16 — 2026-04-17
+- T-094: right-split horizontal mouse zoning — DONE. Files: appshell/mouse.go (Zone() right-split branch with listEnd/divider/detailStart buffers), mouse_test.go (+2 tests).
+- T-100: PaneStyle full-border DividerColor+UnfocusedBg+Faint when unfocused — DONE. Files: appshell/panestyle.go (new), entrylist/list.go (Focused/Alone fields + applyPaneStyle), detailpane/model.go (PaneStyle wiring).
+- T-101: Alone forces focused treatment — DONE. Files: entrylist/list.go list_test.go (+TestView_Alone_UsesFocusedTreatment).
+- T-102: cursor row keeps highlight unfocused — DONE. Files: entrylist/list.go View, list_test.go (TestView_CursorHighlight updated).
+- T-103: detail pane top border in both orientations — DONE. Files: detailpane/model_test.go (TestPaneModel_TopBorder_InBothOrientationContexts via lipgloss.Width scan).
+- T-104: divider-drag resizes width_ratio — DONE. Files: appshell/ratiokeys.go (RatioFromDragX), app/model.go (drag state machine Press→Motion→Release), model_test.go (TestModel_DividerDrag_UpdatesWidthRatio).
+- T-107: lipgloss.Width-safe pane measurement — DONE. Files: detailpane/model.go (SetWidth + Width(w-2).MaxWidth(w) via PaneStyle), model_test.go (+emoji/CJK/ANSI tests). Wave commits 3a339e7, fa1cd66, b2a6c49.
 
 ### Iteration 12 — 2026-04-17
 - T-084: DividerColor + UnfocusedBg theme tokens — DONE. Files: internal/theme/theme.go, theme_test.go. Build P, Tests P.

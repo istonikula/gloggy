@@ -570,6 +570,153 @@ func TestModel_DividerDrag_UpdatesWidthRatio(t *testing.T) {
 	}
 }
 
+// ---------- T-095: click-to-focus on panes ----------
+
+// TestModel_Click_DetailZone_TransfersFocusToDetail verifies that clicking
+// inside the detail-pane zone transfers focus to the detail pane when the
+// list was previously focused.
+func TestModel_Click_DetailZone_TransfersFocusToDetail(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(5)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right orientation at width 200, got %v", m.resize.Orientation())
+	}
+
+	// Move focus to the list first.
+	m.focus = appshell.FocusEntryList
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+
+	// Click in the detail-pane zone (well past divider+buffer).
+	l := m.layout.Layout()
+	detailX := l.ListContentWidth() + 4 // past listEnd buffer + divider + detailStart buffer
+	m = send(m, tea.MouseMsg{
+		X: detailX, Y: 5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+	if m.focus != appshell.FocusDetailPane {
+		t.Errorf("click in detail zone (x=%d): focus = %v, want FocusDetailPane", detailX, m.focus)
+	}
+}
+
+// TestModel_Click_ListZone_TransfersFocusToList verifies that clicking inside
+// the entry-list zone returns focus to the list when the detail pane was
+// previously focused.
+func TestModel_Click_ListZone_TransfersFocusToList(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(5)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0]) // focus = FocusDetailPane
+	if m.focus != appshell.FocusDetailPane {
+		t.Fatalf("precondition: focus should be detail, got %v", m.focus)
+	}
+
+	// Click well inside the list area.
+	m = send(m, tea.MouseMsg{
+		X: 10, Y: 5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("click in list zone: focus = %v, want FocusEntryList", m.focus)
+	}
+}
+
+// TestModel_Click_DetailZone_PaneClosed_NoFocusTransfer verifies that
+// clicking in what would be the detail-pane zone does NOT transfer focus
+// when the pane is closed (the click falls in list territory anyway, but
+// guard against accidental focus changes).
+func TestModel_Click_DetailZone_PaneClosed_NoFocusTransfer(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	m = m.SetEntries(makeEntries(3))
+	// Pane closed → focus stays on list, no detail zone exists.
+
+	m = send(m, tea.MouseMsg{
+		X: 50, Y: 5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("click with pane closed: focus = %v, want FocusEntryList", m.focus)
+	}
+}
+
+// ---------- T-099: ratio live write-back to config ----------
+
+// TestModel_RatioKey_PersistsToConfigFile verifies that pressing a ratio
+// key (here `+` in right-split) writes the new width_ratio to disk.
+func TestModel_RatioKey_PersistsToConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = m.openPane(makeEntries(3)[0])
+
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
+	}
+	beforeWidth := m.cfg.Config.DetailPane.WidthRatio
+	beforeHeight := m.cfg.Config.DetailPane.HeightRatio
+
+	m = key(m, "+") // increment width_ratio in right-split
+	if m.cfg.Config.DetailPane.WidthRatio == beforeWidth {
+		t.Fatalf("'+' did not change in-memory width_ratio: %.3f", m.cfg.Config.DetailPane.WidthRatio)
+	}
+
+	// Reload from disk and verify width_ratio persisted.
+	reloaded := config.Load(cfgPath)
+	if reloaded.Config.DetailPane.WidthRatio != m.cfg.Config.DetailPane.WidthRatio {
+		t.Errorf("disk width_ratio: got %.3f, want %.3f",
+			reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
+	}
+	// height_ratio must NOT have been clobbered.
+	if reloaded.Config.DetailPane.HeightRatio != beforeHeight {
+		t.Errorf("disk height_ratio mutated: got %.3f, want %.3f (untouched)",
+			reloaded.Config.DetailPane.HeightRatio, beforeHeight)
+	}
+	_ = m
+}
+
+// TestModel_DividerDragRelease_PersistsWidthRatio verifies that releasing
+// a divider drag flushes the new width_ratio to disk.
+func TestModel_DividerDragRelease_PersistsWidthRatio(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = m.openPane(makeEntries(3)[0])
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
+	}
+
+	l := m.layout.Layout()
+	divider := l.ListContentWidth() + 2
+
+	m = send(m, tea.MouseMsg{X: divider, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if !m.draggingDivider {
+		t.Fatalf("precondition: drag did not start at divider x=%d", divider)
+	}
+	m = send(m, tea.MouseMsg{X: divider - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m = send(m, tea.MouseMsg{X: divider - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+
+	reloaded := config.Load(cfgPath)
+	if reloaded.Config.DetailPane.WidthRatio != m.cfg.Config.DetailPane.WidthRatio {
+		t.Errorf("disk width_ratio after drag release: got %.3f, want %.3f",
+			reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
+	}
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

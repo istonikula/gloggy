@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T22:52:48+03:00"
+last_edited: "2026-04-18T00:10:55+03:00"
 ---
 # Implementation Tracking: app-shell
 
@@ -31,3 +31,12 @@ Build site: context/plans/build-site.md
 | T-089 | DONE | appshell/divider.go RenderDivider (│ glyph, DividerColor); inline join via lipgloss.JoinHorizontal in Render right-split |
 | T-091 | DONE | appshell/autoclose.go ShouldAutoCloseDetail (MinDetailWidth=30 right, MinDetailHeight=3 below); KeyHintBarModel.WithNotice; app/model wires noticeClearMsg via tea.Tick(3s) |
 | T-098 | DONE | appshell/ratiokeys.go NextRatio +/-/=/| presets [0.10,0.30,0.70] clamped [0.10,0.80]; routed via orientation in handleKey |
+| T-094 | DONE | mouse.go right-split horizontal zoning: list/listEnd-buffer/divider/detailStart-buffer/detail; tests at width 100 |
+| T-095 | DONE | app/model.handleMouse Press+Left → focus transfers to ZoneEntryList/ZoneDetailPane; tests cover both directions and pane-closed no-op |
+| T-099 | DONE | app/model.saveConfig calls config.Save after ratio key + drag release; tests verify width_ratio persists to disk and height_ratio untouched |
+| T-100 | DONE | appshell/panestyle.go PaneStyle(state); entrylist + detailpane use full-border DividerColor+UnfocusedBg+Faint when unfocused |
+| T-101 | DONE | list.Alone forces focused treatment when pane closed; covered in entrylist visual-state tests |
+| T-102 | DONE | entrylist cursor row keeps CursorHighlight bg unfocused; non-Bold weight; tests TestView_CursorHighlight |
+| T-103 | DONE | detailpane top border verified in both orientations; lipgloss.Width-safe scan in tests |
+| T-104 | DONE | appshell/ratiokeys.RatioFromDragX; app/model drag state machine Press→Motion→Release on right-split divider |
+| T-107 | DONE | detailpane uses lipgloss.Width via PaneStyle; outer width matches allocation; emoji/CJK/ANSI tests |

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T20:09:25+03:00"
+last_edited: "2026-04-18T00:10:55+03:00"
 ---
 # Implementation Tracking: entry-list
 
@@ -24,3 +24,6 @@ Build site: context/plans/build-site.md
 | T-076 | DONE | Timestamp-based double-click: lastClickRow+lastClickTime, 500ms window, resets after trigger |
 | T-079 | DONE | Cursor row highlight via CursorHighlight background in View(); test verifies ANSI styling |
 | T-080 | DONE | CursorPosition() returns 1-based index; 0 when empty; tests for j/k, g/G, filter |
+| T-100 | DONE | ListModel.View applies appshell.PaneStyle via Focused/Alone fields; full DividerColor border + UnfocusedBg + Faint when unfocused-with-pane |
+| T-101 | DONE | Alone field forces focused treatment when pane closed; tests TestView_Alone_UsesFocusedTreatment |
+| T-102 | DONE | Cursor row keeps CursorHighlight bg when unfocused; non-Bold; tests confirm ANSI bg present in both states |
