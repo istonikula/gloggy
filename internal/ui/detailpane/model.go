@@ -22,6 +22,7 @@ type PaneModel struct {
 	scroll  ScrollModel
 	th      theme.Theme
 	height  int
+	width   int  // outer width allocation; 0 means content-driven (T-107)
 	Focused bool // set by app before rendering for focus indicator
 }
 
@@ -32,6 +33,14 @@ func NewPaneModel(th theme.Theme, height int) PaneModel {
 		height: height,
 		scroll: NewScrollModel("", height),
 	}
+}
+
+// SetWidth updates the outer width allocation for the pane (T-107). When
+// non-zero, the pane's View is constrained so its outer width equals w —
+// using lipgloss cell-width measurement so emoji and CJK do not overflow.
+func (m PaneModel) SetWidth(w int) PaneModel {
+	m.width = w
+	return m
 }
 
 // IsOpen returns true when the pane is visible.
@@ -121,5 +130,16 @@ func (m PaneModel) View() string {
 	if m.Focused {
 		state = appshell.PaneStateFocused
 	}
-	return appshell.PaneStyle(m.th, state).Render(content)
+	style := appshell.PaneStyle(m.th, state)
+	if m.width > 0 {
+		// Reserve 2 cells for left/right borders so the OUTER width
+		// equals the allocation. lipgloss measures content in cells
+		// (emoji/CJK = 2 cells, ANSI = 0) so this is width-safe.
+		inner := m.width - 2
+		if inner < 0 {
+			inner = 0
+		}
+		style = style.Width(inner).MaxWidth(m.width)
+	}
+	return style.Render(content)
 }

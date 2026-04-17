@@ -6,10 +6,17 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
 )
+
+// test helpers (T-107).
+func lipglossWidth(s string) int { return lipgloss.Width(s) }
+func lipglossStyle(s string) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000")).Render(s)
+}
 
 func testEntry() logsource.Entry {
 	return logsource.Entry{
@@ -127,6 +134,52 @@ func TestPaneModel_Focused_VsUnfocused_DifferentBorderColor(t *testing.T) {
 	}
 	if focused == unfocused {
 		t.Errorf("focused and unfocused outputs must differ (border color): %q", focused)
+	}
+}
+
+// T-107: lipgloss.Width measures cell width correctly across emoji, CJK,
+// and ANSI-styled text — verifying our chosen primitive is safe for the
+// pane's width-aware code paths.
+func TestPaneModel_LipglossWidth_HandlesEmojiCJKAnsi(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		s    string
+		want int
+	}{
+		{"emoji", "🔥", 2},
+		{"cjk", "日本語", 6},
+		{"ansi-wrapped ascii", lipglossStyle("X"), 1},
+		{"mixed", "a🔥b", 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := lipglossWidth(tc.s); got != tc.want {
+				t.Errorf("lipgloss.Width(%q) = %d, want %d", tc.s, got, tc.want)
+			}
+		})
+	}
+}
+
+// T-107: pane outer width equals the allocated width — emoji/CJK content
+// must not push the pane past its budget.
+func TestPaneModel_View_OuterWidth_MatchesAllocation(t *testing.T) {
+	const allocated = 24
+	entry := logsource.Entry{
+		IsJSON: true,
+		Time:   time.Now(),
+		Level:  "INFO",
+		Msg:    "🔥 fire — 日本語 — long enough to overflow naive budgets",
+		Raw:    []byte(`{"msg":"🔥 fire 日本語"}`),
+	}
+	m := defaultPane(8).Open(entry).SetWidth(allocated)
+	v := m.View()
+	if v == "" {
+		t.Fatal("expected non-empty view")
+	}
+	for i, line := range strings.Split(v, "\n") {
+		w := lipglossWidth(line)
+		if w > allocated {
+			t.Errorf("line %d width=%d exceeds allocated=%d: %q", i, w, allocated, line)
+		}
 	}
 }
 

@@ -151,7 +151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		l := m.layout.Layout()
 		m.list, _ = m.list.Update(tea.WindowSizeMsg{Width: l.ListContentWidth(), Height: l.EntryListHeight()})
-		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
+		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight()).SetWidth(l.DetailContentWidth())
 		m.header = m.header.WithWidth(w)
 		m.keyhints = m.keyhints.WithWidth(w).WithPaneOpen(m.pane.IsOpen())
 		return m, cmd
@@ -426,6 +426,7 @@ func (m Model) relayout() Model {
 		Width:  l.ListContentWidth(),
 		Height: l.EntryListHeight(),
 	})
+	m.pane = m.pane.SetWidth(l.DetailContentWidth())
 	return m
 }
 
