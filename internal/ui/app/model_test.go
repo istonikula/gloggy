@@ -533,6 +533,43 @@ func TestModel_AutoClose_AboveMin_KeepsPaneOpen(t *testing.T) {
 	}
 }
 
+// ---------- T-104: mouse drag on divider resizes detail pane width ----------
+
+// TestModel_DividerDrag_UpdatesWidthRatio verifies a Press on the divider
+// followed by a Motion to a new column translates to a width_ratio update.
+func TestModel_DividerDrag_UpdatesWidthRatio(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(5)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
+	}
+	before := m.cfg.Config.DetailPane.WidthRatio
+
+	// Press on the divider column to start the drag session.
+	l := m.layout.Layout()
+	divider := l.ListContentWidth() + 2
+	m = send(m, tea.MouseMsg{X: divider, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if !m.draggingDivider {
+		t.Fatalf("precondition: expected draggingDivider=true after Press on divider column %d", divider)
+	}
+
+	// Motion to a column 20 cells to the left → detail grows → ratio rises.
+	m = send(m, tea.MouseMsg{X: divider - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	after := m.cfg.Config.DetailPane.WidthRatio
+	if after <= before {
+		t.Errorf("drag-left should increase width_ratio: before=%.3f after=%.3f", before, after)
+	}
+
+	// Release ends the drag session.
+	m = send(m, tea.MouseMsg{X: divider - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	if m.draggingDivider {
+		t.Errorf("expected draggingDivider=false after Release")
+	}
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

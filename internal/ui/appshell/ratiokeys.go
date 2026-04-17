@@ -63,3 +63,28 @@ func IsRatioKey(key string) bool {
 	}
 	return false
 }
+
+// RatioFromDragX converts a horizontal cursor column position into the new
+// width_ratio for a right-split layout (T-104). The terminal x column is
+// normalized to the usable split width (terminalWidth - 2*paneBorders -
+// dividerWidth) so the divider follows the cursor. The returned ratio
+// corresponds to the DETAIL pane slice (detailContent = usable * ratio)
+// and is clamped to [RatioMin, RatioMax].
+func RatioFromDragX(x, termWidth int) float64 {
+	usable := termWidth - 2*paneBorders - dividerWidth
+	if usable <= 0 {
+		return ClampRatio(RatioDefault)
+	}
+	// The detail pane occupies the right-hand slice starting after the
+	// divider + its left border. Its content width is therefore
+	// (termWidth - x - 2): two cells reserved for the detail pane's
+	// right border and the divider-to-right-border gap.
+	detail := termWidth - x - 2
+	if detail < 0 {
+		detail = 0
+	}
+	if detail > usable {
+		detail = usable
+	}
+	return ClampRatio(float64(detail) / float64(usable))
+}

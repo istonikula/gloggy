@@ -119,3 +119,41 @@ func TestIsRatioKey(t *testing.T) {
 		}
 	}
 }
+
+// T-104: dragging the divider to x=50 on a 100-wide terminal halves the
+// usable space → ratio ≈ 48/95 (clamped to RatioMax=0.80).
+// At termWidth=100 and x=50: detail = 100-50-2 = 48, usable = 95, ratio = 48/95 ≈ 0.505.
+func TestRatioFromDragX_Mid(t *testing.T) {
+	r := RatioFromDragX(50, 100)
+	want := 48.0 / 95.0
+	if math.Abs(r-want) > 1e-9 {
+		t.Errorf("RatioFromDragX(50,100) = %.4f, want %.4f", r, want)
+	}
+}
+
+// T-104: dragging far left clamps to RatioMax (detail takes most of usable).
+func TestRatioFromDragX_ClampMax(t *testing.T) {
+	r := RatioFromDragX(2, 100)
+	if math.Abs(r-RatioMax) > 1e-9 {
+		t.Errorf("RatioFromDragX(2,100) = %.4f, want RatioMax=%.4f", r, RatioMax)
+	}
+}
+
+// T-104: dragging far right clamps to RatioMin (detail shrinks).
+func TestRatioFromDragX_ClampMin(t *testing.T) {
+	r := RatioFromDragX(99, 100)
+	if math.Abs(r-RatioMin) > 1e-9 {
+		t.Errorf("RatioFromDragX(99,100) = %.4f, want RatioMin=%.4f", r, RatioMin)
+	}
+}
+
+// T-104: dragging is a normalized function of terminal width — at
+// proportional positions the ratio matches regardless of absolute width.
+func TestRatioFromDragX_NormalizedByWidth(t *testing.T) {
+	// x / termWidth ≈ 0.5 at both sizes; ratios should be close.
+	r1 := RatioFromDragX(60, 120)
+	r2 := RatioFromDragX(100, 200)
+	if math.Abs(r1-r2) > 0.02 {
+		t.Errorf("expected similar ratios at proportional positions, got %.3f vs %.3f", r1, r2)
+	}
+}

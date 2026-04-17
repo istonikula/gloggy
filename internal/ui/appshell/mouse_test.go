@@ -83,3 +83,61 @@ func TestMouseRouter_RouteMouseMsg(t *testing.T) {
 		t.Error("expected ZoneHeader for Y=0")
 	}
 }
+
+// T-094: right-split horizontal zoning with 1-cell buffer on each side
+// of the divider column.
+//
+// Layout: width=100, height=24, widthRatio=0.30 →
+//   usable      = 100 - 4 - 1 = 95
+//   listContent = int(95*0.7)  = 66
+//   detailContent = 95 - 66    = 29
+//   listEnd     = 66 + 1 = 67  (list pane right border, buffer)
+//   divider     = 68           (ZoneDivider)
+//   detailStart = 69           (detail pane left border, buffer)
+//   detail data = 70..98       (29 cols of content + right border at 99)
+func TestMouseRouter_RightSplit_HorizontalZones(t *testing.T) {
+	l := NewLayout(100, 24, true, 0)
+	l.Orientation = OrientationRight
+	l.WidthRatio = 0.30
+	r := NewMouseRouter(l)
+
+	const row = 5
+
+	// Click within list content → list.
+	if z := r.Zone(l.ListContentWidth()-1, row); z != ZoneEntryList {
+		t.Errorf("listEnd-1 (%d): want ZoneEntryList, got %v", l.ListContentWidth()-1, z)
+	}
+	// Click on listEnd (buffer column) → unknown.
+	listEnd := l.ListContentWidth() + 1
+	if z := r.Zone(listEnd, row); z != ZoneUnknown {
+		t.Errorf("listEnd buffer (%d): want ZoneUnknown, got %v", listEnd, z)
+	}
+	// Click on divider → divider.
+	divider := listEnd + 1
+	if z := r.Zone(divider, row); z != ZoneDivider {
+		t.Errorf("divider (%d): want ZoneDivider, got %v", divider, z)
+	}
+	// Click on detailStart (buffer column) → unknown.
+	detailStart := divider + 1
+	if z := r.Zone(detailStart, row); z != ZoneUnknown {
+		t.Errorf("detailStart buffer (%d): want ZoneUnknown, got %v", detailStart, z)
+	}
+	// Click immediately after the right buffer → detail.
+	if z := r.Zone(detailStart+1, row); z != ZoneDetailPane {
+		t.Errorf("detailStart+1 (%d): want ZoneDetailPane, got %v", detailStart+1, z)
+	}
+}
+
+// T-094: header + status bar still take precedence over horizontal zones.
+func TestMouseRouter_RightSplit_HeaderAndStatus(t *testing.T) {
+	l := NewLayout(100, 24, true, 0)
+	l.Orientation = OrientationRight
+	l.WidthRatio = 0.30
+	r := NewMouseRouter(l)
+	if z := r.Zone(50, 0); z != ZoneHeader {
+		t.Errorf("y=0: want ZoneHeader, got %v", z)
+	}
+	if z := r.Zone(50, 23); z != ZoneStatusBar {
+		t.Errorf("y=23: want ZoneStatusBar, got %v", z)
+	}
+}

@@ -62,6 +62,11 @@ type Model struct {
 
 	focus              appshell.FocusTarget
 	cachedVisibleCount int
+	// draggingDivider is true between a Press on the right-split
+	// divider column and the subsequent Release. While set, Motion
+	// events update width_ratio regardless of the cursor's current zone
+	// (T-104).
+	draggingDivider bool
 }
 
 // New creates the root model from parsed CLI args and loaded config.
@@ -355,6 +360,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	router := appshell.NewMouseRouter(m.layout.Layout())
 	zone := router.RouteMouseMsg(msg)
+
+	// T-104: drag on the vertical divider in right-split resizes the
+	// detail pane width. A Press at the divider column starts a drag
+	// session; subsequent Motion events update width_ratio from the
+	// cursor's x even when the cursor has moved outside the divider.
+	// Release ends the session.
+	if m.resize.Orientation() == appshell.OrientationRight && msg.Button == tea.MouseButtonLeft {
+		if msg.Action == tea.MouseActionPress && zone == appshell.ZoneDivider {
+			m.draggingDivider = true
+		}
+		if m.draggingDivider {
+			if msg.Action == tea.MouseActionRelease {
+				m.draggingDivider = false
+				return m, nil
+			}
+			newR := appshell.RatioFromDragX(msg.X, m.resize.Width())
+			m.cfg.Config.DetailPane.WidthRatio = newR
+			m.layout = m.layout.SetWidthRatio(newR)
+			m = m.relayout()
+			return m, nil
+		}
+	}
 
 	switch zone {
 	case appshell.ZoneEntryList:
