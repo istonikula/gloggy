@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/istonikula/gloggy/internal/theme"
 )
 
 // FocusTarget identifies which component currently has keyboard focus.
@@ -99,13 +101,14 @@ func NewLayout(width, height int, detailPaneOpen bool, detailPaneHeight int) Lay
 }
 
 // LayoutModel manages the TUI layout and assembles the final screen string via
-// lipgloss.JoinVertical.
+// lipgloss.JoinVertical (or JoinHorizontal in right-split mode).
 //
 // The caller is responsible for providing rendered strings for each zone.
 // LayoutModel only handles compositing.
 type LayoutModel struct {
 	layout Layout
 	width  int
+	theme  theme.Theme
 }
 
 // NewLayoutModel creates a LayoutModel.
@@ -114,6 +117,14 @@ func NewLayoutModel(width, height int) LayoutModel {
 		layout: NewLayout(width, height, false, 0),
 		width:  width,
 	}
+}
+
+// WithTheme attaches a theme so the right-split divider can be rendered with
+// the canonical DividerColor (T-089). Without a theme, the divider falls
+// back to an unstyled glyph.
+func (m LayoutModel) WithTheme(th theme.Theme) LayoutModel {
+	m.theme = th
+	return m
 }
 
 // SetSize updates the terminal dimensions.
@@ -199,18 +210,21 @@ func (m LayoutModel) Render(header, entryList, detailPane, statusBar string) str
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-// renderInlineDivider returns a minimal 1-cell vertical divider for the
-// right-split main area. T-089 will replace this with a themed renderer
-// (RenderDivider). The height matches the main area — terminal height minus
-// the header and status rows.
+// renderInlineDivider returns the right-split divider for the main area.
+// Height matches terminal height minus the header and status rows. When a
+// theme is attached the divider uses theme.DividerColor (T-089); otherwise
+// the glyph is unstyled.
 func (m LayoutModel) renderInlineDivider() string {
 	h := m.layout.Height - m.layout.HeaderHeight - m.layout.StatusBarHeight
 	if h < 1 {
 		h = 1
 	}
+	if m.theme.DividerColor != "" {
+		return RenderDivider(h, m.theme)
+	}
 	lines := make([]string, h)
 	for i := range lines {
-		lines[i] = "│"
+		lines[i] = dividerGlyph
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

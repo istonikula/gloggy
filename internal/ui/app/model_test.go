@@ -459,6 +459,80 @@ func TestModel_Esc_OnList_NoTransient_NoOp(t *testing.T) {
 	}
 }
 
+// ---------- T-091: detail pane auto-close on minimum underflow ----------
+
+// TestModel_AutoClose_RightSplit_BelowMinWidth verifies the detail pane is
+// auto-closed when a resize shrinks its content below MinDetailWidth while
+// still in right-split orientation. Threshold default = 100 cols, so width
+// 100 stays in right-split; detailW = 29 < 30 → auto-close.
+func TestModel_AutoClose_RightSplit_BelowMinWidth(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(5)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if !m.pane.IsOpen() {
+		t.Fatal("precondition: pane should be open after openPane")
+	}
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: orientation should be right at termWidth=200, got %v", m.resize.Orientation())
+	}
+
+	// Shrink while keeping right-split: detailW drops below MinDetailWidth.
+	m = resize(m, 100, 24)
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: orientation should stay right at termWidth=100, got %v", m.resize.Orientation())
+	}
+
+	if m.pane.IsOpen() {
+		t.Errorf("expected auto-close at termWidth=100 (detailW=%d), pane still open", m.layout.Layout().DetailContentWidth())
+	}
+	if !m.keyhints.HasNotice() {
+		t.Error("expected status notice after auto-close")
+	}
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after auto-close: got %v, want FocusEntryList", m.focus)
+	}
+}
+
+// TestModel_AutoClose_NoticeClearedOnMsg verifies the noticeClearMsg resets
+// the key-hint bar back to hints-mode.
+func TestModel_AutoClose_NoticeClearedOnMsg(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(5)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	m = resize(m, 100, 24)
+	if !m.keyhints.HasNotice() {
+		t.Fatal("precondition: notice should be set after auto-close")
+	}
+
+	m = send(m, noticeClearMsg{})
+	if m.keyhints.HasNotice() {
+		t.Error("notice should be cleared after noticeClearMsg")
+	}
+}
+
+// TestModel_AutoClose_AboveMin_KeepsPaneOpen verifies a resize that stays
+// above the minimum threshold does not close the pane.
+func TestModel_AutoClose_AboveMin_KeepsPaneOpen(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(5)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+
+	m = resize(m, 180, 24)
+
+	if !m.pane.IsOpen() {
+		t.Errorf("pane should remain open at termWidth=180 (detailW=%d)", m.layout.Layout().DetailContentWidth())
+	}
+	if m.keyhints.HasNotice() {
+		t.Error("notice should not be set when pane stays open")
+	}
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

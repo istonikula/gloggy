@@ -14,7 +14,8 @@ type KeyHintBarModel struct {
 	registry KeybindingRegistry
 	th       theme.Theme
 	width    int
-	paneOpen bool // when true, the detail pane is visible → focus label is shown
+	paneOpen bool   // when true, the detail pane is visible → focus label is shown
+	notice   string // transient one-shot notice that replaces the hints (T-091)
 }
 
 // NewKeyHintBarModel creates a KeyHintBarModel.
@@ -47,6 +48,17 @@ func (m KeyHintBarModel) WithPaneOpen(open bool) KeyHintBarModel {
 	return m
 }
 
+// WithNotice sets a transient status notice that replaces the key hints
+// (T-091). Pass an empty string to clear. The caller is responsible for
+// scheduling the clear (typically via a tea.Tick command).
+func (m KeyHintBarModel) WithNotice(text string) KeyHintBarModel {
+	m.notice = text
+	return m
+}
+
+// HasNotice reports whether a transient notice is currently displayed.
+func (m KeyHintBarModel) HasNotice() bool { return m.notice != "" }
+
 // focusLabelText returns the label string for the current focus ("focus: X")
 // or empty when the label should be omitted (single-pane state).
 func (m KeyHintBarModel) focusLabelText() string {
@@ -65,6 +77,12 @@ func (m KeyHintBarModel) focusLabelText() string {
 
 // View renders the key-hint bar for the current focus.
 func (m KeyHintBarModel) View() string {
+	hintsStyle := lipgloss.NewStyle().Foreground(m.th.Dim)
+	// Transient notice replaces the hints entirely (T-091).
+	if m.notice != "" {
+		return hintsStyle.MaxWidth(m.width).Render(m.notice)
+	}
+
 	domain := focusDomain(m.focus)
 	bindings := m.registry[domain]
 
@@ -73,7 +91,6 @@ func (m KeyHintBarModel) View() string {
 		parts = append(parts, kb.Key+": "+kb.Desc)
 	}
 
-	hintsStyle := lipgloss.NewStyle().Foreground(m.th.Dim)
 	hints := strings.Join(parts, "  ")
 
 	label := m.focusLabelText()

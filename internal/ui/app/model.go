@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -16,6 +17,19 @@ import (
 	"github.com/istonikula/gloggy/internal/ui/entrylist"
 	uifilter "github.com/istonikula/gloggy/internal/ui/filter"
 )
+
+// noticeClearMsg fires after the auto-close notice timeout to restore the
+// key-hint bar (T-091).
+type noticeClearMsg struct{}
+
+// noticeClearAfter returns a tea.Cmd that fires noticeClearMsg after d.
+func noticeClearAfter(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg { return noticeClearMsg{} })
+}
+
+const autoCloseNoticeDuration = 3 * time.Second
+
+const autoCloseNoticeText = "detail pane auto-closed — terminal too small"
 
 // Model is the root Bubble Tea model.
 type Model struct {
@@ -81,7 +95,7 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 	m.header = appshell.NewHeaderModel(th, 80).WithSource(sourceName).WithFollow(followMode)
 	m.loading = appshell.NewLoadingModel()
 	m.keyhints = appshell.NewKeyHintBarModel(th, 80)
-	m.layout = appshell.NewLayoutModel(80, 24)
+	m.layout = appshell.NewLayoutModel(80, 24).WithTheme(th)
 
 	// Activate loading indicator upfront when we know a file will be loaded.
 	// Init() is a value receiver and cannot mutate the model, so we initialise
@@ -125,11 +139,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			SetDetailPane(m.pane.IsOpen(), m.paneHeight.PaneHeight()).
 			SetOrientation(m.resize.Orientation()).
 			SetWidthRatio(m.cfg.Config.DetailPane.WidthRatio)
+		// T-091: auto-close pane when its content shrinks below the
+		// minimum-viable threshold for the active orientation.
+		var cmd tea.Cmd
+		if appshell.ShouldAutoCloseDetail(m.layout.Layout()) {
+			m.pane = m.pane.Close()
+			m.focus = appshell.FocusEntryList
+			m.layout = m.layout.SetDetailPane(false, m.paneHeight.PaneHeight())
+			m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList).WithNotice(autoCloseNoticeText)
+			cmd = noticeClearAfter(autoCloseNoticeDuration)
+		}
 		l := m.layout.Layout()
 		m.list, _ = m.list.Update(tea.WindowSizeMsg{Width: l.ListContentWidth(), Height: l.EntryListHeight()})
 		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
 		m.header = m.header.WithWidth(w)
 		m.keyhints = m.keyhints.WithWidth(w).WithPaneOpen(m.pane.IsOpen())
+		return m, cmd
+
+	case noticeClearMsg:
+		m.keyhints = m.keyhints.WithNotice("")
 		return m, nil
 
 	case tea.KeyMsg:
@@ -241,10 +269,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch m.focus {
 	case appshell.FocusDetailPane:
-		// +/- resize pane.
-		if msg.String() == "+" || msg.String() == "-" {
-			m.paneHeight, _ = m.paneHeight.Update(msg)
-			m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
+		// T-098: ratio keymap (+/-/=/|). Active ratio depends on
+		// orientation — height_ratio in below-mode, width_ratio in
+		// right-mode. Clamps to [0.10, 0.80].
+		if appshell.IsRatioKey(msg.String()) {
+			if m.resize.Orientation() == appshell.OrientationRight {
+				newR, _ := appshell.NextRatio(m.cfg.Config.DetailPane.WidthRatio, msg.String())
+				m.cfg.Config.DetailPane.WidthRatio = newR
+				m.layout = m.layout.SetWidthRatio(newR)
+				// T-099 hook will write the new ratio back to disk.
+			} else {
+				newR, _ := appshell.NextRatio(m.paneHeight.Ratio(), msg.String())
+				m.paneHeight = m.paneHeight.SetRatio(newR)
+				m.cfg.Config.DetailPane.HeightRatio = newR
+				m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
+			}
 			m = m.relayout()
 			return m, nil
 		}

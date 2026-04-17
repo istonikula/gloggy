@@ -4,7 +4,8 @@ import tea "github.com/charmbracelet/bubbletea"
 
 const (
 	minHeightRatio = 0.10
-	maxHeightRatio = 0.90
+	// maxHeightRatio matches DESIGN.md §5 ratio clamp [0.10, 0.80] (T-098).
+	maxHeightRatio = 0.80
 	heightStep     = 0.05
 )
 
@@ -52,6 +53,13 @@ func (m HeightModel) Decrease() HeightModel {
 // The ratio is preserved, so the pane height scales proportionally.
 func (m HeightModel) SetTerminalHeight(h int) HeightModel {
 	m.terminalHeight = h
+	return m
+}
+
+// SetRatio sets the ratio directly (used by the unified ratio keymap in
+// appshell.NextRatio). Value is clamped to [minHeightRatio, maxHeightRatio].
+func (m HeightModel) SetRatio(r float64) HeightModel {
+	m.ratio = clampRatio(r)
 	return m
 }
 
