@@ -372,6 +372,93 @@ func TestModel_OpenDetailPane_ViaMsg(t *testing.T) {
 	}
 }
 
+// ---------- T-096: Tab focus cycle ----------
+
+// TestModel_Tab_CyclesListToDetails verifies Tab flips list → details when
+// both panes are visible.
+func TestModel_Tab_CyclesListToDetails(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "enter") // opens pane, focus → details
+	// Move focus back to list via BlurredMsg shortcut for a clean start.
+	m.focus = appshell.FocusEntryList
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+
+	m = key(m, "tab")
+	if m.focus != appshell.FocusDetailPane {
+		t.Errorf("Tab from list with pane open: got %v, want FocusDetailPane", m.focus)
+	}
+	if !m.pane.IsOpen() {
+		t.Error("Tab must not close the pane")
+	}
+}
+
+// TestModel_Tab_WrapsDetailsToList verifies Tab wraps details → list.
+func TestModel_Tab_WrapsDetailsToList(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "enter") // focus = FocusDetailPane
+
+	m = key(m, "tab")
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("Tab from details: got %v, want FocusEntryList", m.focus)
+	}
+	if !m.pane.IsOpen() {
+		t.Error("Tab must not close the pane")
+	}
+}
+
+// TestModel_Tab_NoOpSinglePane verifies Tab is a no-op when the detail pane
+// is closed (only the list is visible).
+func TestModel_Tab_NoOpSinglePane(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+
+	m = key(m, "tab")
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("Tab with only list visible: got %v, want FocusEntryList", m.focus)
+	}
+}
+
+// TestModel_Tab_InertWhenFilterPanelFocused verifies Tab does not cycle focus
+// while the filter panel (an overlay-like surface) is focused.
+func TestModel_Tab_InertWhenFilterPanelFocused(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "f") // focus = FocusFilterPanel
+
+	m = key(m, "tab")
+	if m.focus != appshell.FocusFilterPanel {
+		t.Errorf("Tab while filter panel focused must be inert, got %v", m.focus)
+	}
+}
+
+// ---------- T-097: Esc priority 3 (list transient clear) ----------
+
+// TestModel_Esc_OnList_NoTransient_NoOp verifies that Esc on the list when
+// nothing transient is set is a benign no-op.
+func TestModel_Esc_OnList_NoTransient_NoOp(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+
+	cursorBefore := m.list.Cursor()
+	m = key(m, "esc")
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after Esc on list: got %v, want FocusEntryList", m.focus)
+	}
+	if m.list.Cursor() != cursorBefore {
+		t.Errorf("cursor changed unexpectedly: before=%d after=%d", cursorBefore, m.list.Cursor())
+	}
+	if m.pane.IsOpen() {
+		t.Error("Esc on list must not open pane")
+	}
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

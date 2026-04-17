@@ -90,6 +90,29 @@ func TestListModel_LevelJump_WrapDir(t *testing.T) {
 	}
 }
 
+// T-097: HasTransient + ClearTransient — Esc on the list should be able to
+// clear an active wrap indicator without affecting other state.
+func TestListModel_ClearTransient_ResetsWrapDir(t *testing.T) {
+	entries := levelEntries()
+	m := NewListModel(theme.GetTheme("tokyo-night"), config.DefaultConfig(), 80, 10).SetEntries(entries)
+	m.scroll.Cursor = 4
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if !m2.HasTransient() {
+		t.Fatal("expected HasTransient() == true after wrap")
+	}
+	cursorBefore := m2.Cursor()
+	m3 := m2.ClearTransient()
+	if m3.HasTransient() {
+		t.Error("ClearTransient must reset wrap indicator")
+	}
+	if m3.WrapDir() != NoWrap {
+		t.Errorf("WrapDir after ClearTransient: got %v, want NoWrap", m3.WrapDir())
+	}
+	if m3.Cursor() != cursorBefore {
+		t.Errorf("ClearTransient must not move the cursor: before=%d after=%d", cursorBefore, m3.Cursor())
+	}
+}
+
 // T-031: R7.1 — filtered entries don't appear in visible list
 func TestListModel_FilteredView_ExcludesEntries(t *testing.T) {
 	entries := makeEntries(5)

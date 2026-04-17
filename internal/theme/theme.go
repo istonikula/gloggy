@@ -34,6 +34,14 @@ type Theme struct {
 	CursorHighlight lipgloss.Color
 	HeaderBg        lipgloss.Color
 	FocusBorder     lipgloss.Color
+
+	// Pane state tokens (Tier 9 — details-pane redesign).
+	// DividerColor: quiet neutral for the right-split divider column.
+	// Reads closer to Dim than to FocusBorder; never recolors on focus change.
+	// UnfocusedBg: subtle background tint for unfocused-but-visible panes;
+	// distinct from Dim (which is a foreground intensity).
+	DividerColor lipgloss.Color
+	UnfocusedBg  lipgloss.Color
 }
 
 // DefaultThemeName is the theme used when none is specified or an unknown name is given.
@@ -78,6 +86,8 @@ func tokyoNight() Theme {
 		CursorHighlight: lipgloss.Color("#364a82"),
 		HeaderBg:        lipgloss.Color("#1f2335"),
 		FocusBorder:     lipgloss.Color("#7aa2f7"),
+		DividerColor:    lipgloss.Color("#3b4261"),
+		UnfocusedBg:     lipgloss.Color("#16161e"),
 	}
 }
 
@@ -100,6 +110,8 @@ func catppuccinMocha() Theme {
 		CursorHighlight: lipgloss.Color("#585b70"),
 		HeaderBg:        lipgloss.Color("#181825"),
 		FocusBorder:     lipgloss.Color("#89b4fa"),
+		DividerColor:    lipgloss.Color("#313244"),
+		UnfocusedBg:     lipgloss.Color("#11111b"),
 	}
 }
 
@@ -122,5 +134,7 @@ func materialDark() Theme {
 		CursorHighlight: lipgloss.Color("#4a5568"),
 		HeaderBg:        lipgloss.Color("#1a1a1a"),
 		FocusBorder:     lipgloss.Color("#82aaff"),
+		DividerColor:    lipgloss.Color("#37474f"),
+		UnfocusedBg:     lipgloss.Color("#0d0d0d"),
 	}
 }

@@ -28,6 +28,18 @@ func TestDefaultConfig_Values(t *testing.T) {
 	if cfg.DetailPane.HeightRatio != 0.30 {
 		t.Errorf("height_ratio: want 0.30, got %f", cfg.DetailPane.HeightRatio)
 	}
+	if cfg.DetailPane.WidthRatio != 0.30 {
+		t.Errorf("width_ratio: want 0.30, got %f", cfg.DetailPane.WidthRatio)
+	}
+	if cfg.DetailPane.Position != "auto" {
+		t.Errorf("position: want auto, got %s", cfg.DetailPane.Position)
+	}
+	if cfg.DetailPane.OrientationThresholdCols != 100 {
+		t.Errorf("orientation_threshold_cols: want 100, got %d", cfg.DetailPane.OrientationThresholdCols)
+	}
+	if cfg.DetailPane.WrapMode != "soft" {
+		t.Errorf("wrap_mode: want soft, got %s", cfg.DetailPane.WrapMode)
+	}
 	wantFields := []string{"time", "level", "logger", "msg"}
 	if len(cfg.CompactRow.Fields) != len(wantFields) {
 		t.Fatalf("compact_row.fields len: want %d, got %d", len(wantFields), len(cfg.CompactRow.Fields))
@@ -116,6 +128,69 @@ logger_depth = 3
 	reloaded := Load(path)
 	if reloaded.Config.Theme != "catppuccin-mocha" {
 		t.Errorf("theme not preserved, got %s", reloaded.Config.Theme)
+	}
+}
+
+// T-085: detail_pane orientation/width keys round-trip.
+func TestDetailPane_OrientationKeysRoundTrip(t *testing.T) {
+	input := `
+[detail_pane]
+height_ratio = 0.40
+width_ratio = 0.55
+position = "right"
+orientation_threshold_cols = 80
+wrap_mode = "soft"
+`
+	result := LoadFromBytes([]byte(input))
+	if len(result.Warnings) != 0 {
+		t.Fatalf("unexpected warnings on valid overrides: %v", result.Warnings)
+	}
+	dp := result.Config.DetailPane
+	if dp.HeightRatio != 0.40 || dp.WidthRatio != 0.55 || dp.Position != "right" ||
+		dp.OrientationThresholdCols != 80 || dp.WrapMode != "soft" {
+		t.Errorf("override values not preserved: %+v", dp)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := Save(path, result); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded := Load(path)
+	dp2 := reloaded.Config.DetailPane
+	if dp2.HeightRatio != 0.40 || dp2.WidthRatio != 0.55 || dp2.Position != "right" ||
+		dp2.OrientationThresholdCols != 80 || dp2.WrapMode != "soft" {
+		t.Errorf("override values not preserved through round-trip: %+v", dp2)
+	}
+}
+
+// T-085: invalid detail_pane keys fall back to defaults with warnings.
+func TestDetailPane_InvalidValuesFallback(t *testing.T) {
+	input := `
+[detail_pane]
+height_ratio = 0.30
+width_ratio = 2.5
+position = "diagonal"
+orientation_threshold_cols = -10
+wrap_mode = "telepathic"
+`
+	result := LoadFromBytes([]byte(input))
+	defaults := DefaultConfig().DetailPane
+	dp := result.Config.DetailPane
+	if dp.WidthRatio != defaults.WidthRatio {
+		t.Errorf("invalid width_ratio should fallback, got %f", dp.WidthRatio)
+	}
+	if dp.Position != defaults.Position {
+		t.Errorf("invalid position should fallback to %s, got %s", defaults.Position, dp.Position)
+	}
+	if dp.OrientationThresholdCols != defaults.OrientationThresholdCols {
+		t.Errorf("invalid orientation_threshold_cols should fallback, got %d", dp.OrientationThresholdCols)
+	}
+	if dp.WrapMode != defaults.WrapMode {
+		t.Errorf("invalid wrap_mode should fallback to %s, got %s", defaults.WrapMode, dp.WrapMode)
+	}
+	if len(result.Warnings) < 4 {
+		t.Errorf("expected 4+ warnings for 4 invalid values, got %d: %v", len(result.Warnings), result.Warnings)
 	}
 }
 

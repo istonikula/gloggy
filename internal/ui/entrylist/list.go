@@ -124,6 +124,19 @@ func (m ListModel) ClearFilter() ListModel {
 	return m
 }
 
+// ClearTransient clears transient in-list state — currently the mark-nav /
+// level-jump wrap indicator. Invoked when the list receives Esc with no
+// higher-priority dismissal pending (T-097).
+func (m ListModel) ClearTransient() ListModel {
+	m.wrapDir = NoWrap
+	return m
+}
+
+// HasTransient reports whether transient state is set (wrap indicator active).
+func (m ListModel) HasTransient() bool {
+	return m.wrapDir != NoWrap
+}
+
 // visibleEntries returns the entries to display (filtered or all).
 func (m ListModel) visibleEntries() []logsource.Entry {
 	if m.filtered == nil {

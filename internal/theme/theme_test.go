@@ -22,6 +22,15 @@ func TestGetTheme_AllBuiltins(t *testing.T) {
 			if string(th.CursorHighlight) == "" || string(th.HeaderBg) == "" || string(th.FocusBorder) == "" {
 				t.Error("visual-polish tokens not populated")
 			}
+			if string(th.DividerColor) == "" || string(th.UnfocusedBg) == "" {
+				t.Error("Tier 9 pane-state tokens (DividerColor, UnfocusedBg) not populated")
+			}
+			if string(th.DividerColor) == string(th.Dim) || string(th.DividerColor) == string(th.FocusBorder) {
+				t.Errorf("DividerColor must be distinct from Dim and FocusBorder; got %s", th.DividerColor)
+			}
+			if string(th.UnfocusedBg) == string(th.Dim) || string(th.UnfocusedBg) == string(th.FocusBorder) {
+				t.Errorf("UnfocusedBg must be distinct from Dim and FocusBorder; got %s", th.UnfocusedBg)
+			}
 		})
 	}
 }

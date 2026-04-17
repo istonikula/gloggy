@@ -71,3 +71,59 @@ func TestLayoutModel_SetSize(t *testing.T) {
 		t.Errorf("SetSize: got %dx%d, want 120x40", l.Width, l.Height)
 	}
 }
+
+// T-090: terminal-too-small fallback at 59x15.
+func TestLayout_FallbackBelowMinWidth(t *testing.T) {
+	m := NewLayoutModel(59, 15)
+	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
+	if !strings.Contains(out, "terminal too small") {
+		t.Errorf("expected fallback message at 59x15, got %q", out)
+	}
+	if strings.Contains(out, "HEADER") || strings.Contains(out, "ENTRYLIST") {
+		t.Errorf("panels should be suppressed at 59x15, got %q", out)
+	}
+}
+
+// T-090: terminal-too-small fallback at 60x14.
+func TestLayout_FallbackBelowMinHeight(t *testing.T) {
+	m := NewLayoutModel(60, 14)
+	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
+	if !strings.Contains(out, "terminal too small") {
+		t.Errorf("expected fallback message at 60x14, got %q", out)
+	}
+	if strings.Contains(out, "HEADER") {
+		t.Errorf("panels should be suppressed at 60x14, got %q", out)
+	}
+}
+
+// T-090: normal render resumes at 60x15.
+func TestLayout_NormalRenderAtMinFloor(t *testing.T) {
+	m := NewLayoutModel(60, 15)
+	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
+	if strings.Contains(out, "terminal too small") {
+		t.Errorf("normal render should resume at 60x15, got %q", out)
+	}
+	if !strings.Contains(out, "HEADER") {
+		t.Errorf("HEADER should appear at 60x15, got %q", out)
+	}
+}
+
+// T-090: IsBelowMinFloor predicate.
+func TestLayout_IsBelowMinFloor(t *testing.T) {
+	cases := []struct {
+		w, h int
+		want bool
+	}{
+		{60, 15, false},
+		{60, 14, true},
+		{59, 15, true},
+		{120, 40, false},
+		{0, 0, true},
+	}
+	for _, tc := range cases {
+		m := NewLayoutModel(tc.w, tc.h)
+		if got := m.IsBelowMinFloor(); got != tc.want {
+			t.Errorf("IsBelowMinFloor(%dx%d) = %v, want %v", tc.w, tc.h, got, tc.want)
+		}
+	}
+}

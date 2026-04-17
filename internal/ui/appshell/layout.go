@@ -1,6 +1,8 @@
 package appshell
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -85,8 +87,33 @@ func (m LayoutModel) SetDetailPane(open bool, height int) LayoutModel {
 // Layout returns the current layout.
 func (m LayoutModel) Layout() Layout { return m.layout }
 
+// MinTerminalWidth and MinTerminalHeight define the minimum-viable terminal
+// floor (T-090, DESIGN.md §8). Below either threshold the layout suppresses
+// normal rendering and shows a centered "terminal too small" message.
+const (
+	MinTerminalWidth  = 60
+	MinTerminalHeight = 15
+)
+
+// IsBelowMinFloor reports whether the current dimensions are below the
+// minimum-viable terminal floor.
+func (m LayoutModel) IsBelowMinFloor() bool {
+	return m.layout.Width < MinTerminalWidth || m.layout.Height < MinTerminalHeight
+}
+
+// RenderTooSmall draws the terminal-too-small fallback message centered in
+// the current dimensions (T-090).
+func (m LayoutModel) RenderTooSmall() string {
+	msg := fmt.Sprintf("terminal too small\nminimum %dx%d", MinTerminalWidth, MinTerminalHeight)
+	return lipgloss.Place(m.layout.Width, m.layout.Height, lipgloss.Center, lipgloss.Center, msg)
+}
+
 // Render assembles the full screen from the provided zone strings.
 // All zone strings must already be the correct width; Render only stacks them vertically.
+//
+// When the terminal falls below the minimum-viable floor (60x15 per
+// DESIGN.md §8) the panel rendering is suppressed and a centered fallback
+// message is shown instead.
 //
 // Parameters:
 //   header    — rendered header bar (1 row)
@@ -94,6 +121,9 @@ func (m LayoutModel) Layout() Layout { return m.layout }
 //   detailPane — rendered detail pane (DetailPaneHeight rows; ignored when pane is closed)
 //   statusBar — rendered status/key-hint bar (1 row)
 func (m LayoutModel) Render(header, entryList, detailPane, statusBar string) string {
+	if m.IsBelowMinFloor() {
+		return m.RenderTooSmall()
+	}
 	parts := []string{header, entryList}
 	if m.layout.DetailPaneOpen && detailPane != "" {
 		parts = append(parts, detailPane)

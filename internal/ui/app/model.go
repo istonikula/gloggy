@@ -217,6 +217,24 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
+	// T-096: Tab cycles focus between visible panes. Tab never closes a
+	// pane and is inert while any overlay (filter panel or help) is open.
+	// Help is handled earlier in Update (intercept); the filter panel is
+	// overlay-like when focused.
+	if msg.String() == "tab" {
+		visible := []appshell.FocusTarget{appshell.FocusEntryList}
+		if m.pane.IsOpen() {
+			visible = append(visible, appshell.FocusDetailPane)
+		}
+		overlayOpen := m.focus == appshell.FocusFilterPanel
+		next := appshell.NextFocus(m.focus, visible, overlayOpen)
+		if next != m.focus {
+			m.focus = next
+			m.keyhints = m.keyhints.WithFocus(m.focus)
+		}
+		return m, nil
+	}
+
 	switch m.focus {
 	case appshell.FocusDetailPane:
 		// +/- resize pane.
@@ -248,6 +266,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	default: // FocusEntryList
+		// T-097 priority 3: Esc on list clears transient state (wrap
+		// indicator from level-jump / mark-nav). No-op otherwise.
+		// Priorities 1 (help/filter overlays) and 2 (detail-pane close)
+		// are handled earlier — the help overlay intercepts Esc at the
+		// top of Update, the filter panel case closes itself, and the
+		// detail-pane branch forwards Esc to pane.Update (T-041).
+		if msg.String() == "esc" {
+			if m.list.HasTransient() {
+				m.list = m.list.ClearTransient()
+			}
+			return m, nil
+		}
 		// Open filter panel.
 		if msg.String() == "f" {
 			m.focus = appshell.FocusFilterPanel

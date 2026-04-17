@@ -27,7 +27,11 @@ type CompactRow struct {
 
 // DetailPane holds settings for the detail pane.
 type DetailPane struct {
-	HeightRatio float64 `toml:"height_ratio"`
+	HeightRatio              float64 `toml:"height_ratio"`
+	WidthRatio               float64 `toml:"width_ratio"`
+	Position                 string  `toml:"position"`
+	OrientationThresholdCols int     `toml:"orientation_threshold_cols"`
+	WrapMode                 string  `toml:"wrap_mode"`
 }
 
 // DefaultConfig returns the built-in default configuration.
@@ -40,7 +44,13 @@ func DefaultConfig() Config {
 		},
 		HiddenFields: []string{},
 		LoggerDepth:  2,
-		DetailPane:   DetailPane{HeightRatio: 0.30},
+		DetailPane: DetailPane{
+			HeightRatio:              0.30,
+			WidthRatio:               0.30,
+			Position:                 "auto",
+			OrientationThresholdCols: 100,
+			WrapMode:                 "soft",
+		},
 	}
 }
 
@@ -138,6 +148,18 @@ func mergeWithDefaults(cfg Config, raw map[string]any, defaults Config) Config {
 			if _, ok := dm["height_ratio"]; !ok {
 				cfg.DetailPane.HeightRatio = defaults.DetailPane.HeightRatio
 			}
+			if _, ok := dm["width_ratio"]; !ok {
+				cfg.DetailPane.WidthRatio = defaults.DetailPane.WidthRatio
+			}
+			if _, ok := dm["position"]; !ok {
+				cfg.DetailPane.Position = defaults.DetailPane.Position
+			}
+			if _, ok := dm["orientation_threshold_cols"]; !ok {
+				cfg.DetailPane.OrientationThresholdCols = defaults.DetailPane.OrientationThresholdCols
+			}
+			if _, ok := dm["wrap_mode"]; !ok {
+				cfg.DetailPane.WrapMode = defaults.DetailPane.WrapMode
+			}
 		}
 	} else {
 		cfg.DetailPane = defaults.DetailPane
@@ -168,6 +190,28 @@ func validateConfig(cfg Config, defaults Config) (Config, []string) {
 	if cfg.DetailPane.HeightRatio <= 0 || cfg.DetailPane.HeightRatio >= 1 {
 		warnings = append(warnings, fmt.Sprintf("invalid detail_pane.height_ratio %.2f, using default %.2f", cfg.DetailPane.HeightRatio, defaults.DetailPane.HeightRatio))
 		cfg.DetailPane.HeightRatio = defaults.DetailPane.HeightRatio
+	}
+	if cfg.DetailPane.WidthRatio <= 0 || cfg.DetailPane.WidthRatio >= 1 {
+		warnings = append(warnings, fmt.Sprintf("invalid detail_pane.width_ratio %.2f, using default %.2f", cfg.DetailPane.WidthRatio, defaults.DetailPane.WidthRatio))
+		cfg.DetailPane.WidthRatio = defaults.DetailPane.WidthRatio
+	}
+	switch cfg.DetailPane.Position {
+	case "auto", "below", "right":
+		// valid
+	default:
+		warnings = append(warnings, fmt.Sprintf("invalid detail_pane.position %q, using default %q", cfg.DetailPane.Position, defaults.DetailPane.Position))
+		cfg.DetailPane.Position = defaults.DetailPane.Position
+	}
+	if cfg.DetailPane.OrientationThresholdCols <= 0 {
+		warnings = append(warnings, fmt.Sprintf("invalid detail_pane.orientation_threshold_cols %d, using default %d", cfg.DetailPane.OrientationThresholdCols, defaults.DetailPane.OrientationThresholdCols))
+		cfg.DetailPane.OrientationThresholdCols = defaults.DetailPane.OrientationThresholdCols
+	}
+	switch cfg.DetailPane.WrapMode {
+	case "soft", "scroll", "modal":
+		// valid (only "soft" is shipping; others reserved per kit)
+	default:
+		warnings = append(warnings, fmt.Sprintf("invalid detail_pane.wrap_mode %q, using default %q", cfg.DetailPane.WrapMode, defaults.DetailPane.WrapMode))
+		cfg.DetailPane.WrapMode = defaults.DetailPane.WrapMode
 	}
 	return cfg, warnings
 }
@@ -203,6 +247,10 @@ func Save(path string, result LoadResult) error {
 		}
 	}
 	detail["height_ratio"] = result.Config.DetailPane.HeightRatio
+	detail["width_ratio"] = result.Config.DetailPane.WidthRatio
+	detail["position"] = result.Config.DetailPane.Position
+	detail["orientation_threshold_cols"] = result.Config.DetailPane.OrientationThresholdCols
+	detail["wrap_mode"] = result.Config.DetailPane.WrapMode
 	output["detail_pane"] = detail
 
 	data, err := toml.Marshal(output)
