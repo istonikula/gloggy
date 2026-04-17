@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T19:52:00+03:00"
+last_edited: "2026-04-17T21:58:10+03:00"
 ---
 
 # Build Site: gloggy
@@ -13,11 +13,11 @@ last_edited: "2026-04-16T19:52:00+03:00"
 | Metric | Value |
 |---|---|
 | Source Kits | 6 domains |
-| Requirements | 51 |
-| Acceptance Criteria | 225 |
-| Plan Tasks | 83 |
-| Human Sign-off Tasks | 12 |
-| Tiers | 9 (0 through 8) |
+| Requirements | 55 |
+| Acceptance Criteria | 276 |
+| Plan Tasks | 110 |
+| Human Sign-off Tasks | 14 |
+| Tiers | 11 (0 through 10) |
 
 ---
 
@@ -156,6 +156,45 @@ New tasks from 2026-04-16 kit revision. All prior tiers are complete; these addr
 | T-081 | Header bar styling and cursor position display | app-shell/R3 | T-078, T-047, T-080 | M | In `internal/ui/appshell/header.go`: (1) Apply `lipgloss.NewStyle().Background(th.HeaderBg).Bold(true).Width(m.width)` to the header. (2) Add `WithCursorPos(pos int)` method. (3) Display cursor position as `{pos}/{visible}` alongside existing counts. Unit tests: verify header ANSI output contains HeaderBg color; verify cursor position renders correctly. Human sign-off: header is clearly distinguishable from log lines. |
 | T-082 | Detail pane top border/separator | detail-pane/R1 | T-078, T-041 | S | In `internal/ui/detailpane/model.go` `View()`, prepend a horizontal rule or top border line using `lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderTop(true).BorderForeground(th.FocusBorder)` (or equivalent). The separator visually divides the entry list from the detail pane. Unit test: verify pane View output starts with a border character. Human sign-off: boundary is clearly visible. |
 | T-083 | Focus indicator on panes | app-shell/R10 | T-078, T-046, T-041 | M | When the detail pane is open, indicate which pane (entry list vs detail pane) is focused. Options: (a) render a colored left border on the focused pane using `th.FocusBorder`, (b) show a title bar on the focused pane. The indicator must update immediately when focus changes (Enter to open pane, Esc to close). Unit tests: render with focus on detail pane, verify focus indicator present; switch focus, verify indicator moves. Human sign-off: focused pane is identifiable at a glance. |
+
+### Tier 9 -- Details-Pane Redesign (2026-04-17)
+
+Foundational model + theme extensions, right-split layout, focus cycle, resize keymap, wrap / width awareness. Driven by the 2026-04-17 kit revision after DESIGN.md was authored. Prior tiers remain intact.
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-084 | Extend Theme with DividerColor + UnfocusedBg tokens | config/R4 | T-009, T-078 | S | Add `DividerColor lipgloss.Color` and `UnfocusedBg lipgloss.Color` fields to `Theme` in `internal/theme/theme.go`. Define non-empty values for all three bundled themes (tokyo-night, catppuccin-mocha, material-dark). Per DESIGN.md §2, `DividerColor` reads quiet-neutral (closer to `Dim` than to `FocusBorder`) and `UnfocusedBg` is a subtle background tint distinct from `Dim` (which is a foreground). Unit tests: each theme returns non-empty values for both new tokens; values are distinct from `Dim` and `FocusBorder`. **Design Ref:** DESIGN.md §2. |
+| T-085 | Extend Config with detail_pane orientation keys | config/R5 | T-006, T-010 | S | Extend `Config` in `internal/config/config.go` with `DetailPane.Position string` (default `"auto"`), `DetailPane.OrientationThresholdCols int` (default `100`), `DetailPane.WidthRatio float64` (default `0.30`), `DetailPane.WrapMode string` (default `"soft"`). Add validation: invalid `position` falls back to `"auto"`; invalid numeric values fall back to defaults (per R2 behavior). Unit tests: default file contains all four keys; overrides round-trip; invalid values fall back. **Design Ref:** DESIGN.md §5 config schema additions. |
+| T-086 | Preserve height_ratio and width_ratio independently in Config | config/R5 | T-085, T-024 | S | In `internal/config/config.go` + write-back: ensure `DetailPane.HeightRatio` and `DetailPane.WidthRatio` are stored and persisted as separate keys. A write-back to one must not mutate or null the other. Unit test: set height_ratio=0.50, write-back, re-read; width_ratio unchanged. Same test in the reverse direction. **Design Ref:** DESIGN.md §5 Ratios (independent preservation). |
+| T-087 | Orientation selector model with auto-flip | app-shell/R7 | T-085, T-053 | M | Add `internal/ui/appshell/orientation.go` exposing `SelectOrientation(width int, cfg Config) Orientation` returning `OrientationBelow` or `OrientationRight`. Rules: explicit `position = "below"` or `"right"` returns that value (subject to minimum-viable checks); `"auto"` returns `right` when `width >= orientation_threshold_cols`, else `below`. Wire the selector into `ResizeModel` / `LayoutModel` so orientation is re-evaluated on every `tea.WindowSizeMsg`. Unit tests: threshold boundary, forced modes, re-eval on resize. **Design Ref:** DESIGN.md §5 orientation modes. |
+| T-088 | Right-split composition with divider and border accounting | app-shell/R2 | T-046, T-084, T-087 | L | Extend `internal/ui/appshell/layout.go` with a right-split branch. When `Orientation == OrientationRight`, the main area is composed via `lipgloss.JoinHorizontal(Top, listView, dividerView, detailView)` between the header and the status bar. Width allocation MUST subtract both pane borders (2 cells each = 4) plus the 1-cell divider before multiplying by `width_ratio`: `usable := termWidth - 4 - 1; listW := int(float64(usable)*(1.0 - widthRatio)); detailW := usable - listW`. Follow the code sample in DESIGN.md §5 verbatim. Unit tests: given termWidth=120 and widthRatio=0.30, listW and detailW sum with chrome to exactly 120 (verified via `lipgloss.Width`). **Design Ref:** DESIGN.md §5 Border accounting, §7 DO example. |
+| T-089 | Divider renderer (1-cell vertical glyph) | app-shell/R2 | T-084, T-088 | S | Implement `RenderDivider(height int, theme Theme) string` in `internal/ui/appshell/divider.go`. Returns `height` rows of a single `│` character, foreground `DividerColor`. Divider does **not** recolor on focus change. Unit tests: output width is exactly 1 cell per row (verified with `lipgloss.Width`); output height matches input; color matches `theme.DividerColor`. **Design Ref:** DESIGN.md §4.5. |
+| T-090 | Minimum-viable terminal floor (60x15) fallback | app-shell/R2 | T-046, T-053 | S | In `internal/ui/appshell/layout.go` top-level render: when `termWidth < 60` OR `termHeight < 15`, suppress normal rendering and draw a centered `terminal too small` message (single line or brief stack) using `lipgloss.Place(width, height, Center, Center, msg)`. Normal render resumes automatically once dimensions recover. Unit test: at 59x15 and 60x14 output contains the fallback message and no panels; at 60x15 normal render resumes. **Design Ref:** DESIGN.md §8. |
+| T-091 | Detail pane auto-close on minimum underflow + status notice | app-shell/R7 | T-087, T-088, T-042 | M | In `ResizeModel` / `LayoutModel`: after computing pane dimensions, if orientation is `right` and the computed detail width < 30 cells, OR orientation is `below` and the computed detail height < 3 rows, auto-close the detail pane and emit a one-time status-bar notice (e.g. `detail pane auto-closed — terminal too small`). The notice replaces the key hints for ~3 seconds, then restores them. Unit tests: resize below threshold closes the pane and produces the notice; resize back above threshold does not re-open the pane. **Design Ref:** DESIGN.md §4.4 (min dimensions), §8 adaptive rules. |
+| T-092 | Key-hint bar focus label (right side) | app-shell/R4 | T-050, T-084, T-096 | S | In `internal/ui/appshell/keyhints.go`: when more than one pane is visible, append to the right side of the status bar a focus label reading `focus: list`, `focus: details`, or `focus: filter`. Render with Bold + `FocusBorder` foreground. Omit the label when only one pane is visible (list alone). The label right-aligns; hints remain on the left and are truncated if they would collide. Unit tests: three-focus-state renderings include correct label text and ANSI codes; single-pane state omits the label. **Design Ref:** DESIGN.md §3 type roles (status bar focus label), §4.6, §6 tertiary cue. |
+| T-093 | Header narrow-mode degradation + source ellipsis | app-shell/R3 | T-047, T-081 | M | In `internal/ui/appshell/header.go`: before rendering, measure component widths using `lipgloss.Width`. If the total would exceed terminal width, drop components in order: focus label → entry counts (`<visible>/<total> entries`) → cursor position (`<cursorPos>/<visible>`) → FOLLOW badge. Source is always kept; if alone it overflows, truncate with `…` (use `lipgloss.Width`-based truncation, not byte length). Unit tests: progressively narrow widths drop components in the specified order; 10-col width still shows a truncated source with `…`. **Design Ref:** DESIGN.md §4.1 (degradation order), §8 header degradation. |
+| T-094 | Mouse horizontal zones in right-split with divider buffer | app-shell/R6 | T-052, T-088 | M | In `internal/ui/appshell/mouse.go`: when orientation is right-split, partition the main area horizontally into three zones — entry list (columns `[borderL .. listEnd]`), divider column (1 cell), detail pane (columns `[detailStart .. borderR]`). Header and status bar remain separate horizontal zones as today. Add a 1-cell buffer on each side of the divider where clicks are NOT routed to either pane (prevents mis-routing on the chrome). Mouse drag on the divider column triggers width-ratio resize (horizontal drag in right mode). Unit tests: click at `(listEnd, row)` is ignored (buffer); click at `(listEnd - 1, row)` routes to list; click at `(detailStart + 1, row)` routes to detail. **Design Ref:** DESIGN.md §5 Border accounting, §6 focus model. |
+| T-095 | Click-to-focus on panes | app-shell/R6, R11 | T-094, T-052 | S | In `internal/ui/appshell/mouse.go` click handler: after the target pane has processed the click (selection, etc.), also emit a `FocusMsg{Target: pane}` so focus transfers to that pane. Applies in both orientations — clicking inside the list focuses the list; clicking inside the detail pane focuses details. Clicks outside any pane are no-ops for focus. Unit test: click at detail-pane coords when list focused produces a FocusMsg targeting details; focus state updates. **Design Ref:** DESIGN.md §6 focus model (mouse click focuses). |
+| T-096 | Tab focus cycle between visible panes | app-shell/R11 | T-046, T-041, T-039, T-051 | M | Add `internal/ui/appshell/focus.go` with `NextFocus(current FocusTarget, visible []FocusTarget, overlayOpen bool) FocusTarget`. Rules: if any overlay is open (filter panel or help), `Tab` is inert and focus stays where it is. Otherwise Tab cycles through the visible panes in order: list → details (when open) → list. Never closes a pane on Tab. Wire the function into the top-level `app-shell` model's `Update` handler. Unit tests: list+details both visible, Tab flips focus; filter overlay open, Tab is a no-op; single pane (list alone), Tab is a no-op. **Design Ref:** DESIGN.md §6 focus model + §9 keymap matrix (Tab). |
+| T-097 | Esc context-sensitive dismissal | app-shell/R11 | T-041, T-051, T-039, T-043 | M | In the top-level app-shell `Update`: on `Esc`, apply priority: (1) if any overlay (filter panel or help) is open, close the overlay only and consume the key; (2) else if the detail pane is focused, close the pane and return focus to the list (T-041 already does this, just ensure Tab-close-free semantics); (3) else if the list is focused, clear transient state (active search, mark-nav wrap indicator) if present, otherwise no-op. Ensure Tab never closes a pane (enforce in T-096 too). Unit tests: each branch individually and in sequence. **Design Ref:** DESIGN.md §6 focus model (Esc priority). |
+| T-098 | Ratio keymap handler (\|/+/-/=/clamp) | app-shell/R12 | T-042, T-088, T-087 | M | Add `internal/ui/appshell/ratiokeys.go` with an `Update` integration routing keys: `\|` cycles presets `[0.10, 0.30, 0.70]` in order; `+` adds 0.05 to the active ratio; `-` subtracts 0.05; `=` resets the active ratio to `0.30`. Active ratio is `height_ratio` in below-mode and `width_ratio` in right-mode (selected via the orientation model from T-087). All adjustments clamp to `[0.10, 0.80]` (inclusive). Changes must update the in-memory layout model AND call a write-back hook (see T-099). Unit tests: pressing `+` three times from 0.30 produces 0.45; from 0.80 is no-op; pressing `\|` cycles the three presets; below vs right modes address different fields. **Design Ref:** DESIGN.md §5 Ratio keymap, §9 keymap matrix. |
+| T-099 | Ratio live write-back to config | app-shell/R12, config/R6 | T-098, T-024, T-086 | S | Wire the T-098 handler's write-back hook to `config.WriteField`: writes `detail_pane.height_ratio` in below mode, `detail_pane.width_ratio` in right mode. Writes happen on every ratio change so the new value survives a restart. Ensure the other ratio is not touched (relies on T-086). Unit/integration test: change ratio in below mode, verify config file updated with new height_ratio and unchanged width_ratio; repeat in right mode. **Design Ref:** DESIGN.md §5 (persistence implicit), kit R12 AC 7. |
+| T-100 | Unfocused-pane visual state (DividerColor + UnfocusedBg + Dim fg) | app-shell/R10 | T-084, T-083, T-088 | M | Update pane render paths in `internal/ui/entrylist/list.go` and `internal/ui/detailpane/model.go`: when a pane is unfocused-but-visible, render with `DividerColor` for ALL borders (left/right/top/bottom — not just the left), set background to `UnfocusedBg`, and blend the foreground toward `Dim` (e.g. apply `lipgloss.NewStyle().Faint(true)` on the rendered body or swap the style base). Must NOT alter rendered dimensions (no post-render border wrapping). Unit tests: render entry list with focus on detail pane — verify list border color == `DividerColor`, background contains `UnfocusedBg` ANSI, outer width/height unchanged from focused state; repeat with list focus, verifying detail pane uses unfocused treatment. **Design Ref:** DESIGN.md §4 matrix, §6 focus cues. |
+| T-101 | Alone-pane uses focused treatment | app-shell/R10 | T-100, T-083 | S | In the pane renderer: when a pane is the sole visible pane (detail pane closed => list is alone), it uses the focused treatment — `FocusBorder` borders, base background, full contrast foreground. Do not apply unfocused treatment to a solitary pane. Unit tests: close detail pane, verify the list renders with FocusBorder borders and base background regardless of internal focus flag. **Design Ref:** DESIGN.md §4 matrix (Alone row). |
+| T-102 | Cursor row always rendered when list unfocused | entry-list/R1, app-shell/R10 | T-079, T-100 | S | In `internal/ui/entrylist/list.go` `View()`: the cursor row is always rendered with `CursorHighlight` background — even when the list is unfocused-but-visible. When unfocused, reduce intensity: non-Bold weight and (per DESIGN.md §4 matrix) the `CursorHighlight` at a perceptually reduced level. Focused state keeps Bold + full CursorHighlight. Unit tests: with focus=list verify cursor row Bold + full bg; with focus=details verify cursor row non-Bold + CursorHighlight bg still present. **Design Ref:** DESIGN.md §4 matrix (cursor row cross-cutting), §6 tertiary cue #4. |
+| T-103 | Detail pane top border in both orientations | detail-pane/R1, app-shell/R10 | T-082, T-088 | S | Extend the existing T-082 border logic to explicitly verify the top border renders in BOTH `below` and `right` orientations. In right mode the top border of the detail pane must appear at the top of the pane column (not dropped due to `JoinHorizontal` interactions). Add unit tests: render the detail pane in each orientation and assert the first line of the pane's View output contains the border glyph using `lipgloss.Width`-safe scanning. **Design Ref:** DESIGN.md §4.4 (top border visible in both), §6 border conventions. |
+| T-104 | Detail pane width resize in right orientation | detail-pane/R6 | T-042, T-088, T-098 | M | Extend `internal/ui/detailpane/height.go` (rename logically to size.go) to accept both dimensions. In right orientation the pane opens at `width_ratio` (default 0.30) and the `+`/`-`/`\|`/`=` keys from T-098 adjust `width_ratio` instead of `height_ratio`. Mouse drag on the vertical divider in right mode resizes the pane width (horizontal delta). Unit tests: open in right mode at width 120 with width_ratio=0.30, pane width ≈ 0.30*usable; pressing `+` once increases width_ratio by 0.05; mouse drag handler updates width_ratio by horizontal pixel delta normalized to terminal width. **Design Ref:** DESIGN.md §5 Ratios, kit detail-pane R6. |
+| T-105 | Orientation flip preserves both ratios | app-shell/R7, detail-pane/R6 | T-086, T-087, T-104 | S | In the orientation-flip path (triggered from T-087 on WindowSizeMsg or from T-098 on `position` change): ensure flipping `below → right` does NOT overwrite `width_ratio` with `height_ratio` (or vice versa). Both ratios live independently in the model AND in config. Unit test: load config with height_ratio=0.60, width_ratio=0.20, flip orientation both ways, verify neither value mutated. **Design Ref:** DESIGN.md §5 Ratios (independent preservation), kit app-shell R7 AC 7. |
+| T-106 | Detail pane soft wrap | detail-pane/R9 | T-037, T-085, T-107 | M | Implement soft wrap in `internal/ui/detailpane/render.go` (or a new `wrap.go`): when a rendered content line exceeds the pane's content width, wrap at the pane width. Use width-safe measurement (T-107). No silent hard truncation — if content is wider than the line budget, it wraps onto the next line. Wrapped total height must not exceed the allocated pane height; overflow is handled by the existing scroll model (T-037). When `wrap_mode = "soft"` (the shipping default) this path is active; `wrap_mode = "scroll"` and `"modal"` remain out of scope per kit. Unit tests: a long-string field wraps at the pane width; scroll works across wrapped lines; total rendered height ≤ allocated height. **Design Ref:** DESIGN.md §4.4 (open, soft-wrap), §7 don't-hard-truncate. |
+| T-107 | Detail pane width-safe measurement (emoji/CJK/ANSI) | detail-pane/R10 | T-035, T-088 | M | Replace any byte-length-based measurement in the detail pane with `lipgloss.Width` (which internally handles emoji, CJK, and ANSI-escape-safe measurement via `go-runewidth` under the hood). Audit `internal/ui/detailpane/*.go` for `len(...)` usages on rendered strings and swap them for `lipgloss.Width`. Ensure the pane's outer width equals the allocated width. Unit tests: render a line containing `🔥`, `日本語`, and ANSI-styled substrings; measured width equals expected cell-count; pane does not overflow its allocated width. **Design Ref:** DESIGN.md §7 DO #1 / DON'T #1, kit detail-pane R10. |
+| T-108 | Terminal resize extension: re-eval orientation + preserve ratios | app-shell/R7 | T-053, T-087, T-105 | S | Extend `internal/ui/appshell/resize.go` `ResizeModel` so every `tea.WindowSizeMsg` re-invokes `SelectOrientation` from T-087 and passes both ratios through unchanged. Ensure resize does not clobber `height_ratio` or `width_ratio` (delegates to T-105). Add unit test: simulate a window that shrinks from 120 to 90 cols with `position = "auto"`, verify the model flips from `right` to `below` and both ratios remain at their configured values. **Design Ref:** DESIGN.md §8 adaptive rules, kit app-shell R7 ACs 6-7. |
+
+### Tier 10 -- Human Sign-off (Visual State Matrix)
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-109 | [HUMAN] DividerColor + UnfocusedBg visual sign-off | config/R4 | T-084, T-088, T-100, T-060 | S | Human visually verifies — across all three bundled themes — that (1) `DividerColor` reads as a quiet neutral hue (closer to `Dim` than to `FocusBorder`, never dominant), and (2) `UnfocusedBg` is a subtle background tint that dims without erasing content. Confirm the divider column in right-split does not recolor on focus change. **Design Ref:** DESIGN.md §2 new tokens. |
+| T-110 | [HUMAN] Pane visual-state matrix sign-off | app-shell/R10 | T-100, T-101, T-102, T-103, T-088, T-060 | S | Human visually verifies the DESIGN.md §4 matrix: focused pane uses `FocusBorder` border + base bg + full-contrast fg; unfocused-but-visible pane uses `DividerColor` border + `UnfocusedBg` bg + `Dim`-blend fg; an alone pane uses the focused treatment; the cursor row remains visible (at reduced intensity) when the list is unfocused; the detail pane top border is visible in both orientations. **Design Ref:** DESIGN.md §4 matrix. |
 
 ---
 
@@ -309,15 +348,89 @@ graph LR
     T-078 --> T-083
     T-046 --> T-083
     T-041 --> T-083
+    T-009 --> T-084
+    T-078 --> T-084
+    T-006 --> T-085
+    T-010 --> T-085
+    T-085 --> T-086
+    T-024 --> T-086
+    T-085 --> T-087
+    T-053 --> T-087
+    T-046 --> T-088
+    T-084 --> T-088
+    T-087 --> T-088
+    T-084 --> T-089
+    T-088 --> T-089
+    T-046 --> T-090
+    T-053 --> T-090
+    T-087 --> T-091
+    T-088 --> T-091
+    T-042 --> T-091
+    T-050 --> T-092
+    T-084 --> T-092
+    T-096 --> T-092
+    T-047 --> T-093
+    T-081 --> T-093
+    T-052 --> T-094
+    T-088 --> T-094
+    T-094 --> T-095
+    T-052 --> T-095
+    T-046 --> T-096
+    T-041 --> T-096
+    T-039 --> T-096
+    T-051 --> T-096
+    T-041 --> T-097
+    T-051 --> T-097
+    T-039 --> T-097
+    T-043 --> T-097
+    T-042 --> T-098
+    T-088 --> T-098
+    T-087 --> T-098
+    T-098 --> T-099
+    T-024 --> T-099
+    T-086 --> T-099
+    T-084 --> T-100
+    T-083 --> T-100
+    T-088 --> T-100
+    T-100 --> T-101
+    T-083 --> T-101
+    T-079 --> T-102
+    T-100 --> T-102
+    T-082 --> T-103
+    T-088 --> T-103
+    T-042 --> T-104
+    T-088 --> T-104
+    T-098 --> T-104
+    T-086 --> T-105
+    T-087 --> T-105
+    T-104 --> T-105
+    T-037 --> T-106
+    T-085 --> T-106
+    T-107 --> T-106
+    T-035 --> T-107
+    T-088 --> T-107
+    T-053 --> T-108
+    T-087 --> T-108
+    T-105 --> T-108
+    T-084 --> T-109
+    T-088 --> T-109
+    T-100 --> T-109
+    T-060 --> T-109
+    T-100 --> T-110
+    T-101 --> T-110
+    T-102 --> T-110
+    T-103 --> T-110
+    T-088 --> T-110
+    T-060 --> T-110
 ```
 
 ---
 
 ## Coverage Matrix
 
-Every acceptance criterion from all 6 kits mapped to its covering task(s). Status: COVERED for all 210 criteria.
+Every acceptance criterion from all 6 kits mapped to its covering task(s).
 
-### log-source (8 requirements, 23 criteria)
+### log-source (8 requirements, 26 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -348,7 +461,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R8 | 2 | Tail-mode entries carry correct line numbers continuing from the last initially loaded line | T-028 | COVERED |
 | R8 | 3 | Tail mode is not activated when reading from stdin, regardless of flags | T-028 | COVERED |
 
-### config (7 requirements, 22 criteria)
+### config (7 requirements, 32 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -366,19 +479,26 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R4 | 4 | Each bundled theme defines color tokens for all required categories: level badges, syntax highlighting, marks, dim, search highlight, cursor highlight, header background, focus border | T-009, T-078 | COVERED |
 | R4 | 5 | Specifying an unknown theme name falls back to `tokyo-night` with a warning | T-009 | COVERED |
 | R4 | 6 | [human] One-time visual sign-off per bundled theme: all color tokens produce a coherent, readable theme | T-061, T-062, T-063 | COVERED |
+| R4 | 7 | Each bundled theme defines non-empty DividerColor and UnfocusedBg tokens | T-084 | COVERED |
+| R4 | 8 | [human] DividerColor reads as a quiet neutral and UnfocusedBg is a subtle background tint | T-109 | COVERED |
 | R5 | 1 | The default compact row fields are time, level, logger, and msg | T-010 | COVERED |
 | R5 | 2 | Setting sub-row fields in config causes those fields to appear as sub-rows in entry list | T-010, T-030 | COVERED |
 | R5 | 3 | Setting hidden fields in config causes those fields to be omitted from the detail pane | T-010, T-038 | COVERED |
 | R5 | 4 | The default logger abbreviation depth is 2 | T-010 | COVERED |
 | R5 | 5 | The default detail pane height ratio is 0.30 | T-010 | COVERED |
 | R5 | 6 | Each of these settings can be overridden in config and new values take effect | T-010 | COVERED |
+| R5 | 7 | The default config includes detail_pane.position = "auto" | T-085 | COVERED |
+| R5 | 8 | detail_pane.orientation_threshold_cols defaults to 100 | T-085 | COVERED |
+| R5 | 9 | detail_pane.width_ratio defaults to 0.30 | T-085 | COVERED |
+| R5 | 10 | detail_pane.wrap_mode defaults to "soft" | T-085 | COVERED |
+| R5 | 11 | detail_pane.height_ratio and detail_pane.width_ratio are preserved independently across orientation flips | T-086, T-105 | COVERED |
 | R6 | 1 | When a field is hidden interactively in the detail pane, the config file is updated to reflect the change | T-024, T-038 | COVERED |
 | R6 | 2 | After interactive write-back, the config file remains valid TOML | T-024 | COVERED |
 | R6 | 3 | Existing config values not affected by the change are preserved | T-024 | COVERED |
 | R7 | 1 | Adding a new top-level key or section does not require changing the schema of existing keys | T-025 | COVERED |
 | R7 | 2 | A config file written by the current version can be read by a future version that adds new keys | T-025 | COVERED |
 
-### filter-engine (7 requirements, 24 criteria)
+### filter-engine (7 requirements, 27 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -410,7 +530,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R7 | 2 | The index preserves the original entry order | T-020 | COVERED |
 | R7 | 3 | When filters change, the index is recomputed and re-emitted | T-020 | COVERED |
 
-### entry-list (11 requirements, 49 criteria)
+### entry-list (11 requirements, 58 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -473,16 +593,18 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R11 | 2 | The cursor position updates when the cursor moves (j/k, g/G, level-jump, mark-nav) | T-080 | COVERED |
 | R11 | 3 | When filters change, the cursor position reflects the new filtered set | T-080 | COVERED |
 
-### detail-pane (8 requirements, 33 criteria)
+### detail-pane (10 requirements, 53 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
 | R1 | 1 | Pressing Enter while an entry is selected in the list opens the detail pane showing that entry | T-041 | COVERED |
 | R1 | 2 | Double-clicking an entry in the list opens the detail pane showing that entry | T-041 | COVERED |
-| R1 | 3 | Pressing Esc while the detail pane is focused closes it and returns focus to the entry list | T-041 | COVERED |
+| R1 | 3 | Pressing Esc while the detail pane is focused closes it and returns focus to the entry list | T-041, T-097 | COVERED |
 | R1 | 4 | Pressing Enter while the detail pane is focused closes it and returns focus to the entry list | T-041 | COVERED |
 | R1 | 5 | When open, the detail pane is rendered with a visible top border or separator line | T-082 | COVERED |
-| R1 | 6 | [human] The boundary between entry list and detail pane is clearly visible | T-082 | COVERED |
+| R1 | 6 | The total rendered height of the detail pane (border + content) equals the allocated pane height | T-082, T-106 | COVERED |
+| R1 | 7 | [human] The boundary between entry list and detail pane is clearly visible | T-082 | COVERED |
+| R1 | 8 | The detail pane's top border is visible in both below and right orientations | T-103 | COVERED |
 | R2 | 1 | A JSONL entry is rendered as indented, formatted JSON | T-035 | COVERED |
 | R2 | 2 | All fields from the entry are present in the rendered output, including extra fields | T-035 | COVERED |
 | R2 | 3 | Rendering produces ANSI output where JSON keys contain the active theme's key color token value | T-035 | COVERED |
@@ -503,10 +625,15 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R5 | 3 | The visibility change is written to the config file immediately | T-038, T-024 | COVERED |
 | R5 | 4 | After restarting the application, previously hidden fields remain hidden | T-059 | COVERED |
 | R6 | 1 | The detail pane opens at the configured height ratio | T-042 | COVERED |
-| R6 | 2 | Pressing `+` while the detail pane is focused increases its height | T-042 | COVERED |
-| R6 | 3 | Pressing `-` while the detail pane is focused decreases its height | T-042 | COVERED |
-| R6 | 4 | After a terminal resize event, the pane maintains its proportional height | T-042 | COVERED |
+| R6 | 2 | Pressing `+` while the detail pane is focused increases its height | T-042, T-098 | COVERED |
+| R6 | 3 | Pressing `-` while the detail pane is focused decreases its height | T-042, T-098 | COVERED |
+| R6 | 4 | After a terminal resize event, the pane maintains its proportional height | T-042, T-108 | COVERED |
 | R6 | 5 | Mouse drag on the pane divider resizes the pane | T-042 | COVERED |
+| R6 | 6 | In right orientation the detail pane opens at the configured width ratio | T-104 | COVERED |
+| R6 | 7 | Pressing `+` while the detail pane is focused in right orientation increases its width ratio | T-104, T-098 | COVERED |
+| R6 | 8 | Pressing `-` while the detail pane is focused in right orientation decreases its width ratio | T-104, T-098 | COVERED |
+| R6 | 9 | Mouse drag on the vertical divider in right orientation resizes the pane width | T-104, T-094 | COVERED |
+| R6 | 10 | Flipping orientation from below to right preserves the previous height_ratio, and flipping back restores it | T-105 | COVERED |
 | R7 | 1 | Pressing `/` while the detail pane is focused opens a search input within the pane | T-043 | COVERED |
 | R7 | 2 | Typing a search term highlights matching text in the pane content | T-043 | COVERED |
 | R7 | 3 | Pressing `n` moves to the next match | T-043 | COVERED |
@@ -517,8 +644,14 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R8 | 1 | Clicking on a field value in the detail pane triggers a filter prompt with the field name and value pre-filled | T-045 | COVERED |
 | R8 | 2 | The prompt allows choosing include or exclude mode | T-045 | COVERED |
 | R8 | 3 | Confirming the prompt adds the filter to the filter engine | T-045 | COVERED |
+| R9 | 1 | When wrap_mode = "soft" and a rendered line exceeds the pane's content width, the line wraps at the pane width | T-106 | COVERED |
+| R9 | 2 | No content is hard-truncated without a visible indicator | T-106 | COVERED |
+| R9 | 3 | When content wraps, total rendered height does not exceed the allocated pane height — overflow is navigated via the existing scroll model | T-106, T-037 | COVERED |
+| R10 | 1 | The detail pane renders correctly when given different widths; the rendered output's outer width equals the allocated width | T-107 | COVERED |
+| R10 | 2 | Rendering a line containing multi-byte characters (emoji or CJK) does not produce column drift or pane overflow | T-107 | COVERED |
+| R10 | 3 | Rendering a line containing ANSI escape sequences does not produce column drift or pane overflow | T-107 | COVERED |
 
-### app-shell (10 requirements, 34 criteria)
+### app-shell (12 requirements, 80 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -531,6 +664,9 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R2 | 3 | When the detail pane is open, it appears between the entry list and the status bar | T-046 | COVERED |
 | R2 | 4 | The status/key-hint bar is rendered at the bottom of the terminal | T-046 | COVERED |
 | R2 | 5 | All panes together fill the full terminal width and height with no gaps or overlap | T-046 | COVERED |
+| R2 | 6 | In right-split orientation, the main area composes as header / [entryList │ divider(1 cell) │ detailPane] / statusBar with the divider occupying exactly 1 terminal column | T-088, T-089 | COVERED |
+| R2 | 7 | In right-split orientation, pane widths are computed after subtracting both pane borders and the 1-cell divider from the usable terminal width | T-088 | COVERED |
+| R2 | 8 | When terminal width is below 60 columns or terminal height is below 15 rows, a centered "terminal too small" message is shown | T-090 | COVERED |
 | R3 | 1 | The header bar shows the file name when reading from a file | T-047 | COVERED |
 | R3 | 2 | The header bar shows a stdin indicator when reading from stdin | T-047 | COVERED |
 | R3 | 3 | The header bar shows a `[FOLLOW]` badge when tail mode is active | T-047 | COVERED |
@@ -540,22 +676,34 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R3 | 7 | The header bar shows the current cursor position as a 1-based index within the visible set | T-081 | COVERED |
 | R3 | 8 | The header bar is rendered with a distinct background color from the theme | T-081 | COVERED |
 | R3 | 9 | [human] The header bar is clearly distinguishable from the entry list rows below it | T-081 | COVERED |
+| R3 | 10 | When the header's rendered width would exceed the terminal width, content is dropped in order: focus label → counts → cursor position → FOLLOW badge | T-093 | COVERED |
+| R3 | 11 | The source name is always visible; when it alone would overflow it is truncated with an ellipsis rather than dropped | T-093 | COVERED |
 | R4 | 1 | When the entry list is focused, the key-hint bar shows entry-list keybindings | T-050 | COVERED |
 | R4 | 2 | When the detail pane is focused, the key-hint bar shows detail-pane keybindings | T-050 | COVERED |
 | R4 | 3 | When the filter panel is focused, the key-hint bar shows filter-panel keybindings | T-050 | COVERED |
 | R4 | 4 | Key hints update immediately when focus changes | T-050 | COVERED |
+| R4 | 5 | The key-hint bar renders as exactly 1 terminal row regardless of content length (truncated, not wrapped) | T-050 | COVERED |
+| R4 | 6 | When more than one pane is visible, the right side of the key-hint bar shows a focus label (`focus: list|details|filter`) in Bold with FocusBorder foreground | T-092 | COVERED |
+| R4 | 7 | When only one pane is visible, the focus label is omitted | T-092 | COVERED |
 | R5 | 1 | Pressing `?` opens the help overlay | T-051 | COVERED |
 | R5 | 2 | The help overlay lists keybindings for all domains | T-051 | COVERED |
-| R5 | 3 | Pressing Esc closes the help overlay and returns to the previous view | T-051 | COVERED |
+| R5 | 3 | Pressing Esc closes the help overlay and returns to the previous view | T-051, T-097 | COVERED |
 | R5 | 4 | While the help overlay is open, other keybindings are not processed | T-051 | COVERED |
 | R6 | 1 | Mouse events in the entry list area are routed to the entry list | T-052 | COVERED |
 | R6 | 2 | Mouse events in the detail pane area are routed to the detail pane | T-052 | COVERED |
 | R6 | 3 | Mouse drag on the pane divider triggers pane resize | T-052 | COVERED |
 | R6 | 4 | Mouse events do not cause crashes regardless of where in the terminal they occur | T-052 | COVERED |
+| R6 | 5 | In right-split orientation, mouse zones partition the main area horizontally into list / divider-column / detail | T-094 | COVERED |
+| R6 | 6 | A 1-cell buffer adjacent to the divider prevents clicks near the divider from being routed to the wrong pane | T-094 | COVERED |
+| R6 | 7 | Clicking inside a pane transfers focus to that pane | T-095 | COVERED |
 | R7 | 1 | After a terminal resize, the layout fills the new terminal dimensions | T-053 | COVERED |
 | R7 | 2 | Pane proportions are preserved after resize | T-053 | COVERED |
 | R7 | 3 | No content is clipped or overlapping after resize | T-053 | COVERED |
 | R7 | 4 | Resize does not cause a crash or panic | T-053 | COVERED |
+| R7 | 5 | Child models process WindowSizeMsg even when their data set is empty | T-053 | COVERED |
+| R7 | 6 | When detail_pane.position is "auto", orientation is re-evaluated on every terminal-resize event | T-087, T-108 | COVERED |
+| R7 | 7 | height_ratio and width_ratio are preserved across orientation flips | T-105, T-086 | COVERED |
+| R7 | 8 | When the detail pane's computed dimension falls below the minimum (width<30 right / height<3 below) the pane auto-closes with a one-time notice | T-091 | COVERED |
 | R8 | 1 | While entries are being loaded, a loading indicator is visible | T-048 | COVERED |
 | R8 | 2 | When loading completes, the loading indicator is no longer visible | T-048 | COVERED |
 | R8 | 3 | The loading indicator shows progress (e.g. number of entries loaded so far) | T-048 | COVERED |
@@ -564,23 +712,42 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 | R9 | 3 | Non-JSON marked entries are included as raw text lines | T-054 | COVERED |
 | R9 | 4 | Pressing `y` with no marked entries does not modify the clipboard | T-054 | COVERED |
 | R10 | 1 | When the detail pane is open and focused, it has a visual indicator distinguishing it from the unfocused entry list | T-083 | COVERED |
-| R10 | 2 | When the entry list is focused and the detail pane is open, the entry list has a visual indicator | T-083 | COVERED |
+| R10 | 2 | The focus indicator does not change the rendered width or height of any pane | T-083, T-100 | COVERED |
 | R10 | 3 | The focus indicator updates immediately when focus changes between panes | T-083 | COVERED |
-| R10 | 4 | [human] The focused pane is clearly identifiable at a glance | T-083 | COVERED |
+| R10 | 4 | [human] The focused pane is clearly identifiable at a glance | T-083, T-110 | COVERED |
+| R10 | 5 | Unfocused visible panes render with DividerColor borders | T-100 | COVERED |
+| R10 | 6 | Unfocused visible panes render with an UnfocusedBg background | T-100 | COVERED |
+| R10 | 7 | When a pane is the only visible pane, it uses the focused treatment (FocusBorder borders, base background) | T-101 | COVERED |
+| R10 | 8 | [cross-kit] The cursor row in the entry list is always rendered even when the entry list is unfocused; intensity and bold vary with focus | T-102 | COVERED |
+| R10 | 9 | The detail pane top border is visible in both below and right orientations | T-103 | COVERED |
+| R11 | 1 | Pressing Tab with the entry list and detail pane both visible cycles focus between them | T-096 | COVERED |
+| R11 | 2 | Tab is inert (does not cycle focus) while the filter panel or help overlay is open | T-096 | COVERED |
+| R11 | 3 | Pressing Esc with an overlay open closes the overlay only | T-097 | COVERED |
+| R11 | 4 | Pressing Esc with no overlay open and the detail pane focused closes the detail pane and returns focus to the entry list | T-097 | COVERED |
+| R11 | 5 | Pressing Esc with no overlay open and the entry list focused clears transient state when present; otherwise no-op | T-097 | COVERED |
+| R11 | 6 | Clicking inside a pane focuses that pane | T-095 | COVERED |
+| R11 | 7 | Tab never closes a pane | T-096 | COVERED |
+| R12 | 1 | Pressing `\|` cycles the active ratio through the presets 0.10, 0.30, 0.70 | T-098 | COVERED |
+| R12 | 2 | Pressing `+` increases the active ratio by 0.05 | T-098 | COVERED |
+| R12 | 3 | Pressing `-` decreases the active ratio by 0.05 | T-098 | COVERED |
+| R12 | 4 | Pressing `=` resets the active ratio to 0.30 | T-098 | COVERED |
+| R12 | 5 | Ratio values are clamped to the range [0.10, 0.80] | T-098 | COVERED |
+| R12 | 6 | In below orientation the active ratio is height_ratio; in right orientation the active ratio is width_ratio | T-098 | COVERED |
+| R12 | 7 | Ratio changes are persisted to the config file via live write-back | T-099 | COVERED |
 
 ### Coverage Totals
 
 | Domain | Requirements | Criteria | Covered | Gaps |
 |---|---|---|---|---|
 | log-source | 8 | 26 | 26 | 0 |
-| config | 7 | 25 | 25 | 0 |
+| config | 7 | 32 | 32 | 0 |
 | filter-engine | 7 | 27 | 27 | 0 |
 | entry-list | 11 | 58 | 58 | 0 |
-| detail-pane | 8 | 40 | 40 | 0 |
-| app-shell | 10 | 45 | 45 | 0 |
-| **Total** | **51** | **225** | **225** | **0** |
+| detail-pane | 10 | 53 | 53 | 0 |
+| app-shell | 12 | 80 | 80 | 0 |
+| **Total** | **55** | **276** | **276** | **0** |
 
-> All 225 enumerated criteria are covered by at least one task.
+> All 276 enumerated criteria are covered by at least one task.
 
 ---
 
@@ -590,17 +757,20 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s). Statu
 _None identified at planning time._
 
 ### P1 -- Critical
-- **No Go module or source code exists yet.** T-001 must complete before any compilation is possible.
-- **TOML library selection** needed for config (T-006). `BurntSushi/toml` is standard but may not preserve unknown keys on round-trip. `pelletier/go-toml/v2` has better round-trip support. Decision needed during T-006.
+- **TOML round-trip for nested keys.** The new `detail_pane.*` group (T-085) nests config keys. `pelletier/go-toml/v2`'s `Marshal/Unmarshal` preserves unknown keys at top level but the AST-level writer used by T-024 live write-back must be re-validated for nested-section round-trips. If unknown keys inside `[detail_pane]` are stripped, T-086 and T-099 are at risk.
+- **Orientation re-evaluation race with async load.** T-087/T-108 re-evaluate orientation on every `WindowSizeMsg`, including the one that arrives before async file loading completes (the `daa9fca` class of bug). Child models must receive the orientation and both ratios even when their data set is empty, and `SelectOrientation` must be pure / side-effect-free.
 
 ### P2 -- Important
-- **Clipboard on Linux** requires `xclip` or `xsel` (X11) or `wl-copy` (Wayland). `atotto/clipboard` handles this but users without these tools get a silent failure. Consider documenting the dependency.
-- **Large file performance**: Virtual rendering (T-029) benchmark target of <16ms per frame needs validation with real 100k+ line JSONL files. If Bubble Tea's rendering pipeline is the bottleneck, custom rendering may be needed.
-- **fsnotify limitations**: On some Linux filesystems, `fsnotify` may not detect appends to files opened with `O_APPEND`. May need to fall back to polling. Investigate during T-028.
+- **go-runewidth dependency edge cases.** T-107 relies on `lipgloss.Width`, which uses `go-runewidth` under the hood. Some emoji (notably ZWJ sequences, `🏳️‍🌈`) and recent CJK additions may report widths inconsistently across terminal emulators. Document a fallback for pathological strings.
+- **Status-bar one-time notices (T-091) scheduling.** The "detail pane auto-closed" notice must auto-dismiss after ~3 seconds. Bubble Tea's `tea.Tick` is the right primitive, but care must be taken to avoid piling up pending ticks on rapid resizes — debounce or check a generation counter.
+- **Mouse drag divider precision in right orientation (T-104, T-094).** Horizontal drag deltas in right-split need normalization against the usable terminal width (after border accounting). With small terminals the 0.05 step may be coarser than the drag resolution; a sub-step accumulator is acceptable but must still clamp to `[0.10, 0.80]`.
+- **Clipboard on Linux** requires `xclip`/`xsel` (X11) or `wl-copy` (Wayland). `atotto/clipboard` handles this but users without these tools get a silent failure. Consider documenting the dependency.
+- **Large file performance**: Virtual rendering (T-029) benchmark target of <16ms per frame needs validation with real 100k+ line JSONL files.
 
 ### P3 -- Nice to Have
-- **Config file migration**: No versioning scheme for config files. If future versions add required fields, migration logic will be needed. Current forward-compat (R3, R7) handles this passively.
-- **Mouse drag precision**: Pane divider drag (T-042, T-052) may feel imprecise in terminals with large cell sizes. Low priority for v1.
+- **Config migration for renamed keys.** If a future revision renames `detail_pane.height_ratio` or moves ratios under a different section, the current forward-compat scheme (R3/R7) handles it passively but users lose their persisted value. Track as a v2 concern.
+- **Divider glyph on terminals without box-drawing.** The `│` glyph (T-089) may render as `?` on exotic terminals. Low priority — document that we target modern terminal emulators.
+- **Pane divider drag precision** (T-042, T-052, T-094) may feel imprecise in terminals with large cell sizes.
 
 ---
 
@@ -617,6 +787,7 @@ _None identified at planning time._
 | Clipboard | `atotto/clipboard` | Cross-platform clipboard access |
 | JSON Pretty-Print | Custom renderer with Lip Gloss | Need per-token coloring; existing libraries do not integrate with Lip Gloss themes |
 | Regex Engine | `regexp` (RE2) | Standard library, safe (no backtracking), good enough for log filtering |
+| Width measurement | `lipgloss.Width` (wraps `go-runewidth`) | Emoji-, CJK-, and ANSI-safe cell-count; NEW requirement from detail-pane R10. `len()` on rendered strings is a DESIGN.md violation. |
 
 ### Directory Layout
 
@@ -632,10 +803,10 @@ gloggy/
       loader.go         # Background loader with progress
       tail.go           # Tail mode watcher
     config/
-      config.go         # Config struct, load, defaults
-      write.go          # Live write-back
+      config.go         # Config struct, load, defaults (extended with detail_pane orientation keys)
+      write.go          # Live write-back (supports nested keys)
     theme/
-      theme.go          # Theme struct, color tokens
+      theme.go          # Theme struct, color tokens (DividerColor, UnfocusedBg added Tier 9)
       tokyo_night.go    # Built-in theme
       catppuccin.go     # Built-in theme
       material_dark.go  # Built-in theme
@@ -656,15 +827,22 @@ gloggy/
         model.go        # Bubble Tea model
         render.go       # JSON pretty-print, raw display
         search.go       # In-pane search
+        size.go         # NEW Tier 9: height + width ratio model
+        wrap.go         # NEW Tier 9: soft wrap (wrap_mode=soft)
       filter/
         panel.go        # Filter panel overlay
       appshell/
         model.go        # Top-level Bubble Tea model
-        layout.go       # Layout manager
-        header.go       # Header bar
-        keyhint.go      # Key-hint bar
+        layout.go       # Layout manager (right-split branch + min-viable floor)
+        header.go       # Header bar (narrow-mode degradation)
+        keyhints.go     # Key-hint bar (focus label on right side)
         help.go         # Help overlay
         clipboard.go    # Clipboard handler
+        orientation.go  # NEW Tier 9: SelectOrientation + auto-flip
+        divider.go      # NEW Tier 9: 1-cell vertical divider renderer
+        focus.go        # NEW Tier 9: Tab-cycle + Esc context-sensitive
+        ratiokeys.go    # NEW Tier 9: |/+/-/= + clamp + live write-back
+        mouse.go        # Mouse router (horizontal zones + buffer)
   go.mod
   go.sum
 ```
@@ -675,9 +853,71 @@ gloggy/
 - **Tier 1**: T-015/T-016 (readers) can run parallel with T-018/T-019 (filter logic), T-021 (logger), T-024/T-025 (config write-back).
 - **Tier 2**: T-029/T-030 (list UI) can run parallel with T-035/T-036/T-037 (detail renderers) and T-039 (filter panel).
 - **Tier 3**: T-040/T-041 (mouse/activation) can run parallel with T-043 (in-pane search) and T-044/T-045 (filter from field).
+- **Tier 9**: T-084 (theme tokens), T-085 (config keys), and T-107 (width measurement audit) have no cross-dependencies and can run in parallel early in the tier. T-088 (right-split composition) must precede most visual-matrix work. T-096/T-097 (focus cycle + Esc) can run in parallel with T-098/T-099 (ratio keymap).
 
 ### Risk Areas
 
-1. **Virtual rendering performance** (T-029): Most critical technical risk. If Bubble Tea's string-based rendering is too slow for 100k entries, may need to implement custom viewport with dirty-region tracking.
-2. **TOML round-trip fidelity** (T-008, T-024): Unknown key preservation during write-back is library-dependent. If `pelletier/go-toml/v2` does not support this, may need AST-level manipulation.
-3. **Mouse event routing** (T-052): Bubble Tea's mouse support is functional but coordinate calculation for nested components requires careful implementation.
+1. **Virtual rendering performance** (T-029): If Bubble Tea's rendering is too slow for 100k entries, custom viewport with dirty-region tracking may be needed.
+2. **TOML round-trip fidelity** (T-008, T-024, T-085, T-086): Unknown key preservation at nested level is library-dependent. Validate `pelletier/go-toml/v2` handles nested-section unknown keys during T-085/T-099.
+3. **Mouse event routing** (T-052, T-094): Coordinate calculation for nested components in right-split is subtler than below-split; the 1-cell buffer policy (T-094) must be tested at all terminal widths.
+4. **`go-runewidth` edge cases** (T-107): Some terminal emulators disagree on emoji / ZWJ widths. Lipgloss's `Width()` is the agreed baseline but pathological strings may still drift; add a defensive fallback path.
+5. **Orientation-flip ratio preservation** (T-105, T-086): A single oversight (e.g. writing `height_ratio` to the `width_ratio` slot on flip) silently corrupts config. Unit tests MUST cover the round-trip explicitly.
+6. **fsnotify + orientation interplay** (T-087 vs T-073): Terminal resize events pile up during rapid resizes; tail-mode file events must not be lost or reordered. Validate during T-108 that `ResizeModel`'s re-eval does not starve the fsnotify consumer.
+
+### 2026-04-17 Extension Notes
+
+The 2026-04-17 kit revision (commit `a2fe53c`) added **27 new plan tasks** (T-084 through T-110, with T-109 and T-110 being human sign-off). Two new tiers (9 and 10) were added; all prior tiers (0-8) remain intact with their T-001..T-083 task IDs and edges unchanged.
+
+**New task list (with IDs and one-line titles):**
+
+| ID | Title | Tier |
+|---|---|---|
+| T-084 | Extend Theme with DividerColor + UnfocusedBg tokens | 9 |
+| T-085 | Extend Config with detail_pane orientation keys | 9 |
+| T-086 | Preserve height_ratio and width_ratio independently in Config | 9 |
+| T-087 | Orientation selector model with auto-flip | 9 |
+| T-088 | Right-split composition with divider and border accounting | 9 |
+| T-089 | Divider renderer (1-cell vertical glyph) | 9 |
+| T-090 | Minimum-viable terminal floor (60x15) fallback | 9 |
+| T-091 | Detail pane auto-close on minimum underflow + status notice | 9 |
+| T-092 | Key-hint bar focus label (right side) | 9 |
+| T-093 | Header narrow-mode degradation + source ellipsis | 9 |
+| T-094 | Mouse horizontal zones in right-split with divider buffer | 9 |
+| T-095 | Click-to-focus on panes | 9 |
+| T-096 | Tab focus cycle between visible panes | 9 |
+| T-097 | Esc context-sensitive dismissal | 9 |
+| T-098 | Ratio keymap handler | 9 |
+| T-099 | Ratio live write-back to config | 9 |
+| T-100 | Unfocused-pane visual state | 9 |
+| T-101 | Alone-pane uses focused treatment | 9 |
+| T-102 | Cursor row always rendered when list unfocused | 9 |
+| T-103 | Detail pane top border in both orientations | 9 |
+| T-104 | Detail pane width resize in right orientation | 9 |
+| T-105 | Orientation flip preserves both ratios | 9 |
+| T-106 | Detail pane soft wrap | 9 |
+| T-107 | Detail pane width-safe measurement (emoji/CJK/ANSI) | 9 |
+| T-108 | Terminal resize extension: re-eval + preserve | 9 |
+| T-109 | [HUMAN] DividerColor + UnfocusedBg visual sign-off | 10 |
+| T-110 | [HUMAN] Pane visual-state matrix sign-off | 10 |
+
+**New risk areas introduced:**
+
+- **`go-runewidth` behavior under orientation flips.** Measurement must be consistent across orientation changes (a string that fits in below-mode at width W should be measured identically at the same width W in right-mode). Not a new dependency (already transitively via `lipgloss`), but the number of call sites multiplies.
+- **`fsnotify` under rapid resize.** T-087/T-108 re-evaluate orientation on every `WindowSizeMsg`. A user dragging a terminal corner generates dozens of messages per second. Ensure tail-mode file-watcher events are not starved or reordered.
+- **TOML nested write-back fidelity.** T-085 introduces a `[detail_pane]` group. T-099 writes back into that group live. If `pelletier/go-toml/v2`'s AST writer strips unknown nested keys, T-085/T-086/T-099 regress. Validate early.
+- **Status-bar notice scheduling (T-091).** Auto-dismissing notices via `tea.Tick` can pile up if many resize events arrive in quick succession; use a generation counter or debounce.
+- **Right-split mouse drag normalization (T-094, T-104).** Horizontal pixel deltas convert to ratio deltas via the usable width (post border-accounting), not the raw terminal width. Getting this wrong produces jumpy resizes that drift out of the clamp bounds.
+
+---
+
+## Revision Log
+
+### 2026-04-17 — Details-pane redesign extension
+- **Source:** kit revision in commit `a2fe53c` (`cavekit-app-shell.md`, `cavekit-config.md`, `cavekit-detail-pane.md` all bumped to `last_edited: 2026-04-17`).
+- **Kits changed:** `cavekit-app-shell.md` (R2, R3, R4, R6, R7 extended; R10 replaced by pane visual-state matrix; new R11 focus cycle; new R12 resize controls); `cavekit-config.md` (R4 +2 ACs, R5 +5 ACs); `cavekit-detail-pane.md` (R1 +1 AC, R6 renamed and +5 ACs, new R9 wrap_mode, new R10 width awareness).
+- **Acceptance-criteria delta:** 225 → 276 (+51 new ACs).
+- **Requirement count delta:** 51 → 55 (+4 new: app-shell R11, app-shell R12, detail-pane R9, detail-pane R10).
+- **Tasks added:** 27 (T-084 through T-110). Prior T-001 through T-083 unchanged; kept in tiers 0-8 with original IDs, titles, `blockedBy` edges, and effort sizing.
+- **Tiers added:** 9 (details-pane redesign) and 10 (human sign-off). Previous tier ceiling was 8.
+- **Design reference:** `DESIGN.md` §2 (new tokens), §3 (type roles), §4 (component matrix), §5 (layout math + config schema), §6 (focus model), §8 (responsive).
+- **Commit history referenced:** `daa9fca` (6 layout bugs — border accounting is a call-out in T-088), `a2fe53c` (this revision).
