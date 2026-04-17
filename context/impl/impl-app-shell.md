@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T20:09:25+03:00"
+last_edited: "2026-04-17T22:32:51+03:00"
 ---
 # Implementation Tracking: app-shell
 
@@ -21,3 +21,7 @@ Build site: context/plans/build-site.md
 | T-072 | DONE | cachedVisibleCount field; updated in refilter() and SetEntries(); no more O(n²) Apply |
 | T-081 | DONE | Header bar: HeaderBg background, Bold, WithCursorPos(); cursor/visible + visible/total display |
 | T-083 | DONE | Focus indicator: colored left border on focused pane via FocusBorder; updates on focus change |
+| T-090 | DONE | layout.go MinTerminalWidth/Height=60/15, IsBelowMinFloor, RenderTooSmall via lipgloss.Place; Render short-circuits |
+| T-093 | DONE | header.go drop-priority order focus/counts/cursor/follow; source always kept; truncateToWidth uses lipgloss.Width binary search |
+| T-096 | DONE | appshell/focus.go NextFocus pure fn + wiring in app/model.go handleKey; Tab inert on overlay, no-op on single pane, never closes |
+| T-097 | DONE | Esc priority chain: help intercept → filter panel self-close → detail pane forward → list ClearTransient (wrap indicator) |

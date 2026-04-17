@@ -1,8 +1,17 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T20:09:25+03:00"
+last_edited: "2026-04-17T22:32:51+03:00"
 ---
 # Loop Log
+
+### Iteration 12 — 2026-04-17
+- T-084: DividerColor + UnfocusedBg theme tokens — DONE. Files: internal/theme/theme.go, theme_test.go. Build P, Tests P.
+- T-085: DetailPane orientation config fields (width_ratio, position, threshold, wrap_mode) — DONE. Files: internal/config/config.go, config_test.go. Build P, Tests P.
+- T-090: 60x15 minimum-viable terminal floor + fallback — DONE. Files: internal/ui/appshell/layout.go, layout_test.go. Build P, Tests P.
+- T-093: Header narrow-mode drop-priority degradation — DONE. Files: internal/ui/appshell/header.go, header_test.go. Build P, Tests P.
+- T-096: Tab focus cycle (NextFocus pure fn + app-shell wiring) — DONE. Files: internal/ui/appshell/focus.go (new), focus_test.go (new), internal/ui/app/model.go, model_test.go. Build P, Tests P.
+- T-097: Esc priority chain + list ClearTransient — DONE. Files: internal/ui/entrylist/list.go, leveljump_test.go, internal/ui/app/model.go, model_test.go. Build P, Tests P. Wave commit ebedb3a.
+- Next: Tier 9 remaining (T-086, T-087, T-088, T-089, T-091, T-092, T-094, T-095, T-098..T-108).
 
 ### Iteration 11 — 2026-04-16
 - T-078: Theme tokens CursorHighlight/HeaderBg/FocusBorder — DONE. Files: internal/theme/theme.go, theme_test.go. Build P, Tests P.

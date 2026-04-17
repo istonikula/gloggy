@@ -104,6 +104,70 @@ experimental_feature = true
 	}
 }
 
+// T-086: Updating height_ratio via Save must not mutate width_ratio, and vice
+// versa. The two ratios live as independent keys in the TOML file.
+func TestSave_RatioIndependence_HeightChange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	initial := `theme = "tokyo-night"
+
+[detail_pane]
+height_ratio = 0.30
+width_ratio = 0.20
+`
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatalf("write initial: %v", err)
+	}
+
+	result := Load(path)
+	if result.Config.DetailPane.WidthRatio != 0.20 {
+		t.Fatalf("preload width_ratio: got %.2f, want 0.20", result.Config.DetailPane.WidthRatio)
+	}
+
+	// Change only height_ratio.
+	result.Config.DetailPane.HeightRatio = 0.50
+	if err := Save(path, result); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	reloaded := Load(path)
+	if reloaded.Config.DetailPane.HeightRatio != 0.50 {
+		t.Errorf("height_ratio after save: got %.2f, want 0.50", reloaded.Config.DetailPane.HeightRatio)
+	}
+	if reloaded.Config.DetailPane.WidthRatio != 0.20 {
+		t.Errorf("width_ratio mutated by height_ratio write-back: got %.2f, want 0.20",
+			reloaded.Config.DetailPane.WidthRatio)
+	}
+}
+
+// T-086: Reverse direction — changing width_ratio must not mutate height_ratio.
+func TestSave_RatioIndependence_WidthChange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	initial := `theme = "tokyo-night"
+
+[detail_pane]
+height_ratio = 0.60
+width_ratio = 0.30
+`
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatalf("write initial: %v", err)
+	}
+
+	result := Load(path)
+	result.Config.DetailPane.WidthRatio = 0.45
+	if err := Save(path, result); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	reloaded := Load(path)
+	if reloaded.Config.DetailPane.WidthRatio != 0.45 {
+		t.Errorf("width_ratio after save: got %.2f, want 0.45", reloaded.Config.DetailPane.WidthRatio)
+	}
+	if reloaded.Config.DetailPane.HeightRatio != 0.60 {
+		t.Errorf("height_ratio mutated by width_ratio write-back: got %.2f, want 0.60",
+			reloaded.Config.DetailPane.HeightRatio)
+	}
+}
+
 // T-025: Adding a new top-level key to config does not require schema changes (R7.1).
 // This is structural: the current code handles all known fields + forwards unknown
 // ones. A future version that adds a new key can be loaded by the current version

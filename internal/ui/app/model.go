@@ -68,7 +68,7 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 		filterSet:   fs,
 		filterPanel: uifilter.New(fs),
 		help:        appshell.NewHelpOverlayModel(),
-		resize:      appshell.NewResizeModel(80, 24),
+		resize:      appshell.NewResizeModel(80, 24).WithConfig(cfgResult.Config),
 		focus:       appshell.FocusEntryList,
 	}
 
@@ -125,7 +125,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list, _ = m.list.Update(tea.WindowSizeMsg{Width: w, Height: l.EntryListHeight()})
 		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
 		m.header = m.header.WithWidth(w)
-		m.keyhints = m.keyhints.WithWidth(w)
+		m.keyhints = m.keyhints.WithWidth(w).WithPaneOpen(m.pane.IsOpen())
 		return m, nil
 
 	case tea.KeyMsg:
@@ -362,13 +362,14 @@ func (m Model) SetEntries(entries []logsource.Entry) Model {
 func (m Model) openPane(entry logsource.Entry) Model {
 	m.pane = m.pane.Open(entry)
 	m.focus = appshell.FocusDetailPane
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane).WithPaneOpen(true)
 	m = m.relayout()
 	return m
 }
 
 func (m Model) relayout() Model {
 	l := appshell.ApplyToLayout(m.resize, m.paneHeight.Ratio(), m.pane.IsOpen())
+	m.keyhints = m.keyhints.WithPaneOpen(m.pane.IsOpen())
 	m.layout = m.layout.SetDetailPane(m.pane.IsOpen(), m.paneHeight.PaneHeight())
 	m.list, _ = m.list.Update(tea.WindowSizeMsg{
 		Width:  m.resize.Width(),
