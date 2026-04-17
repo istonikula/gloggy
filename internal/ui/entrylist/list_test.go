@@ -136,28 +136,31 @@ func TestCursorPosition_AfterFilter(t *testing.T) {
 }
 
 // T-079: R1.8 — cursor row rendered with CursorHighlight background.
+// T-100: list output is wrapped in a pane border; the cursor row is now the
+// first content line inside the top border.
 func TestView_CursorHighlight(t *testing.T) {
 	m := defaultListModel(10).SetEntries(makeEntries(3))
+	m.Focused = true
 	v := m.View()
 	lines := strings.Split(v, "\n")
-	if len(lines) < 1 {
-		t.Fatal("expected at least 1 line")
+	if len(lines) < 3 {
+		t.Fatalf("expected at least 3 lines (top border + content): got %d", len(lines))
 	}
-	// Cursor is at row 0. That row should have ANSI background styling.
-	if !strings.Contains(lines[0], "\x1b[") {
-		t.Errorf("cursor row should have ANSI styling: %q", lines[0])
+	// First line is top border; cursor row is the next content line.
+	cursorRow := lines[1]
+	if !strings.Contains(cursorRow, "\x1b[") {
+		t.Errorf("cursor row should have ANSI styling: %q", cursorRow)
 	}
-	// Non-cursor rows should not have CursorHighlight background.
-	// (They may have other styling, but not the same background.)
-	if len(lines) > 1 && lines[0] == lines[1] {
+	// Non-cursor rows should not match the cursor row.
+	if len(lines) > 2 && cursorRow == lines[2] {
 		t.Error("cursor row should differ from non-cursor row")
 	}
-
-	// Verify background escape code is present for cursor row.
-	// "48;" is the ANSI SGR background prefix.
-	if !strings.Contains(lines[0], "48;") {
-		t.Logf("cursor row (line 0): %q", lines[0])
-		t.Logf("non-cursor row (line 1): %q", lines[1])
+	// "48;" is the ANSI SGR background prefix (CursorHighlight).
+	if !strings.Contains(cursorRow, "48;") {
+		t.Logf("cursor row (line 1): %q", cursorRow)
+		if len(lines) > 2 {
+			t.Logf("non-cursor row (line 2): %q", lines[2])
+		}
 		t.Errorf("cursor row should contain background color escape (48;)")
 	}
 }
@@ -195,6 +198,84 @@ func TestFlattenNewlines(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("flattenNewlines(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+// T-100: list rendered with focus elsewhere uses DividerColor borders +
+// UnfocusedBg background. Outer dimensions match the focused render so the
+// focus toggle does not reflow the layout.
+func TestView_VisualState_Unfocused_DiffersFromFocused_AndHasBg(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(3))
+
+	m.Focused = true
+	focused := m.View()
+
+	m.Focused = false
+	unfocused := m.View()
+
+	// Outer dimensions must match between focused and unfocused.
+	fLines := strings.Split(focused, "\n")
+	uLines := strings.Split(unfocused, "\n")
+	if len(fLines) != len(uLines) {
+		t.Errorf("row count mismatch: focused=%d unfocused=%d", len(fLines), len(uLines))
+	}
+
+	if focused == unfocused {
+		t.Errorf("focused and unfocused output must differ (border color + bg)")
+	}
+
+	// Unfocused render must include a background SGR (48;) for UnfocusedBg.
+	if !strings.Contains(unfocused, "48;") {
+		t.Errorf("unfocused render missing background SGR (48;): %q", unfocused)
+	}
+	// Focused render must NOT include a background SGR on the border.
+	// (Cursor row uses 48; for CursorHighlight; the border lines should
+	// not — a structural test would inspect line[0] only.)
+	if strings.Contains(fLines[0], "48;") {
+		t.Errorf("focused border line must not have UnfocusedBg: %q", fLines[0])
+	}
+}
+
+// T-101: when the pane is alone (no other pane visible), it uses the
+// focused styling regardless of the Focused flag.
+func TestView_VisualState_Alone_UsesFocusedTreatment(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(3))
+
+	m.Focused = false
+	m.Alone = false
+	unfocused := m.View()
+
+	m.Alone = true
+	alone := m.View()
+
+	// Alone output must match the focused treatment, not the unfocused one.
+	if alone == unfocused {
+		t.Errorf("alone pane must differ from unfocused (alone uses focused treatment)")
+	}
+
+	m.Alone = false
+	m.Focused = true
+	focused := m.View()
+	if alone != focused {
+		t.Errorf("alone treatment must equal focused treatment\nalone:    %q\nfocused:  %q", alone, focused)
+	}
+}
+
+// T-102: the cursor row is rendered with CursorHighlight regardless of
+// focus state. When unfocused, the surrounding pane is Faint-dimmed but
+// the cursor row remains identifiable.
+func TestView_CursorRow_AlwaysRendered_WhenUnfocused(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(3))
+	m.Focused = false
+	v := m.View()
+	lines := strings.Split(v, "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected at least 2 lines: got %d", len(lines))
+	}
+	// First content line (after top border) is the cursor row at index 0.
+	cursorRow := lines[1]
+	if !strings.Contains(cursorRow, "48;") {
+		t.Errorf("cursor row must carry CursorHighlight bg even when unfocused: %q", cursorRow)
 	}
 }
 

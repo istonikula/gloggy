@@ -2,10 +2,10 @@ package detailpane
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
+	"github.com/istonikula/gloggy/internal/ui/appshell"
 )
 
 // FocusedMsg is emitted when the detail pane gains focus.
@@ -105,8 +105,10 @@ func (m PaneModel) ContentHeight() int {
 }
 
 // View renders the detail pane content, or empty string when closed.
-// T-082: Prepends a top border separator line.
-// T-083: Adds a colored left border when focused.
+// T-082: Renders a top border separator line.
+// T-100: Uses the DESIGN.md §4 pane style matrix — focused panes get
+// FocusBorder + base bg, unfocused get DividerColor + UnfocusedBg + Faint.
+// All four borders render in both states (T-103 verifies the top border).
 func (m PaneModel) View() string {
 	if !m.open {
 		return ""
@@ -115,13 +117,9 @@ func (m PaneModel) View() string {
 	m.scroll.height = m.ContentHeight()
 	content := m.scroll.View()
 
-	style := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderTop(true).
-		BorderBottom(false).
-		BorderLeft(m.Focused).
-		BorderRight(false).
-		BorderForeground(m.th.FocusBorder)
-
-	return style.Render(content)
+	state := appshell.PaneStateUnfocused
+	if m.Focused {
+		state = appshell.PaneStateFocused
+	}
+	return appshell.PaneStyle(m.th, state).Render(content)
 }

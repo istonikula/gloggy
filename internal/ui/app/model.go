@@ -376,11 +376,16 @@ func (m Model) View() string {
 	}
 
 	header := m.header.WithCursorPos(m.list.CursorPosition()).View()
+
+	// T-100/T-101: set per-pane focus + alone state before View() so each
+	// pane applies the DESIGN.md §4 visual matrix.
+	paneOpen := m.pane.IsOpen()
+	m.list.Focused = (m.focus == appshell.FocusEntryList)
+	m.list.Alone = !paneOpen
 	list := m.list.View()
 
 	paneView := ""
-	if m.pane.IsOpen() {
-		// T-083: Set focus state before rendering (detail pane shows its own border).
+	if paneOpen {
 		m.pane.Focused = (m.focus == appshell.FocusDetailPane)
 		paneView = m.pane.View()
 	}

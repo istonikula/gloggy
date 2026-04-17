@@ -10,6 +10,7 @@ import (
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
+	"github.com/istonikula/gloggy/internal/ui/appshell"
 )
 
 // SelectionMsg is emitted when the cursor moves to a new entry.
@@ -40,6 +41,13 @@ type ListModel struct {
 	wrapDir       WrapDirection // last wrap direction, reset on next navigation
 	lastClickRow  int
 	lastClickTime time.Time
+	// Focused is set by the app shell before View() is called (T-100).
+	// When true, the pane uses PaneStateFocused styling; otherwise
+	// PaneStateUnfocused, unless Alone is set.
+	Focused bool
+	// Alone signals that this pane is the only visible pane (T-101). When
+	// true, focused styling is applied regardless of Focused.
+	Alone bool
 }
 
 // NewListModel creates a ListModel.
@@ -402,7 +410,18 @@ func (m ListModel) View() string {
 		}
 		rendered++
 	}
-	return sb.String()
+	return m.applyPaneStyle(sb.String())
+}
+
+// applyPaneStyle wraps the rendered list in the DESIGN.md §4 pane style
+// matrix (T-100/T-101). Focused or alone panes get FocusBorder borders;
+// unfocused-but-visible panes get DividerColor borders + UnfocusedBg + Faint.
+func (m ListModel) applyPaneStyle(content string) string {
+	state := appshell.PaneStateUnfocused
+	if m.Focused || m.Alone {
+		state = appshell.PaneStateFocused
+	}
+	return appshell.PaneStyle(m.th, state).Render(content)
 }
 
 // RenderedRowCount returns how many entry rows were rendered in the last View() call.

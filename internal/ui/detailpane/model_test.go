@@ -109,17 +109,46 @@ func TestPaneModel_TopBorder(t *testing.T) {
 	}
 }
 
-// T-083: R10.1 — focused detail pane has left border indicator.
-func TestPaneModel_Focused_HasLeftBorder(t *testing.T) {
+// T-100: focused vs unfocused panes use the DESIGN.md §4 matrix —
+// borders render in BOTH states, only the color differs (FocusBorder vs
+// DividerColor). Vertical bar count therefore matches; the discriminator
+// is the rendered ANSI color of the border foreground.
+func TestPaneModel_Focused_VsUnfocused_DifferentBorderColor(t *testing.T) {
 	m := defaultPane(10).Open(testEntry())
 	m.Focused = true
 	focused := m.View()
 	m.Focused = false
 	unfocused := m.View()
-	// Focused view should have more "│" (left border) than unfocused.
-	focusCount := strings.Count(focused, "│")
-	unfocusCount := strings.Count(unfocused, "│")
-	if focusCount <= unfocusCount {
-		t.Errorf("focused pane should have more left border chars: focused=%d, unfocused=%d", focusCount, unfocusCount)
+	if strings.Count(focused, "│") == 0 {
+		t.Errorf("focused pane should render vertical border: %q", focused)
+	}
+	if strings.Count(unfocused, "│") == 0 {
+		t.Errorf("unfocused pane should render vertical border: %q", unfocused)
+	}
+	if focused == unfocused {
+		t.Errorf("focused and unfocused outputs must differ (border color): %q", focused)
+	}
+}
+
+// T-103: the detail pane top border renders in both orientations. The pane
+// itself is orientation-agnostic — the layout composes it via either
+// JoinVertical (below) or JoinHorizontal (right). The pane's first View()
+// line must always be the top border row.
+func TestPaneModel_TopBorder_InBothOrientationContexts(t *testing.T) {
+	for _, focused := range []bool{true, false} {
+		m := defaultPane(10).Open(testEntry())
+		m.Focused = focused
+		v := m.View()
+		lines := strings.Split(v, "\n")
+		if len(lines) < 2 {
+			t.Fatalf("focused=%v: expected at least 2 lines (top border + content), got %d", focused, len(lines))
+		}
+		// The first line is the top border. Strip ANSI escapes by
+		// scanning for the box-drawing horizontal glyph; lipgloss.Width
+		// returns cell width regardless of escape sequences, so a top
+		// border line cell-width must equal the rendered output width.
+		if !strings.ContainsRune(lines[0], '─') {
+			t.Errorf("focused=%v: first line missing top border glyph '─': %q", focused, lines[0])
+		}
 	}
 }
