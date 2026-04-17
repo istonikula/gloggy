@@ -11,7 +11,15 @@ last_edited: "2026-04-17T22:32:51+03:00"
 - T-093: Header narrow-mode drop-priority degradation — DONE. Files: internal/ui/appshell/header.go, header_test.go. Build P, Tests P.
 - T-096: Tab focus cycle (NextFocus pure fn + app-shell wiring) — DONE. Files: internal/ui/appshell/focus.go (new), focus_test.go (new), internal/ui/app/model.go, model_test.go. Build P, Tests P.
 - T-097: Esc priority chain + list ClearTransient — DONE. Files: internal/ui/entrylist/list.go, leveljump_test.go, internal/ui/app/model.go, model_test.go. Build P, Tests P. Wave commit ebedb3a.
-- Next: Tier 9 remaining (T-086, T-087, T-088, T-089, T-091, T-092, T-094, T-095, T-098..T-108).
+
+### Iteration 13 — 2026-04-17
+- T-086: ratio independence regression tests — DONE. Files: internal/config/writeback_test.go. Build P, Tests P.
+- T-087: SelectOrientation + ResizeModel.WithConfig — DONE. Files: internal/ui/appshell/orientation.go (new), orientation_test.go (new), resize.go, internal/ui/app/model.go. Build P, Tests P.
+- T-092: keyhints focus label (right-aligned, Bold+FocusBorder) — DONE. Files: internal/ui/appshell/keyhints.go, keyhints_test.go, internal/ui/app/model.go. Build P, Tests P. Wave commit df8d806.
+
+### Iteration 14 — 2026-04-17
+- T-088: right-split composition — DONE. Files: internal/ui/appshell/layout.go (Orientation+WidthRatio fields, ListContentWidth/DetailContentWidth, JoinHorizontal Render branch + inline divider stub), layout_test.go (+5 tests), internal/ui/app/model.go (WindowSizeMsg + relayout wire orientation/width ratio + use ListContentWidth). Build P, Tests P.
+- Next: T-088 unblocks T-089, T-091, T-094, T-098, T-100, T-103, T-107 in tier 9.
 
 ### Iteration 11 — 2026-04-16
 - T-078: Theme tokens CursorHighlight/HeaderBg/FocusBorder — DONE. Files: internal/theme/theme.go, theme_test.go. Build P, Tests P.

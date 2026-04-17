@@ -25,3 +25,6 @@ Build site: context/plans/build-site.md
 | T-093 | DONE | header.go drop-priority order focus/counts/cursor/follow; source always kept; truncateToWidth uses lipgloss.Width binary search |
 | T-096 | DONE | appshell/focus.go NextFocus pure fn + wiring in app/model.go handleKey; Tab inert on overlay, no-op on single pane, never closes |
 | T-097 | DONE | Esc priority chain: help intercept → filter panel self-close → detail pane forward → list ClearTransient (wrap indicator) |
+| T-087 | DONE | appshell/orientation.go SelectOrientation; ResizeModel.WithConfig + Orientation; re-eval on every WindowSizeMsg |
+| T-088 | DONE | Layout.Orientation+WidthRatio fields; ListContentWidth/DetailContentWidth (DESIGN.md §5 formula); Render right-split branch via JoinHorizontal with inline divider |
+| T-092 | DONE | KeyHintBarModel.WithPaneOpen + right-aligned focus label (Bold + FocusBorder); omitted in single-pane state |

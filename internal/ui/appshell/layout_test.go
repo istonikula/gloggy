@@ -3,6 +3,8 @@ package appshell
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // T-046: R2.1 — header at top, entrylist in middle, status at bottom.
@@ -105,6 +107,94 @@ func TestLayout_NormalRenderAtMinFloor(t *testing.T) {
 	}
 	if !strings.Contains(out, "HEADER") {
 		t.Errorf("HEADER should appear at 60x15, got %q", out)
+	}
+}
+
+// T-088: ListContentWidth + DetailContentWidth in right-split sum with chrome
+// (4 borders + 1 divider = 5 cells) to exactly the terminal width.
+func TestLayout_RightSplit_ContentWidthsSumWithChrome(t *testing.T) {
+	cases := []struct {
+		termW int
+		ratio float64
+	}{
+		{120, 0.30},
+		{100, 0.20},
+		{80, 0.50},
+		{60, 0.30},
+	}
+	for _, tc := range cases {
+		l := NewLayout(tc.termW, 24, true, 0)
+		l.Orientation = OrientationRight
+		l.WidthRatio = tc.ratio
+		listW := l.ListContentWidth()
+		detailW := l.DetailContentWidth()
+		// Sum: list + 2 borders + 1 divider + 2 borders + detail.
+		got := listW + 2 + 1 + 2 + detailW
+		if got != tc.termW {
+			t.Errorf("widths+chrome (termW=%d, ratio=%.2f): list=%d, detail=%d, sum=%d, want %d",
+				tc.termW, tc.ratio, listW, detailW, got, tc.termW)
+		}
+	}
+}
+
+// T-088: Width-ratio formula matches DESIGN.md §5 example exactly
+// (termWidth=120, widthRatio=0.30 ⇒ usable=115, listW=80, detailW=35).
+func TestLayout_RightSplit_DesignExampleNumbers(t *testing.T) {
+	l := NewLayout(120, 24, true, 0)
+	l.Orientation = OrientationRight
+	l.WidthRatio = 0.30
+	if got := l.ListContentWidth(); got != 80 {
+		t.Errorf("ListContentWidth(120, 0.30): got %d, want 80", got)
+	}
+	if got := l.DetailContentWidth(); got != 35 {
+		t.Errorf("DetailContentWidth(120, 0.30): got %d, want 35", got)
+	}
+}
+
+// T-088: Render in right-split composes JoinHorizontal(list, divider, detail)
+// between header and status; total rendered width equals termWidth.
+func TestLayoutModel_Render_RightSplit_TotalWidth(t *testing.T) {
+	m := NewLayoutModel(120, 24).
+		SetDetailPane(true, 0).
+		SetOrientation(OrientationRight).
+		SetWidthRatio(0.30)
+
+	l := m.Layout()
+	listView := strings.Repeat("L", l.ListContentWidth()+2)     // pretend pane includes 2 borders
+	detailView := strings.Repeat("D", l.DetailContentWidth()+2) // ditto
+	header := strings.Repeat("H", 120)
+	status := strings.Repeat("S", 120)
+
+	out := m.Render(header, listView, detailView, status)
+	lines := strings.Split(out, "\n")
+	// Header is line 0; main starts at line 1; status is the last line.
+	mainLine := lines[1]
+	if w := lipgloss.Width(mainLine); w != 120 {
+		t.Errorf("main line width: got %d, want 120; line=%q", w, mainLine)
+	}
+}
+
+// T-088: Below-mode keeps the existing vertical composition unchanged.
+func TestLayoutModel_Render_BelowMode_Unchanged(t *testing.T) {
+	m := NewLayoutModel(80, 24).SetDetailPane(true, 5) // orientation defaults to below
+	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
+	if !strings.Contains(out, "DETAIL") {
+		t.Error("below-mode render must include DETAIL line")
+	}
+	// Should not contain the divider glyph.
+	if strings.Contains(out, "│") {
+		t.Errorf("below-mode render must not include the right-split divider, got %q", out)
+	}
+}
+
+// T-088: EntryListHeight ignores DetailPaneHeight in right-split.
+func TestLayout_RightSplit_EntryListHeightFull(t *testing.T) {
+	l := NewLayout(120, 24, true, 8)
+	l.Orientation = OrientationRight
+	// In right-split the detail pane is alongside, not below — list height
+	// should be height - header - status = 22, NOT reduced by 8.
+	if l.EntryListHeight() != 22 {
+		t.Errorf("right-split EntryListHeight: got %d, want 22", l.EntryListHeight())
 	}
 }
 

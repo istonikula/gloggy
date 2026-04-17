@@ -120,9 +120,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize, _ = m.resize.Update(msg)
 		m.paneHeight, _ = m.paneHeight.Update(msg)
 		w, h := m.resize.Width(), m.resize.Height()
-		l := appshell.ApplyToLayout(m.resize, m.paneHeight.Ratio(), m.pane.IsOpen())
-		m.layout = m.layout.SetSize(w, h).SetDetailPane(m.pane.IsOpen(), m.paneHeight.PaneHeight())
-		m.list, _ = m.list.Update(tea.WindowSizeMsg{Width: w, Height: l.EntryListHeight()})
+		m.layout = m.layout.
+			SetSize(w, h).
+			SetDetailPane(m.pane.IsOpen(), m.paneHeight.PaneHeight()).
+			SetOrientation(m.resize.Orientation()).
+			SetWidthRatio(m.cfg.Config.DetailPane.WidthRatio)
+		l := m.layout.Layout()
+		m.list, _ = m.list.Update(tea.WindowSizeMsg{Width: l.ListContentWidth(), Height: l.EntryListHeight()})
 		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
 		m.header = m.header.WithWidth(w)
 		m.keyhints = m.keyhints.WithWidth(w).WithPaneOpen(m.pane.IsOpen())
@@ -368,11 +372,14 @@ func (m Model) openPane(entry logsource.Entry) Model {
 }
 
 func (m Model) relayout() Model {
-	l := appshell.ApplyToLayout(m.resize, m.paneHeight.Ratio(), m.pane.IsOpen())
 	m.keyhints = m.keyhints.WithPaneOpen(m.pane.IsOpen())
-	m.layout = m.layout.SetDetailPane(m.pane.IsOpen(), m.paneHeight.PaneHeight())
+	m.layout = m.layout.
+		SetDetailPane(m.pane.IsOpen(), m.paneHeight.PaneHeight()).
+		SetOrientation(m.resize.Orientation()).
+		SetWidthRatio(m.cfg.Config.DetailPane.WidthRatio)
+	l := m.layout.Layout()
 	m.list, _ = m.list.Update(tea.WindowSizeMsg{
-		Width:  m.resize.Width(),
+		Width:  l.ListContentWidth(),
 		Height: l.EntryListHeight(),
 	})
 	return m

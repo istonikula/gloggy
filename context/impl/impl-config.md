@@ -18,3 +18,4 @@ Build site: context/plans/build-site.md
 | T-078 | DONE | CursorHighlight, HeaderBg, FocusBorder added to Theme; values for all 3 themes; test verifies non-empty |
 | T-084 | DONE | DividerColor + UnfocusedBg theme tokens; distinct-from-Dim/FocusBorder assertion; values across 3 themes |
 | T-085 | DONE | DetailPane.WidthRatio/Position/OrientationThresholdCols/WrapMode fields; defaults 0.30/auto/100/soft; enum validation |
+| T-086 | DONE | Ratio independence: Save preserves both height/width keys; regression tests in writeback_test.go for both directions |
