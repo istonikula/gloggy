@@ -167,14 +167,17 @@ func TestView_CursorHighlight(t *testing.T) {
 
 // WindowSizeMsg must be processed even when the entry list is empty.
 // The initial resize arrives before async loading finishes.
+//
+// T-100: incoming width/height are the OUTER pane allocation; the list
+// reserves 2 cells / 2 rows for its full border.
 func TestWindowSizeMsg_ProcessedWhenEmpty(t *testing.T) {
 	m := defaultListModel(10) // no entries
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
-	if m.width != 200 {
-		t.Errorf("width = %d after WindowSizeMsg on empty list, want 200", m.width)
+	if m.width != 198 {
+		t.Errorf("width = %d after WindowSizeMsg on empty list, want 198 (200 - 2 borders)", m.width)
 	}
-	if m.scroll.ViewportHeight != 50 {
-		t.Errorf("ViewportHeight = %d after WindowSizeMsg on empty list, want 50", m.scroll.ViewportHeight)
+	if m.scroll.ViewportHeight != 48 {
+		t.Errorf("ViewportHeight = %d after WindowSizeMsg on empty list, want 48 (50 - 2 borders)", m.scroll.ViewportHeight)
 	}
 }
 

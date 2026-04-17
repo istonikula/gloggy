@@ -178,9 +178,20 @@ func (m ListModel) Init() tea.Cmd { return nil }
 func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 	// Always process WindowSizeMsg, even when entries are empty.
 	// The initial resize arrives before async loading finishes.
+	// T-100 wraps the list in a full lipgloss border (top/bottom + left/right),
+	// so the inner viewport is 2 rows and 2 cols smaller than the outer
+	// allocation handed in by the caller.
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
-		m.scroll.ViewportHeight = ws.Height
-		m.width = ws.Width
+		h := ws.Height - 2
+		if h < 1 {
+			h = 1
+		}
+		w := ws.Width - 2
+		if w < 1 {
+			w = 1
+		}
+		m.scroll.ViewportHeight = h
+		m.width = w
 		return m, nil
 	}
 
