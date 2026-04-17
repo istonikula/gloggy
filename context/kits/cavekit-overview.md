@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T21:49:47+03:00"
+last_edited: "2026-04-17T21:40:06+03:00"
 ---
 
 # Cavekit Overview: gloggy
@@ -13,10 +13,10 @@ A terminal UI tool for interactively analyzing JSONL log files during local deve
 |----------------|-----------------------------|------|--------|----------------------------------------------------------|
 | log-source     | cavekit-log-source.md       | 8    | DRAFT  | File/stdin reading, line classification, JSONL parsing   |
 | entry-list     | cavekit-entry-list.md       | 11   | DRAFT  | Compact scrollable list with two-level cursor and marks  |
-| detail-pane    | cavekit-detail-pane.md      | 8    | DRAFT  | Pretty-printed JSON detail view with in-pane search      |
+| detail-pane    | cavekit-detail-pane.md      | 10   | DRAFT  | Pretty-printed JSON detail view with in-pane search      |
 | filter-engine  | cavekit-filter-engine.md    | 7    | DRAFT  | Include/exclude filter model and filter panel overlay    |
 | config         | cavekit-config.md           | 7    | DRAFT  | TOML config with themes, field visibility, live writes   |
-| app-shell      | cavekit-app-shell.md        | 10   | DRAFT  | Top-level layout, wiring, clipboard, help overlay        |
+| app-shell      | cavekit-app-shell.md        | 12   | DRAFT  | Top-level layout, wiring, clipboard, help overlay        |
 
 ## Cross-Reference Map
 
@@ -29,6 +29,7 @@ A terminal UI tool for interactively analyzing JSONL log files during local deve
 | entry-list     | config           | Reads field visibility, sub-row fields, logger depth, theme |
 | detail-pane    | filter-engine    | Mouse click on field value triggers filter creation       |
 | detail-pane    | config           | Reads/writes field visibility, reads theme and pane height |
+| detail-pane    | app-shell        | Focus cycle (Tab), shared resize controls (R12)           |
 | filter-engine  | entry-list       | Emits filtered entry index                               |
 | filter-engine  | detail-pane      | Receives filter-add requests from field clicks           |
 | config         | entry-list       | Supplies theme, field visibility, sub-row fields, logger depth |
@@ -56,8 +57,10 @@ app-shell       (depends on: all above)
 
 Parallelizable: `config` and `log-source` can be built concurrently. `filter-engine` needs only the entry data model from `log-source`. `entry-list` and `detail-pane` can be built concurrently once their dependencies exist.
 
+Note: right-split orientation introduces a vertical divider and horizontal mouse zones; see cavekit-app-shell R2, R6, R10, R11, R12.
+
 ## Coverage Summary
 
 - **Total domains:** 6
-- **Total requirements:** 51
-- **Total acceptance criteria:** 225
+- **Total requirements:** 55
+- **Total acceptance criteria:** 276

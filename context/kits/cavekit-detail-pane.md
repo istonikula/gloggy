@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T21:49:47+03:00"
+last_edited: "2026-04-17T21:40:06+03:00"
 ---
 
 # Cavekit: Detail Pane
@@ -21,6 +21,7 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - [ ] [auto] When open, the detail pane is rendered with a visible top border or separator line distinguishing it from the entry list above
 - [ ] [auto] The total rendered height of the detail pane (border + content) equals the allocated pane height — border rows are subtracted from content height before rendering
 - [ ] [human] The boundary between entry list and detail pane is clearly visible
+- [ ] [auto] The detail pane's top border is visible in both below and right orientations (per DESIGN.md §4.4)
 **Dependencies:** cavekit-entry-list (selection signal), cavekit-app-shell (focus indicator)
 
 ### R2: JSON Pretty-Print with Syntax Highlighting
@@ -62,15 +63,20 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - [ ] [auto] After restarting the application, previously hidden fields remain hidden
 **Dependencies:** cavekit-config (detail pane field visibility, write-back)
 
-### R6: Pane Height and Resize
-**Description:** The detail pane height is configurable as a ratio of the terminal height (default 30%). The pane can be resized with `+`/`-` keys. Proportions survive terminal resize events.
+### R6: Pane Size and Resize
+**Description:** In below-mode the pane's height is a ratio of terminal height (`height_ratio`, default 0.30). In right-mode the pane's width is a ratio of terminal width (`width_ratio`, default 0.30). Both ratios are preserved independently across orientation flips. The resize keymap itself (preset cycling, ±0.05 nudges, reset, clamping, live write-back) is defined in cavekit-app-shell R12 and is not duplicated here. Mouse drag on the visible divider resizes the appropriate dimension — height in below-mode, width in right-mode.
 **Acceptance Criteria:**
 - [ ] [auto] The detail pane opens at the configured height ratio
 - [ ] [auto] Pressing `+` while the detail pane is focused increases its height
 - [ ] [auto] Pressing `-` while the detail pane is focused decreases its height
 - [ ] [auto] After a terminal resize event, the pane maintains its proportional height
 - [ ] [auto] Mouse drag on the pane divider resizes the pane
-**Dependencies:** cavekit-config (detail pane height ratio), cavekit-app-shell (resize events, mouse routing)
+- [ ] [auto] In right orientation the detail pane opens at the configured width ratio
+- [ ] [auto] Pressing `+` while the detail pane is focused in right orientation increases its width ratio
+- [ ] [auto] Pressing `-` while the detail pane is focused in right orientation decreases its width ratio
+- [ ] [auto] Mouse drag on the vertical divider in right orientation resizes the pane width
+- [ ] [auto] Flipping orientation from below to right preserves the previous height_ratio, and flipping back restores it
+**Dependencies:** cavekit-config (detail pane height ratio, width ratio), cavekit-app-shell (R12 resize keymap, resize events, mouse routing)
 
 ### R7: In-Pane Search
 **Description:** `/` opens a search input scoped to the detail pane content (does not trigger the list filter). `n`/`N` cycle through matches with a wrap indicator. Matches are highlighted using the theme's highlight color. Esc dismisses the search.
@@ -92,11 +98,30 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - [ ] [auto] Confirming the prompt adds the filter to the filter engine
 **Dependencies:** cavekit-filter-engine (filter creation)
 
+### R9: Wrap Mode
+**Description:** When a rendered content line is wider than the detail pane's content area, the `wrap_mode` config setting controls behavior. In this revision only `soft` is implemented — content lines wrap at the pane width so no content is silently hidden. `scroll` (horizontal scroll inside the pane) and `modal` (single-field expand view) are declared as future states for v1.5 and v2 respectively; they have no requirements here beyond their declaration as out-of-scope.
+**Acceptance Criteria:**
+- [ ] [auto] When wrap_mode = "soft" and a rendered line exceeds the pane's content width, the line wraps at the pane width
+- [ ] [auto] No content is hard-truncated without a visible indicator
+- [ ] [auto] When content wraps, total rendered height does not exceed the allocated pane height — overflow is navigated via the existing scroll model
+**Dependencies:** cavekit-config (wrap_mode setting), R4 (scroll model)
+
+### R10: Width Awareness and Safe Measurement
+**Description:** The detail pane accepts a width (allocated by the layout) and measures all rendered content with an emoji-, CJK-, and ANSI-safe width measurement. Byte-length measurement is not acceptable — it miscounts multi-byte characters and ANSI escape sequences, producing column drift and pane overflow.
+**Acceptance Criteria:**
+- [ ] [auto] The detail pane renders correctly when given different widths; the rendered output's outer width equals the allocated width
+- [ ] [auto] Rendering a line containing multi-byte characters (emoji or CJK) does not produce column drift or pane overflow
+- [ ] [auto] Rendering a line containing ANSI escape sequences does not produce column drift or pane overflow
+**Dependencies:** cavekit-app-shell (allocates pane width)
+
 ## Out of Scope
 
 - Filter logic and filter panel (handled by filter-engine)
 - Clipboard operations (handled by app-shell)
 - Entry selection logic (handled by entry-list)
+- Horizontal scroll of content (planned for v1.5 as `wrap_mode = "scroll"`)
+- Modal single-field expand view (planned for v2 as `wrap_mode = "modal"`)
+- Tree-fold rendering of nested JSON (not planned)
 
 ## Cross-References
 
@@ -116,3 +141,8 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - **Affected:** R1
 - **Summary:** R1: added requirement that border rows must be subtracted from content height before rendering. The lipgloss top border adds 1 row to the rendered output; without accounting for it, the pane's total height exceeds the layout allocation and pushes the header off-screen. This is the Bubble Tea golden rule: "Always account for borders — subtract border rows BEFORE rendering panels."
 - **Commits:** uncommitted (session fixes)
+
+### 2026-04-17 — Revision (details-pane redesign)
+- **Affected:** R1, R6 (renamed), new R9, new R10
+- **Summary:** R1 gained an AC that the detail pane's top border is visible in both below and right orientations. R6 renamed from "Pane Height and Resize" to "Pane Size and Resize" and extended with width-ratio semantics for right orientation, mouse-drag on the vertical divider, and independent ratio preservation across orientation flips; the resize keymap itself is delegated to cavekit-app-shell R12. New R9 introduces `wrap_mode` with `soft` as the shipping default (preventing silent truncation). New R10 requires width awareness and safe width measurement for emoji, CJK, and ANSI content. Out of Scope extended with v1.5/v2 wrap modes and non-planned tree-fold.
+- **Driven by:** DESIGN.md + research-brief-details-pane-redesign.md

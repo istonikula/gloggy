@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T19:48:00+03:00"
+last_edited: "2026-04-17T21:40:06+03:00"
 ---
 
 # Cavekit: Config
@@ -35,7 +35,7 @@ Loading, validating, and persisting application configuration from a TOML file. 
 **Dependencies:** R1
 
 ### R4: Theme Selection
-**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, search highlights, cursor highlight (background color for the selected row), header background, and focus border/accent.
+**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, search highlights, cursor highlight (background color for the selected row), header background, focus border/accent, divider color (right-split divider and the border of any unfocused visible pane), and unfocused background (the dim tint painted behind an unfocused pane). The two focus-state tokens play the roles defined in DESIGN.md §2.
 **Acceptance Criteria:**
 - [ ] [auto] The default config specifies `tokyo-night` as the active theme
 - [ ] [auto] Setting `theme = "catppuccin-mocha"` in config causes that theme's color tokens to be active
@@ -43,10 +43,12 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - [ ] [auto] Each bundled theme defines color tokens for all required categories: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim, search highlight, cursor highlight, header background, and focus border
 - [ ] [auto] Specifying an unknown theme name falls back to `tokyo-night` with a warning
 - [ ] [human] One-time visual sign-off per bundled theme: all color tokens produce a coherent, readable theme when applied together
+- [ ] [auto] Each bundled theme defines non-empty DividerColor and UnfocusedBg tokens
+- [ ] [human] DividerColor reads as a quiet neutral (closer to Dim than to FocusBorder) and UnfocusedBg is a subtle background tint (per DESIGN.md §2)
 **Dependencies:** R1, R2
 
 ### R5: Field and Display Settings
-**Description:** Config controls: which fields appear in the compact list row (default: time, level, logger, msg), which extra fields appear as sub-rows (default: none), which fields are hidden in the detail pane (default: none), logger abbreviation depth (default: 2), and detail pane height ratio (default: 0.30).
+**Description:** Config controls: which fields appear in the compact list row (default: time, level, logger, msg), which extra fields appear as sub-rows (default: none), which fields are hidden in the detail pane (default: none), logger abbreviation depth (default: 2), detail pane height ratio (default: 0.30), detail pane orientation position (`below` | `right` | `auto`, default `auto`), auto-orientation threshold in columns (default 100), detail pane width ratio for right-split mode (default 0.30), and wrap mode for detail pane content (default `soft`). The two ratios are independent settings — flipping orientation must never overwrite one with the other.
 **Acceptance Criteria:**
 - [ ] [auto] The default compact row fields are time, level, logger, and msg
 - [ ] [auto] Setting sub-row fields in config causes those fields to appear as sub-rows in the entry list
@@ -54,6 +56,11 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - [ ] [auto] The default logger abbreviation depth is 2
 - [ ] [auto] The default detail pane height ratio is 0.30
 - [ ] [auto] Each of these settings can be overridden in the config file and the new values take effect
+- [ ] [auto] The default config includes detail_pane.position = "auto"
+- [ ] [auto] detail_pane.orientation_threshold_cols defaults to 100
+- [ ] [auto] detail_pane.width_ratio defaults to 0.30
+- [ ] [auto] detail_pane.wrap_mode defaults to "soft"
+- [ ] [auto] detail_pane.height_ratio and detail_pane.width_ratio are preserved independently across orientation flips — changing one does not overwrite the other
 **Dependencies:** R1
 
 ### R6: Live Write-Back
@@ -92,3 +99,8 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - **Affected:** R4
 - **Summary:** R4 updated to require three new theme color tokens: cursor highlight (background for selected row), header background, and focus border/accent. All bundled themes must define these tokens. Driven by user observation that cursor row, header bar, and pane focus have no visual distinction.
 - **Commits:** manual testing feedback (no commit)
+
+### 2026-04-17 — Revision (details-pane redesign)
+- **Affected:** R4, R5
+- **Summary:** R4 extended to require DividerColor and UnfocusedBg tokens in every bundled theme, supporting the pane visual-state matrix. R5 extended to cover the new detail pane orientation keys (position, orientation_threshold_cols, width_ratio, wrap_mode) and to guarantee height_ratio and width_ratio are preserved independently across orientation flips.
+- **Driven by:** DESIGN.md + research-brief-details-pane-redesign.md
