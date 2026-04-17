@@ -282,6 +282,89 @@ func TestView_CursorRow_AlwaysRendered_WhenUnfocused(t *testing.T) {
 	}
 }
 
+// T-111 R8 #6 / R9 #5 — wrap indicator (↻) renders on cursor row when a
+// level-jump or mark navigation wraps around.
+func TestListModel_View_RendersWrapIndicator(t *testing.T) {
+	// Build entries: 5 INFOs then 1 ERROR at the end. With cursor at 5 (the
+	// ERROR), pressing `e` advances forward and wraps back to the same
+	// ERROR — WrapForward direction.
+	entries := makeEntries(6)
+	entries[5].Level = "ERROR"
+	m := defaultListModel(10).SetEntries(entries)
+	m.Focused = true
+	// Move cursor to the ERROR row (last entry).
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	// Press `e` — there is only one ERROR (the current one), so NextLevel
+	// finds it again and reports WrapForward.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if m.WrapDir() == NoWrap {
+		t.Fatalf("expected wrap after pressing e past last ERROR; got NoWrap")
+	}
+	if !m.HasTransient() {
+		t.Fatalf("HasTransient must be true while wrap indicator is active")
+	}
+	v := m.View()
+	if !strings.Contains(v, "↻") {
+		t.Errorf("View() must render the wrap indicator glyph ↻; got %q", v)
+	}
+}
+
+// T-111 — pressing Esc (ClearTransient) hides the wrap indicator on next View.
+func TestListModel_View_NoIndicator_AfterClearTransient(t *testing.T) {
+	entries := makeEntries(6)
+	entries[5].Level = "ERROR"
+	m := defaultListModel(10).SetEntries(entries)
+	m.Focused = true
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if m.WrapDir() == NoWrap {
+		t.Fatalf("precondition: expected wrap state before ClearTransient")
+	}
+	m = m.ClearTransient()
+	if m.HasTransient() {
+		t.Errorf("ClearTransient must drop wrap state")
+	}
+	if strings.Contains(m.View(), "↻") {
+		t.Errorf("wrap glyph must not render after ClearTransient")
+	}
+}
+
+// T-112 R8 #7-8 — when level-jump lands on an entry excluded by the active
+// filter, the entry is pinned into the visible list with the ⌀ glyph.
+func TestListModel_LevelJump_LandsOnFilteredOutEntry_RendersIndicator(t *testing.T) {
+	// 5 INFOs and 1 ERROR (at index 5).
+	entries := makeEntries(6)
+	entries[5].Level = "ERROR"
+	m := defaultListModel(10).SetEntries(entries)
+	m.Focused = true
+	// Apply filter that hides the ERROR (only INFOs pass).
+	m = m.SetFilter([]int{0, 1, 2, 3, 4})
+	if got := len(m.visibleEntries()); got != 5 {
+		t.Fatalf("precondition: filtered visible len = %d, want 5", got)
+	}
+	// Press `e` — must navigate to the filtered-out ERROR and pin it.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if m.PinnedFullIdx() != 5 {
+		t.Fatalf("PinnedFullIdx after `e` to filtered-out ERROR = %d, want 5", m.PinnedFullIdx())
+	}
+	vis := m.visibleEntries()
+	if len(vis) != 6 {
+		t.Errorf("visible entries after pin = %d, want 6 (5 filtered + 1 pinned)", len(vis))
+	}
+	v := m.View()
+	if !strings.Contains(v, "⌀") {
+		t.Errorf("View() must render outside-filter indicator ⌀ when level-jump pins; got %q", v)
+	}
+	// Subsequent j-nav clears the pin.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if m.PinnedFullIdx() != -1 {
+		t.Errorf("PinnedFullIdx after j = %d, want -1 (pin cleared)", m.PinnedFullIdx())
+	}
+	if strings.Contains(m.View(), "⌀") {
+		t.Errorf("⌀ glyph must not render after pin is cleared")
+	}
+}
+
 // An entry with embedded newlines in its message renders as one line in the list.
 func TestRenderCompactRow_FlattenNewlines(t *testing.T) {
 	entry := logsource.Entry{

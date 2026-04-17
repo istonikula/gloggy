@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T00:35:07+03:00"
+last_edited: "2026-04-18T01:15:09+03:00"
 ---
 # Implementation Tracking: entry-list
 
@@ -32,6 +32,8 @@ Build site: context/plans/build-site.md
 | T-063 | DONE | HUMAN sign-off via tui-mcp on tiny.log: material-dark INFO #82aaff, WARN #ffcb6b; JSON keys cyan #89ddff, strings green #c3e88d — coherent |
 | T-064 | DONE | HUMAN sign-off via tui-mcp on small.log tokyo-night: rows 1-28 (logback `\|-INFO`/`\|-WARN` raw text) render visibly dimmer than JSON rows starting at line 29 (`23:39:10 INFO o.h.v.i...` with bright colored badge) |
 | T-065 | DONE | HUMAN sign-off via tui-mcp on small.log: row spacing + alternating raw/JSON sections show clear event boundaries; default config single-row entries adequately separated |
-| T-066 | PARTIAL | HUMAN sign-off via tui-mcp: level-jump `e` correctly navigated to ERROR row 297/300 with cursor highlight visible. R8 #6 (wrap indicator) and #7-8 (filtered-out indicator) NOT visually rendered — `wrapDir` state tracked, exposed via WrapDir/HasTransient, only consumed by Esc-clear in app/model.go:324. View() does not draw any indicator. GAP — see new task in build-site. |
-| T-067 | PARTIAL | HUMAN sign-off via tui-mcp: mark `m` toggles `*` indicator (visible on cursor row); `u`/`U` navigate marks; wrap from line 297→1 occurred but R9 #5 wrap indicator NOT rendered (same root cause as T-066). GAP — see new task in build-site. |
+| T-066 | DONE | HUMAN sign-off via tui-mcp on small.log: `G` to last entry then `e` triggers WrapForward — `↻` glyph visible on cursor row at line 114 (first ERROR). Filtered-out indicator validated via standalone pincheck driver — `⌀` glyph visible on pinned ERROR spliced into INFO-only filter view |
+| T-067 | DONE | HUMAN sign-off via tui-mcp on small.log: `m` toggles `*` indicator (visible on cursor row); `u`/`U` navigate marks; wrap renders `↻` on cursor row (same renderer as T-066 covers R9 #5) |
 | T-068 | DONE | Detail pane syntax highlighting per theme verified during T-061..T-063 walks: tokyo-night syntax keys/strings/numbers visible; mocha + material-dark same — JSON renders with theme-distinct colors |
+| T-111 | DONE | list.go View() renders `↻` (theme.Mark color) on cursor row when `wrapDir != NoWrap`; cleared by ClearTransient (Esc) and reset on next nav. Tests: TestListModel_View_RendersWrapIndicator, TestListModel_View_NoIndicator_AfterClearTransient. tui-mcp confirmed glyph visible after `G` then `e` |
+| T-112 | DONE | New `pinnedFullIdx` field; visibleEntriesAndPin splices filtered-out level-jump match into visible list at sorted position; View() renders `⌀` (theme.LevelWarn) on pinned row. `applyLevelJump` helper unifies e/E/w/W. Pin cleared on j/k/g/G/Ctrl+d/Ctrl+u/u/U, SetFilter, ClearTransient. Test: TestListModel_LevelJump_LandsOnFilteredOutEntry_RendersIndicator. Standalone pincheck driver confirmed glyph + sorted-position splice visually |

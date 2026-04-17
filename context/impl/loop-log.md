@@ -1,8 +1,15 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T00:35:07+03:00"
+last_edited: "2026-04-18T01:15:09+03:00"
 ---
 # Loop Log
+
+### Iteration 20 — 2026-04-18
+- T-111: wrap indicator render — DONE. Files: entrylist/list.go View() + applyLevelJump helper, list_test.go (+TestListModel_View_RendersWrapIndicator, +TestListModel_View_NoIndicator_AfterClearTransient). `↻` glyph (theme.Mark) on cursor row when wrapDir != NoWrap. Build P, Tests P (368/368). tui-mcp confirmed via small.log: G then e wraps to first ERROR with visible ↻.
+- T-112: filtered-out indicator — DONE. Files: entrylist/list.go (new pinnedFullIdx field, visibleEntriesAndPin splice helper, applyLevelJump unified handler, ClearTransient+SetFilter clear pin, View renders ⌀ in theme.LevelWarn), list_test.go (+TestListModel_LevelJump_LandsOnFilteredOutEntry_RendersIndicator). Build P, Tests P. Standalone pincheck driver (now removed) confirmed pinned ERROR splices into INFO-only filter at sorted position with visible ⌀ glyph.
+- Pin clears on j/k/g/G/Ctrl+d/Ctrl+u/u/U + SetFilter + ClearTransient (Esc); next-nav reset matches existing wrap clear pattern. Single 2-cell prefix slot with priority pin > wrap > mark to keep layout stable.
+- T-066, T-067 upgraded PARTIAL → DONE in impl-entry-list.md (gaps closed by T-111/T-112).
+- Tier 11 complete. All 110+ tasks across 11 tiers DONE; ready for cavekit verification + completion.
 
 ### Iteration 19 — 2026-04-18
 - T-100 followup: list border allocation fix — DONE. Files: entrylist/list.go (WindowSizeMsg -2 cells/-2 rows), list_test.go (TestWindowSizeMsg_ProcessedWhenEmpty 198x48 + comment). Bug found via tui-mcp screenshot during T-110 prep — header pushed off screen. Build P, Tests P. Commit 4fdff9b.

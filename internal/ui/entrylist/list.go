@@ -39,6 +39,7 @@ type ListModel struct {
 	width       int
 	marks         *MarkSet
 	wrapDir       WrapDirection // last wrap direction, reset on next navigation
+	pinnedFullIdx int           // -1 = none; full-entries index of a level-jump match that is filtered out, pinned into the visible list with a "outside filter" indicator
 	lastClickRow  int
 	lastClickTime time.Time
 	// Focused is set by the app shell before View() is called (T-100).
@@ -53,11 +54,12 @@ type ListModel struct {
 // NewListModel creates a ListModel.
 func NewListModel(th theme.Theme, cfg config.Config, width, height int) ListModel {
 	return ListModel{
-		th:     th,
-		cfg:    cfg,
-		width:  width,
-		marks:  NewMarkSet(),
-		scroll: ScrollState{ViewportHeight: height},
+		th:            th,
+		cfg:           cfg,
+		width:         width,
+		marks:         NewMarkSet(),
+		scroll:        ScrollState{ViewportHeight: height},
+		pinnedFullIdx: -1,
 	}
 }
 
@@ -99,6 +101,8 @@ func (m ListModel) SelectedEntry() (logsource.Entry, bool) {
 
 // SetFilter applies a filtered index (slice of entry indices that pass filters).
 // On filter change, keeps selection if still passing, else moves to nearest.
+// Any pinned out-of-filter level-jump match is cleared (the new filter set
+// invalidates it).
 func (m ListModel) SetFilter(indices []int) ListModel {
 	// Check if current cursor entry still passes.
 	current := m.scroll.Cursor
@@ -115,6 +119,7 @@ func (m ListModel) SetFilter(indices []int) ListModel {
 		}
 	}
 	m.filtered = indices
+	m.pinnedFullIdx = -1
 	if found {
 		m.scroll.Cursor = current
 	} else if len(indices) > 0 {
@@ -132,29 +137,64 @@ func (m ListModel) ClearFilter() ListModel {
 	return m
 }
 
-// ClearTransient clears transient in-list state — currently the mark-nav /
-// level-jump wrap indicator. Invoked when the list receives Esc with no
-// higher-priority dismissal pending (T-097).
+// ClearTransient clears transient in-list state: the mark-nav / level-jump
+// wrap indicator and any pinned out-of-filter level-jump match. Invoked when
+// the list receives Esc with no higher-priority dismissal pending (T-097).
 func (m ListModel) ClearTransient() ListModel {
 	m.wrapDir = NoWrap
+	m.pinnedFullIdx = -1
 	return m
 }
 
-// HasTransient reports whether transient state is set (wrap indicator active).
+// HasTransient reports whether any transient state is set (wrap indicator
+// active or an out-of-filter entry pinned for display).
 func (m ListModel) HasTransient() bool {
-	return m.wrapDir != NoWrap
+	return m.wrapDir != NoWrap || m.pinnedFullIdx >= 0
 }
 
-// visibleEntries returns the entries to display (filtered or all).
+// PinnedFullIdx returns the full-entries index of an out-of-filter level-jump
+// match pinned for display, or -1 when none is pinned.
+func (m ListModel) PinnedFullIdx() int { return m.pinnedFullIdx }
+
+// visibleEntries returns the entries to display (filtered or all). When a
+// pin is set and the pinned entry is not in the filter, it is spliced in at
+// its sorted position so the user can see it with an outside-filter indicator.
 func (m ListModel) visibleEntries() []logsource.Entry {
-	if m.filtered == nil {
-		return m.entries
-	}
-	out := make([]logsource.Entry, len(m.filtered))
-	for i, idx := range m.filtered {
-		out[i] = m.entries[idx]
-	}
+	out, _ := m.visibleEntriesAndPin()
 	return out
+}
+
+// visibleEntriesAndPin returns the visible entries plus the visible-list
+// position of the pinned out-of-filter entry, or -1 when no pin is showing.
+func (m ListModel) visibleEntriesAndPin() ([]logsource.Entry, int) {
+	if m.filtered == nil {
+		return m.entries, -1
+	}
+	base := make([]logsource.Entry, len(m.filtered))
+	for i, idx := range m.filtered {
+		base[i] = m.entries[idx]
+	}
+	if m.pinnedFullIdx < 0 || m.pinnedFullIdx >= len(m.entries) {
+		return base, -1
+	}
+	for _, idx := range m.filtered {
+		if idx == m.pinnedFullIdx {
+			// Pin already in the filtered set — no splice, no pin marker.
+			return base, -1
+		}
+	}
+	spliceAt := len(m.filtered)
+	for i, idx := range m.filtered {
+		if idx > m.pinnedFullIdx {
+			spliceAt = i
+			break
+		}
+	}
+	out := make([]logsource.Entry, 0, len(m.filtered)+1)
+	out = append(out, base[:spliceAt]...)
+	out = append(out, m.entries[m.pinnedFullIdx])
+	out = append(out, base[spliceAt:]...)
+	return out, spliceAt
 }
 
 // Marks returns the mark set.
@@ -209,16 +249,22 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "j", "down":
+			m.pinnedFullIdx = -1
 			m.scroll.Cursor = clampCursor(m.scroll.Cursor+1, n)
 		case "k", "up":
+			m.pinnedFullIdx = -1
 			m.scroll.Cursor = clampCursor(m.scroll.Cursor-1, n)
 		case "g":
+			m.pinnedFullIdx = -1
 			m.scroll = GoTop(m.scroll)
 		case "G":
+			m.pinnedFullIdx = -1
 			m.scroll = GoBottom(m.scroll)
 		case "ctrl+d":
+			m.pinnedFullIdx = -1
 			m.scroll = HalfPageDown(m.scroll)
 		case "ctrl+u":
+			m.pinnedFullIdx = -1
 			m.scroll = HalfPageUp(m.scroll)
 		case "m":
 			// Toggle mark on current visible entry.
@@ -227,7 +273,10 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 				m.marks.Toggle(id)
 			}
 		case "u":
-			// Next mark with wrap.
+			// Next mark with wrap. Mark nav drops any pin.
+			m.pinnedFullIdx = -1
+			vis = m.visibleEntries()
+			n = len(vis)
 			visIDs := make([]int, len(vis))
 			for i, e := range vis {
 				visIDs[i] = e.LineNumber
@@ -239,38 +288,34 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 				m.scroll.Cursor = next
 			}
 		case "U":
-			// Previous mark with wrap.
+			// Previous mark with wrap. Mark nav drops any pin.
+			m.pinnedFullIdx = -1
+			vis = m.visibleEntries()
+			n = len(vis)
 			visIDs := make([]int, len(vis))
 			for i, e := range vis {
 				visIDs[i] = e.LineNumber
 			}
-			if prev := m.marks.PrevMark(m.scroll.Cursor, visIDs); prev >= 0 {
-				if prev >= m.scroll.Cursor {
+			if prevMark := m.marks.PrevMark(m.scroll.Cursor, visIDs); prevMark >= 0 {
+				if prevMark >= m.scroll.Cursor {
 					m.wrapDir = WrapBack
 				}
-				m.scroll.Cursor = prev
+				m.scroll.Cursor = prevMark
 			}
 		case "e":
-			// Next ERROR in full entries set.
-			newIdx, dir := NextLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "ERROR")
-			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
-			m.wrapDir = dir
+			m = m.applyLevelJump(true, "ERROR")
 		case "E":
-			// Previous ERROR in full entries set.
-			newIdx, dir := PrevLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "ERROR")
-			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
-			m.wrapDir = dir
+			m = m.applyLevelJump(false, "ERROR")
 		case "w":
-			// Next WARN in full entries set.
-			newIdx, dir := NextLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "WARN")
-			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
-			m.wrapDir = dir
+			m = m.applyLevelJump(true, "WARN")
 		case "W":
-			// Previous WARN in full entries set.
-			newIdx, dir := PrevLevel(m.entries, m.entryIndexForVisible(m.scroll.Cursor), "WARN")
-			m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
-			m.wrapDir = dir
+			m = m.applyLevelJump(false, "WARN")
 		}
+		// Pin or filter changes may have reshaped vis; recompute before
+		// scroll housekeeping and selection emit.
+		vis = m.visibleEntries()
+		n = len(vis)
+		m.scroll.Cursor = clampCursor(m.scroll.Cursor, n)
 		// Keep cursor visible in viewport.
 		m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
 		m.scroll.Offset = clampOffset(m.scroll.Offset, n, m.scroll.ViewportHeight)
@@ -348,10 +393,24 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 }
 
 // entryIndexForVisible converts a visible-list cursor position to an index
-// into the full m.entries slice.
+// into the full m.entries slice. When a pin is spliced into the visible list
+// the pin slot maps back to pinnedFullIdx and indices past it shift by one.
 func (m ListModel) entryIndexForVisible(visIdx int) int {
 	if m.filtered == nil {
 		return visIdx
+	}
+	_, pinPos := m.visibleEntriesAndPin()
+	if pinPos >= 0 {
+		if visIdx == pinPos {
+			return m.pinnedFullIdx
+		}
+		if visIdx > pinPos {
+			fi := visIdx - 1
+			if fi >= 0 && fi < len(m.filtered) {
+				return m.filtered[fi]
+			}
+			return visIdx
+		}
 	}
 	if visIdx >= 0 && visIdx < len(m.filtered) {
 		return m.filtered[visIdx]
@@ -359,21 +418,66 @@ func (m ListModel) entryIndexForVisible(visIdx int) int {
 	return visIdx
 }
 
-// visibleIndexForEntry converts a full-entries index to the best visible index.
-// If the entry is not in the filtered set, returns the current cursor.
+// visibleIndexForEntry converts a full-entries index to its visible index.
+// When the entry is the pinned out-of-filter entry, returns the splice slot.
+// When the entry is in the filter, returns its position (shifted by 1 if it
+// sits after the pin splice). When neither, returns the current cursor.
 func (m ListModel) visibleIndexForEntry(entryIdx int) int {
 	if m.filtered == nil {
 		return entryIdx
 	}
-	// Find the entry in the filtered list.
+	_, pinPos := m.visibleEntriesAndPin()
+	if pinPos >= 0 && m.pinnedFullIdx == entryIdx {
+		return pinPos
+	}
 	for vi, fi := range m.filtered {
 		if fi == entryIdx {
+			if pinPos >= 0 && vi >= pinPos {
+				return vi + 1
+			}
 			return vi
 		}
 	}
-	// Entry is filtered out — show its position indicator by keeping current cursor.
-	// The view can check wrapDir != NoWrap or similar for indicator.
 	return m.scroll.Cursor
+}
+
+// indexInFilter reports whether a full-entries index appears in indices.
+func indexInFilter(indices []int, idx int) bool {
+	for _, fi := range indices {
+		if fi == idx {
+			return true
+		}
+	}
+	return false
+}
+
+// applyLevelJump runs e/E/w/W navigation. It searches the full entry set,
+// records wrap direction, and pins out-of-filter matches so the user can
+// see them with an outside-filter indicator (R8 #6, #7-8).
+func (m ListModel) applyLevelJump(forward bool, level string) ListModel {
+	if len(m.entries) == 0 {
+		return m
+	}
+	fullCur := m.entryIndexForVisible(m.scroll.Cursor)
+	var newIdx int
+	var dir WrapDirection
+	if forward {
+		newIdx, dir = NextLevel(m.entries, fullCur, level)
+	} else {
+		newIdx, dir = PrevLevel(m.entries, fullCur, level)
+	}
+	m.wrapDir = dir
+	// Reset pin; re-pin if the match exists and is outside the filter.
+	m.pinnedFullIdx = -1
+	if newIdx == fullCur {
+		// No match anywhere — leave cursor in place, no pin.
+		return m
+	}
+	if m.filtered != nil && !indexInFilter(m.filtered, newIdx) {
+		m.pinnedFullIdx = newIdx
+	}
+	m.scroll.Cursor = m.visibleIndexForEntry(newIdx)
+	return m
 }
 
 // WrapDir returns the last wrap direction from a level-jump or mark nav.
@@ -383,7 +487,7 @@ func (m ListModel) WrapDir() WrapDirection { return m.wrapDir }
 // Rows are taken from offset..offset+ViewportHeight; shortfalls are padded with
 // empty lines so the layout never overflows or underflows.
 func (m ListModel) View() string {
-	vis := m.visibleEntries()
+	vis, pinPos := m.visibleEntriesAndPin()
 	n := len(vis)
 	vh := m.scroll.ViewportHeight
 	if vh <= 0 {
@@ -403,14 +507,22 @@ func (m ListModel) View() string {
 			sb.WriteByte('\n')
 		}
 		isCursor := i == m.scroll.Cursor
-		mark := ""
-		if m.marks.IsMarked(vis[i].LineNumber) {
-			mark = lipgloss.NewStyle().Foreground(m.th.Mark).Render("* ")
+		// Single 2-cell prefix slot. Priority: pinned out-of-filter > wrap
+		// indicator on cursor row > mark glyph. The wrap and pin glyphs are
+		// transient (cleared on next nav or Esc); marks are persistent.
+		prefix := ""
+		switch {
+		case pinPos >= 0 && i == pinPos:
+			prefix = lipgloss.NewStyle().Foreground(m.th.LevelWarn).Render("⌀ ")
+		case isCursor && m.wrapDir != NoWrap:
+			prefix = lipgloss.NewStyle().Foreground(m.th.Mark).Render("↻ ")
+		case m.marks.IsMarked(vis[i].LineNumber):
+			prefix = lipgloss.NewStyle().Foreground(m.th.Mark).Render("* ")
 		}
 		if isCursor {
-			sb.WriteString(mark + RenderCompactRowWithBg(vis[i], m.width, m.th, m.cfg, m.th.CursorHighlight))
+			sb.WriteString(prefix + RenderCompactRowWithBg(vis[i], m.width, m.th, m.cfg, m.th.CursorHighlight))
 		} else {
-			sb.WriteString(mark + RenderCompactRow(vis[i], m.width, m.th, m.cfg))
+			sb.WriteString(prefix + RenderCompactRow(vis[i], m.width, m.th, m.cfg))
 		}
 		rendered++
 	}
