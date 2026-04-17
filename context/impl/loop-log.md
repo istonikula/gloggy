@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T22:32:51+03:00"
+last_edited: "2026-04-17T22:52:48+03:00"
 ---
 # Loop Log
 
@@ -20,6 +20,12 @@ last_edited: "2026-04-17T22:32:51+03:00"
 ### Iteration 14 — 2026-04-17
 - T-088: right-split composition — DONE. Files: internal/ui/appshell/layout.go (Orientation+WidthRatio fields, ListContentWidth/DetailContentWidth, JoinHorizontal Render branch + inline divider stub), layout_test.go (+5 tests), internal/ui/app/model.go (WindowSizeMsg + relayout wire orientation/width ratio + use ListContentWidth). Build P, Tests P.
 - Next: T-088 unblocks T-089, T-091, T-094, T-098, T-100, T-103, T-107 in tier 9.
+
+### Iteration 15 — 2026-04-17
+- T-089: vertical divider │ in DividerColor via JoinHorizontal — DONE. Files: appshell/divider.go (new), divider_test.go (new), layout.go renderInlineDivider. Build P, Tests P.
+- T-098: ratio keymap +/-/=/| presets clamped [0.10,0.80] — DONE. Files: appshell/ratiokeys.go (new), ratiokeys_test.go (new), detailpane/height.go (SetRatio + cap), app/model.go handleKey. Build P, Tests P.
+- T-091: auto-close pane on minimum underflow + 3s notice — DONE. Files: appshell/autoclose.go (new), autoclose_test.go (new), keyhints.go (notice + WithNotice/HasNotice), app/model.go (noticeClearMsg + tea.Tick + WindowSizeMsg wire), model_test.go (+3 tests). Build P, Tests P. Wave commit 70c5354.
+- Next: T-094, T-100, T-103, T-107 unblocked in tier 9.
 
 ### Iteration 11 — 2026-04-16
 - T-078: Theme tokens CursorHighlight/HeaderBg/FocusBorder — DONE. Files: internal/theme/theme.go, theme_test.go. Build P, Tests P.

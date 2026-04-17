@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T22:32:51+03:00"
+last_edited: "2026-04-17T22:52:48+03:00"
 ---
 # Implementation Tracking: app-shell
 
@@ -28,3 +28,6 @@ Build site: context/plans/build-site.md
 | T-087 | DONE | appshell/orientation.go SelectOrientation; ResizeModel.WithConfig + Orientation; re-eval on every WindowSizeMsg |
 | T-088 | DONE | Layout.Orientation+WidthRatio fields; ListContentWidth/DetailContentWidth (DESIGN.md §5 formula); Render right-split branch via JoinHorizontal with inline divider |
 | T-092 | DONE | KeyHintBarModel.WithPaneOpen + right-aligned focus label (Bold + FocusBorder); omitted in single-pane state |
+| T-089 | DONE | appshell/divider.go RenderDivider (│ glyph, DividerColor); inline join via lipgloss.JoinHorizontal in Render right-split |
+| T-091 | DONE | appshell/autoclose.go ShouldAutoCloseDetail (MinDetailWidth=30 right, MinDetailHeight=3 below); KeyHintBarModel.WithNotice; app/model wires noticeClearMsg via tea.Tick(3s) |
+| T-098 | DONE | appshell/ratiokeys.go NextRatio +/-/=/| presets [0.10,0.30,0.70] clamped [0.10,0.80]; routed via orientation in handleKey |
