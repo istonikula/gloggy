@@ -20,3 +20,4 @@ Build site: context/plans/build-site.md
 | T-100 | DONE | PaneModel.View uses appshell.PaneStyle(state); unfocused → DividerColor border + UnfocusedBg + Faint; focused → FocusBorder |
 | T-103 | DONE | Top border verified in both orientations (right + below); lipgloss.Width scan over first View line |
 | T-107 | DONE | PaneModel uses lipgloss.Width via styling; SetWidth(w) caps outer with Width(w-2).MaxWidth(w); emoji+CJK+ANSI tests |
+| T-106 | DONE | wrap.go SoftWrap via ansi.HardwrapWc (ANSI-safe + cell-aware); PaneModel.rawContent + Open/SetWidth re-wrap to contentWidth; borderRows fixed to 2 (top+bottom); 8 wrap tests |

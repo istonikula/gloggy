@@ -4,6 +4,12 @@ last_edited: "2026-04-18T00:10:55+03:00"
 ---
 # Loop Log
 
+### Iteration 18 — 2026-04-18
+- T-105: orientation-flip preserves both ratios — DONE. Files: app/model_test.go (+TestModel_OrientationFlip_PreservesBothRatios). Build P, Tests P.
+- T-108: resize re-evals orientation + preserves ratios — DONE. Files: appshell/resize_test.go (+TestResizeModel_AutoFlipPreservesBothRatios). Build P, Tests P.
+- T-106: detail pane soft wrap — DONE. Files: detailpane/wrap.go (new, ansi.HardwrapWc), wrap_test.go (new, 8 tests), detailpane/model.go (rawContent + SoftWrap on Open/SetWidth + borderRows fixed to 2). Build P, Tests P.
+- Tier 9 complete. Next: Codex tier gate review for tier 9, then Tier 10 HUMAN sign-off (T-109/T-110 via tui-mcp).
+
 ### Iteration 17 — 2026-04-18
 - T-095: click-to-focus on panes — DONE. Files: app/model.go handleMouse Press+Left zone-switch, model_test.go (+3 tests). Build P, Tests P.
 - T-099: ratio live write-back — DONE. Files: app/model.go saveConfig + ratio key + drag release hooks, model_test.go (+2 tests). Build P, Tests P. Disk persisted ratio = in-memory ratio; height_ratio untouched on width_ratio writes.

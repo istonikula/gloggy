@@ -40,3 +40,5 @@ Build site: context/plans/build-site.md
 | T-103 | DONE | detailpane top border verified in both orientations; lipgloss.Width-safe scan in tests |
 | T-104 | DONE | appshell/ratiokeys.RatioFromDragX; app/model drag state machine Press→Motion→Release on right-split divider |
 | T-107 | DONE | detailpane uses lipgloss.Width via PaneStyle; outer width matches allocation; emoji/CJK/ANSI tests |
+| T-105 | DONE | model_test.go TestModel_OrientationFlip_PreservesBothRatios — right→below→right with height_ratio=0.60 width_ratio=0.20 verifies neither mutated |
+| T-108 | DONE | resize_test.go TestResizeModel_AutoFlipPreservesBothRatios — position=auto, 120→90 flips to below, ratios preserved across two resizes |

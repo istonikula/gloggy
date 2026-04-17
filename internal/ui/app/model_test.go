@@ -717,6 +717,51 @@ func TestModel_DividerDragRelease_PersistsWidthRatio(t *testing.T) {
 	}
 }
 
+// ---------- T-105: orientation flip preserves both ratios ----------
+
+// TestModel_OrientationFlip_PreservesBothRatios verifies that flipping from
+// right → below → right does not mutate height_ratio or width_ratio in the
+// in-memory config, regardless of which ratio is "active" for the current
+// orientation.
+func TestModel_OrientationFlip_PreservesBothRatios(t *testing.T) {
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.HeightRatio = 0.60
+	cfg.Config.DetailPane.WidthRatio = 0.20
+
+	m := New("", false, "", cfg)
+	if m.cfg.Config.DetailPane.HeightRatio != 0.60 {
+		t.Fatalf("pre-resize height_ratio: got %.2f, want 0.60", m.cfg.Config.DetailPane.HeightRatio)
+	}
+
+	assertRatios := func(step string) {
+		t.Helper()
+		if m.cfg.Config.DetailPane.HeightRatio != 0.60 {
+			t.Errorf("%s: height_ratio = %.3f, want 0.600 (unmutated)", step, m.cfg.Config.DetailPane.HeightRatio)
+		}
+		if m.cfg.Config.DetailPane.WidthRatio != 0.20 {
+			t.Errorf("%s: width_ratio = %.3f, want 0.200 (unmutated)", step, m.cfg.Config.DetailPane.WidthRatio)
+		}
+	}
+
+	m = resize(m, 200, 24) // right
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: 200 cols should be right, got %v", m.resize.Orientation())
+	}
+	assertRatios("after initial right resize")
+
+	m = resize(m, 80, 24) // below (under 100-col threshold)
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: 80 cols should be below, got %v", m.resize.Orientation())
+	}
+	assertRatios("after flip to below")
+
+	m = resize(m, 200, 24) // back to right
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: 200 cols should flip back to right, got %v", m.resize.Orientation())
+	}
+	assertRatios("after flip back to right")
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

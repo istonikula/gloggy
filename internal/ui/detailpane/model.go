@@ -17,13 +17,14 @@ type BlurredMsg struct{}
 // PaneModel is the Bubble Tea model for the detail pane.
 // It manages open/close state and delegates to ScrollModel for scrolling.
 type PaneModel struct {
-	open    bool
-	entry   logsource.Entry
-	scroll  ScrollModel
-	th      theme.Theme
-	height  int
-	width   int  // outer width allocation; 0 means content-driven (T-107)
-	Focused bool // set by app before rendering for focus indicator
+	open       bool
+	entry      logsource.Entry
+	scroll     ScrollModel
+	th         theme.Theme
+	height     int
+	width      int    // outer width allocation; 0 means content-driven (T-107)
+	rawContent string // unwrapped pre-rendered content; re-wrapped on width change (T-106)
+	Focused    bool   // set by app before rendering for focus indicator
 }
 
 // NewPaneModel creates a PaneModel.
@@ -38,15 +39,35 @@ func NewPaneModel(th theme.Theme, height int) PaneModel {
 // SetWidth updates the outer width allocation for the pane (T-107). When
 // non-zero, the pane's View is constrained so its outer width equals w —
 // using lipgloss cell-width measurement so emoji and CJK do not overflow.
+// T-106: re-wraps the stored content at the new content width so the
+// scroll viewport reflects the wrapped layout.
 func (m PaneModel) SetWidth(w int) PaneModel {
 	m.width = w
+	if m.open && m.rawContent != "" {
+		m.scroll = m.scroll.SetContent(SoftWrap(m.rawContent, m.contentWidth()), m.height)
+	}
 	return m
+}
+
+// contentWidth returns the inner width available for content after the
+// border has been subtracted. Returns 0 when no width allocation is set.
+func (m PaneModel) contentWidth() int {
+	if m.width <= 0 {
+		return 0
+	}
+	w := m.width - 2 // left + right border
+	if w < 1 {
+		return 0
+	}
+	return w
 }
 
 // IsOpen returns true when the pane is visible.
 func (m PaneModel) IsOpen() bool { return m.open }
 
 // Open activates the detail pane with the given entry.
+// T-106: stores the raw rendered content so SetWidth can re-wrap it on
+// width changes.
 func (m PaneModel) Open(entry logsource.Entry) PaneModel {
 	var content string
 	if entry.IsJSON {
@@ -56,7 +77,8 @@ func (m PaneModel) Open(entry logsource.Entry) PaneModel {
 	}
 	m.entry = entry
 	m.open = true
-	m.scroll = NewScrollModel(content, m.height)
+	m.rawContent = content
+	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.height)
 	return m
 }
 
@@ -101,8 +123,10 @@ func (m PaneModel) Update(msg tea.Msg) (PaneModel, tea.Cmd) {
 	}
 }
 
-// borderRows returns how many rows the pane border consumes (top border).
-func (m PaneModel) borderRows() int { return 1 }
+// borderRows returns how many rows the pane border consumes. T-100 added a
+// full lipgloss border in PaneStyle, so both the top and bottom borders eat
+// one row each.
+func (m PaneModel) borderRows() int { return 2 }
 
 // ContentHeight returns the height available for content after subtracting borders.
 func (m PaneModel) ContentHeight() int {
