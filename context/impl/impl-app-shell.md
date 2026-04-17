@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T00:10:55+03:00"
+last_edited: "2026-04-18T00:35:07+03:00"
 ---
 # Implementation Tracking: app-shell
 
@@ -42,3 +42,6 @@ Build site: context/plans/build-site.md
 | T-107 | DONE | detailpane uses lipgloss.Width via PaneStyle; outer width matches allocation; emoji/CJK/ANSI tests |
 | T-105 | DONE | model_test.go TestModel_OrientationFlip_PreservesBothRatios — right→below→right with height_ratio=0.60 width_ratio=0.20 verifies neither mutated |
 | T-108 | DONE | resize_test.go TestResizeModel_AutoFlipPreservesBothRatios — position=auto, 120→90 flips to below, ratios preserved across two resizes |
+| T-100-fix | DONE | entrylist/list.go WindowSizeMsg deducts 2 cells/2 rows for full pane border (matches detailpane borderRows=2 fix); list_test.go TestWindowSizeMsg_ProcessedWhenEmpty asserts 198x48 |
+| T-109 | DONE | HUMAN sign-off via tui-mcp (140x35 + 80x35 resize) across tokyo-night/catppuccin-mocha/material-dark: DividerColor reads quiet (closer to Dim than FocusBorder), UnfocusedBg subtle bg tint, divider does not recolor on focus change |
+| T-110 | DONE | HUMAN sign-off via tui-mcp across all 3 themes + both orientations: focused pane=FocusBorder+base bg+full fg; unfocused=DividerColor+UnfocusedBg+Faint fg; alone=focused treatment; cursor row keeps CursorHighlight when list unfocused; detail top border visible right + below |

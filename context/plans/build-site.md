@@ -196,6 +196,13 @@ Foundational model + theme extensions, right-split layout, focus cycle, resize k
 | T-109 | [HUMAN] DividerColor + UnfocusedBg visual sign-off | config/R4 | T-084, T-088, T-100, T-060 | S | Human visually verifies — across all three bundled themes — that (1) `DividerColor` reads as a quiet neutral hue (closer to `Dim` than to `FocusBorder`, never dominant), and (2) `UnfocusedBg` is a subtle background tint that dims without erasing content. Confirm the divider column in right-split does not recolor on focus change. **Design Ref:** DESIGN.md §2 new tokens. |
 | T-110 | [HUMAN] Pane visual-state matrix sign-off | app-shell/R10 | T-100, T-101, T-102, T-103, T-088, T-060 | S | Human visually verifies the DESIGN.md §4 matrix: focused pane uses `FocusBorder` border + base bg + full-contrast fg; unfocused-but-visible pane uses `DividerColor` border + `UnfocusedBg` bg + `Dim`-blend fg; an alone pane uses the focused treatment; the cursor row remains visible (at reduced intensity) when the list is unfocused; the detail pane top border is visible in both orientations. **Design Ref:** DESIGN.md §4 matrix. |
 
+### Tier 11 -- Gap Remediation (discovered during sign-off)
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-111 | Render wrap indicator on level-jump and mark-nav | entry-list/R8, R9 | T-032, T-033 | S | `internal/ui/entrylist/list.go` `View()` does not render any visual indicator when `wrapDir != NoWrap`. Acceptance criteria R8 #6 ("when a wrap occurs, an indicator is shown") and R9 #5 ("mark navigation wraps with an indicator") are not met. The state is tracked (`wrapDir`, `HasTransient()`, `WrapDir()`) but only consumed by Esc-clear in `app/model.go:324`. Render a transient marker (e.g., `↻` glyph or "wrapped" notice) when `WrapDir() != NoWrap`, cleared by `ClearTransient()` (already wired to Esc + next nav). Re-verify via tui-mcp: 2 marks → `u` past end → wrap indicator visible. |
+| T-112 | Render filtered-out indicator when level-jump lands outside filter | entry-list/R8 | T-032, T-019 | S | When level-jump (`e`/`E`/`w`/`W`) lands on an entry excluded by the active filter set, the entry is shown but no visual indicator distinguishes it as outside the current filter. Acceptance criteria R8 #7 ("entry is shown and a visual indicator communicates it is outside the current filter") and R8 #8 (human readability) are not met. Decide on indicator (e.g., a leading `⌀` or per-row badge) and render it when the cursor's underlying entry index is not in the current `FilteredIndex`. Re-verify via tui-mcp: filter to INFO → press `e` → cursor jumps to filtered-out ERROR → indicator visible. |
+
 ---
 
 ## Dependency Graph

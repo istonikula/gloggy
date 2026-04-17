@@ -1,8 +1,16 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T00:10:55+03:00"
+last_edited: "2026-04-18T00:35:07+03:00"
 ---
 # Loop Log
+
+### Iteration 19 — 2026-04-18
+- T-100 followup: list border allocation fix — DONE. Files: entrylist/list.go (WindowSizeMsg -2 cells/-2 rows), list_test.go (TestWindowSizeMsg_ProcessedWhenEmpty 198x48 + comment). Bug found via tui-mcp screenshot during T-110 prep — header pushed off screen. Build P, Tests P. Commit 4fdff9b.
+- T-109: HUMAN sign-off DividerColor + UnfocusedBg neutrality — DONE. Visually verified via tui-mcp across tokyo-night/catppuccin-mocha/material-dark at 140x35 (right) + 80x35 (below). DividerColor reads quiet neutral; UnfocusedBg subtle dim tint; divider color unchanged on focus toggle.
+- T-110: HUMAN sign-off pane visual-state matrix — DONE. Verified via tui-mcp across all 3 themes + right/below orientations: focused=FocusBorder+full fg; unfocused=DividerColor border+UnfocusedBg+Faint fg; alone=focused treatment; cursor row keeps CursorHighlight when list unfocused; detail top border visible in both orientations.
+- T-061..T-065, T-068: HUMAN sign-off via tui-mcp — DONE. T-061..T-063 theme readability (3 themes verified during T-110); T-064 non-JSON dim verified on small.log tokyo-night (logback raw rows visibly dimmer than JSON rows); T-065 event boundaries clear; T-068 detail syntax per theme covered by walks.
+- T-066, T-067: HUMAN sign-off — PARTIAL. GAPS DETECTED: `wrapDir` state tracked but `View()` renders no visual indicator. R8 #6-8 (wrap indicator + filtered-out indicator) and R9 #5 (mark wrap indicator) not met. Added T-111 (wrap indicator rendering) + T-112 (filtered-out indicator rendering) to build site Tier 11. Cannot emit CAVEKIT COMPLETE until gaps closed.
+- Visual issue noted: help overlay (`?`) shows text bleed-through from underlying view (overlay does not opaquely cover content cells). Not adding as gap task — separate UX polish item.
 
 ### Iteration 18 — 2026-04-18
 - T-105: orientation-flip preserves both ratios — DONE. Files: app/model_test.go (+TestModel_OrientationFlip_PreservesBothRatios). Build P, Tests P.
