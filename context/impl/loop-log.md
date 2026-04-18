@@ -1,8 +1,14 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T21:45:07+03:00"
+last_edited: "2026-04-19T00:19:30+03:00"
 ---
 # Loop Log
+
+### Iteration 37 — 2026-04-19 (Tier 19 Wave 1: T-155)
+- T-155: focus-aware keyboard resize rewrite — DONE. `appshell/ratiokeys.go`: preset set shrunk from `{0.10, 0.30, 0.70}` to `{0.30, 0.50}`; new `NextDetailRatio(current, key, listFocused bool)` — `+`/`-`/`|` act on focused pane's share (detail directly, or list share = 1-detail), `=` always returns RatioDefault (0.30) regardless of focus. Clamp-pin at [0.10, 0.80] via existing `ClampRatio`. `app/model.go`: ratio-key dispatch hoisted out of FocusDetailPane branch into a shared intercept at top of focus switch, gated by `m.pane.IsOpen()` (pane-closed → silent no-op) and `m.list.HasActiveSearch() && InputMode()` (list-search input consumes every rune). New `handleRatioKey` helper routes via focus + orientation: below → height_ratio, right → width_ratio. Closes cavekit-app-shell R12 (revised 2026-04-18, kit commit cc1c826).
+- Wave 1 inline (parent opus = EXECUTION_MODEL). 1 commit — T-155 ratiokeys rewrite + focus-aware dispatch.
+- Build P, Tests P (510/510 across 11 pkgs — 10 new model tests for R12 focus-aware ACs, 12 rewritten ratiokeys tests). Files: internal/ui/appshell/ratiokeys.go, internal/ui/appshell/ratiokeys_test.go, internal/ui/app/model.go, internal/ui/app/model_test.go, impl-app-shell.md, loop-log.md.
+- Frontier for Wave 2: T-156 (mouse-drag resize, R15 — blocked by T-094, T-098, T-099; all done). T-158 (click-row resolver, R10 rewrite — ready). Both parallelizable conceptually (T-156 app+appshell, T-158 appshell+entrylist) but inline-sequenced.
 
 ### Iteration 36 — 2026-04-18 (Tier 18 polish: T-151 + T-152 + T-153 + T-154)
 - T-151: shared `matchRow(lowerNeedle, entry, width, cfg)` helper extracted in `entrylist/search.go`, called from both `ExtendMatches` + `computeMatches`. Needle pre-lowered by callers. Streaming/full-scan case-fold+substring semantics now single-sourced — no more drift risk. Build P, Tests P (94 entrylist). Closes F-116.

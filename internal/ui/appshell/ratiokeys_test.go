@@ -5,81 +5,138 @@ import (
 	"testing"
 )
 
-// T-098: + adds RatioStep, three presses from 0.30 → 0.45.
-func TestNextRatio_PlusIncrements(t *testing.T) {
-	r := 0.30
-	for i := 0; i < 3; i++ {
-		r, _ = NextRatio(r, "+")
+// T-155: + with detail focused grows the detail ratio by one step.
+func TestNextDetailRatio_PlusDetailFocus(t *testing.T) {
+	r, ok := NextDetailRatio(0.30, "+", false)
+	if !ok {
+		t.Fatalf("+ not recognised")
 	}
-	if math.Abs(r-0.45) > 1e-9 {
-		t.Errorf("0.30 + 3*step: got %.3f, want 0.450", r)
-	}
-}
-
-// T-098: + at the max is a no-op (stays at 0.80).
-func TestNextRatio_PlusAtMaxIsNoOp(t *testing.T) {
-	r, _ := NextRatio(0.80, "+")
-	if r != 0.80 {
-		t.Errorf("+ at max: got %.3f, want 0.800", r)
+	if math.Abs(r-0.35) > 1e-9 {
+		t.Errorf("+ detail 0.30: got %.3f, want 0.350", r)
 	}
 }
 
-// T-098: - subtracts RatioStep.
-func TestNextRatio_MinusDecrements(t *testing.T) {
-	r, _ := NextRatio(0.30, "-")
+// T-155: + with list focused shrinks the detail ratio (grows list share).
+func TestNextDetailRatio_PlusListFocus(t *testing.T) {
+	r, _ := NextDetailRatio(0.30, "+", true)
 	if math.Abs(r-0.25) > 1e-9 {
-		t.Errorf("0.30 - step: got %.3f, want 0.250", r)
+		t.Errorf("+ list 0.30: got %.3f, want 0.250", r)
 	}
 }
 
-// T-098: - at the min is a no-op (stays at 0.10).
-func TestNextRatio_MinusAtMinIsNoOp(t *testing.T) {
-	r, _ := NextRatio(0.10, "-")
-	if r != 0.10 {
-		t.Errorf("- at min: got %.3f, want 0.100", r)
+// T-155: - with detail focused shrinks the detail ratio.
+func TestNextDetailRatio_MinusDetailFocus(t *testing.T) {
+	r, _ := NextDetailRatio(0.30, "-", false)
+	if math.Abs(r-0.25) > 1e-9 {
+		t.Errorf("- detail 0.30: got %.3f, want 0.250", r)
 	}
 }
 
-// T-098: = resets to default 0.30.
-func TestNextRatio_EqualsResetsToDefault(t *testing.T) {
-	r, _ := NextRatio(0.50, "=")
-	if r != 0.30 {
-		t.Errorf("= reset: got %.3f, want 0.300", r)
+// T-155: - with list focused grows the detail ratio (shrinks list share).
+func TestNextDetailRatio_MinusListFocus(t *testing.T) {
+	r, _ := NextDetailRatio(0.30, "-", true)
+	if math.Abs(r-0.35) > 1e-9 {
+		t.Errorf("- list 0.30: got %.3f, want 0.350", r)
 	}
 }
 
-// T-098: | cycles the [0.10, 0.30, 0.70] presets in order, wrapping back to 0.10.
-func TestNextRatio_PipeCyclesPresets(t *testing.T) {
+// T-155: + at RatioMax with detail focused is a no-op (clamp-pin).
+func TestNextDetailRatio_PlusAtMaxDetail_NoOp(t *testing.T) {
+	r, _ := NextDetailRatio(RatioMax, "+", false)
+	if r != RatioMax {
+		t.Errorf("+ at max detail: got %.3f, want %.3f", r, RatioMax)
+	}
+}
+
+// T-155: + at RatioMin with list focused is a no-op (clamp-pin — list
+// cannot grow beyond its maximum share, which means detail cannot drop
+// below RatioMin).
+func TestNextDetailRatio_PlusAtMinList_NoOp(t *testing.T) {
+	r, _ := NextDetailRatio(RatioMin, "+", true)
+	if r != RatioMin {
+		t.Errorf("+ at min list: got %.3f, want %.3f", r, RatioMin)
+	}
+}
+
+// T-155: - at RatioMin with detail focused is a no-op.
+func TestNextDetailRatio_MinusAtMinDetail_NoOp(t *testing.T) {
+	r, _ := NextDetailRatio(RatioMin, "-", false)
+	if r != RatioMin {
+		t.Errorf("- at min detail: got %.3f, want %.3f", r, RatioMin)
+	}
+}
+
+// T-155: - at RatioMax with list focused is a no-op.
+func TestNextDetailRatio_MinusAtMaxList_NoOp(t *testing.T) {
+	r, _ := NextDetailRatio(RatioMax, "-", true)
+	if r != RatioMax {
+		t.Errorf("- at max list: got %.3f, want %.3f", r, RatioMax)
+	}
+}
+
+// T-155: = resets detail ratio to RatioDefault regardless of focus.
+func TestNextDetailRatio_EqualsResetsDefault_BothFocus(t *testing.T) {
+	for _, listFocus := range []bool{false, true} {
+		r, _ := NextDetailRatio(0.50, "=", listFocus)
+		if r != RatioDefault {
+			t.Errorf("= listFocused=%v: got %.3f, want %.3f", listFocus, r, RatioDefault)
+		}
+	}
+}
+
+// T-155: | with detail focused toggles detail ratio between 0.30 ↔ 0.50.
+func TestNextDetailRatio_PipeDetailFocus_TogglesPresets(t *testing.T) {
 	cases := []struct {
 		from float64
 		want float64
 	}{
-		{0.10, 0.30},
-		{0.30, 0.70},
-		{0.70, 0.10},
+		{RatioDefault, 0.50},
+		{0.50, RatioDefault},
 	}
 	for _, tc := range cases {
-		got, ok := NextRatio(tc.from, "|")
-		if !ok {
-			t.Errorf("| not recognised as ratio key")
-		}
+		got, _ := NextDetailRatio(tc.from, "|", false)
 		if math.Abs(got-tc.want) > 1e-9 {
-			t.Errorf("| from %.2f: got %.2f, want %.2f", tc.from, got, tc.want)
+			t.Errorf("| detail from %.2f: got %.2f, want %.2f", tc.from, got, tc.want)
 		}
 	}
 }
 
-// T-098: | from a non-preset jumps to the first preset.
-func TestNextRatio_PipeFromNonPresetJumpsToFirst(t *testing.T) {
-	got, _ := NextRatio(0.45, "|")
-	if got != 0.10 {
-		t.Errorf("| from off-preset 0.45: got %.2f, want 0.10", got)
+// T-155: | with list focused toggles list share between 0.30 ↔ 0.50
+// (detail ratio 0.70 ↔ 0.50).
+func TestNextDetailRatio_PipeListFocus_TogglesShare(t *testing.T) {
+	cases := []struct {
+		from float64
+		want float64
+	}{
+		{0.70, 0.50}, // list share 0.30 → 0.50
+		{0.50, 0.70}, // list share 0.50 → 0.30
+	}
+	for _, tc := range cases {
+		got, _ := NextDetailRatio(tc.from, "|", true)
+		if math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("| list from detail=%.2f: got %.2f, want %.2f", tc.from, got, tc.want)
+		}
 	}
 }
 
-// T-098: unknown keys are not consumed.
-func TestNextRatio_UnknownKey(t *testing.T) {
-	got, ok := NextRatio(0.30, "j")
+// T-155: | from an off-preset detail ratio jumps to the first preset.
+func TestNextDetailRatio_PipeOffPreset_JumpsToFirst(t *testing.T) {
+	// Detail focus: off-preset 0.45 → first preset 0.30.
+	got, _ := NextDetailRatio(0.45, "|", false)
+	if math.Abs(got-RatioDefault) > 1e-9 {
+		t.Errorf("| detail off-preset 0.45: got %.3f, want %.3f", got, RatioDefault)
+	}
+	// List focus: off-preset (detail 0.45 → share 0.55) → first preset
+	// share 0.30 → detail 0.70.
+	got, _ = NextDetailRatio(0.45, "|", true)
+	if math.Abs(got-0.70) > 1e-9 {
+		t.Errorf("| list off-preset detail=0.45: got %.3f, want 0.70", got)
+	}
+}
+
+// T-155: unknown keys are not consumed.
+func TestNextDetailRatio_UnknownKey(t *testing.T) {
+	got, ok := NextDetailRatio(0.30, "j", false)
 	if ok {
 		t.Errorf("'j' must not be a ratio key")
 	}

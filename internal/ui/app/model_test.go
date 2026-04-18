@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -1591,5 +1592,221 @@ func TestModel_MouseClick_DetailZone_ClearsActiveListSearch(t *testing.T) {
 	}
 	if got := m.list.Search().Query(); got != "" {
 		t.Errorf("list search query should be cleared, got %q", got)
+	}
+}
+
+// ---------- T-155: focus-aware keyboard resize (cavekit-app-shell R12 revised) ----------
+
+// setupRatioModelRight returns a model in right-orientation with the
+// detail pane open. Ratios are the defaults: detail width_ratio = 0.30,
+// so list share = 0.70.
+func setupRatioModelRight(t *testing.T, listFocus bool) Model {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, dir+"/config.toml", cfg)
+	m = resize(m, 200, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
+	}
+	if listFocus {
+		m.focus = appshell.FocusEntryList
+		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	} else {
+		m.focus = appshell.FocusDetailPane
+		m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+	}
+	return m
+}
+
+// setupRatioModelBelow returns a model in below-orientation with the
+// detail pane open.
+func setupRatioModelBelow(t *testing.T, listFocus bool) Model {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, dir+"/config.toml", cfg)
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: want below orientation, got %v", m.resize.Orientation())
+	}
+	if listFocus {
+		m.focus = appshell.FocusEntryList
+		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	} else {
+		m.focus = appshell.FocusDetailPane
+		m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+	}
+	return m
+}
+
+// TestModel_T155_Plus_DetailFocus_GrowsDetail_Right: `+` with detail
+// focused in right-mode grows the detail width_ratio.
+func TestModel_T155_Plus_DetailFocus_GrowsDetail_Right(t *testing.T) {
+	m := setupRatioModelRight(t, false)
+	before := m.cfg.Config.DetailPane.WidthRatio
+	m = key(m, "+")
+	after := m.cfg.Config.DetailPane.WidthRatio
+	if after <= before {
+		t.Errorf("+ detail-focus must grow detail ratio: before=%.3f after=%.3f", before, after)
+	}
+}
+
+// TestModel_T155_Plus_ListFocus_ShrinksDetail_Right: `+` with list
+// focused in right-mode shrinks detail width_ratio (list grows).
+func TestModel_T155_Plus_ListFocus_ShrinksDetail_Right(t *testing.T) {
+	m := setupRatioModelRight(t, true)
+	before := m.cfg.Config.DetailPane.WidthRatio
+	m = key(m, "+")
+	after := m.cfg.Config.DetailPane.WidthRatio
+	if after >= before {
+		t.Errorf("+ list-focus must shrink detail ratio: before=%.3f after=%.3f", before, after)
+	}
+}
+
+// TestModel_T155_Minus_SymmetricInverse_Right: `-` at each focus is the
+// inverse of `+`.
+func TestModel_T155_Minus_SymmetricInverse_Right(t *testing.T) {
+	// detail focus: `-` shrinks detail
+	m := setupRatioModelRight(t, false)
+	before := m.cfg.Config.DetailPane.WidthRatio
+	m = key(m, "-")
+	if m.cfg.Config.DetailPane.WidthRatio >= before {
+		t.Errorf("- detail-focus must shrink detail: before=%.3f after=%.3f",
+			before, m.cfg.Config.DetailPane.WidthRatio)
+	}
+	// list focus: `-` grows detail
+	m = setupRatioModelRight(t, true)
+	before = m.cfg.Config.DetailPane.WidthRatio
+	m = key(m, "-")
+	if m.cfg.Config.DetailPane.WidthRatio <= before {
+		t.Errorf("- list-focus must grow detail: before=%.3f after=%.3f",
+			before, m.cfg.Config.DetailPane.WidthRatio)
+	}
+}
+
+// TestModel_T155_Pipe_DetailFocus_Toggles_Right: `|` with detail focused
+// toggles 0.30 ↔ 0.50.
+func TestModel_T155_Pipe_DetailFocus_Toggles_Right(t *testing.T) {
+	m := setupRatioModelRight(t, false)
+	// From default 0.30 → 0.50.
+	m = key(m, "|")
+	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.50 {
+		t.Errorf("| detail from 0.30: got %.3f, want 0.50", got)
+	}
+	// Back to 0.30.
+	m = key(m, "|")
+	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.30 {
+		t.Errorf("| detail from 0.50: got %.3f, want 0.30", got)
+	}
+}
+
+// TestModel_T155_Pipe_ListFocus_TogglesShare_Right: `|` with list
+// focused toggles list share 0.30 ↔ 0.50 (detail 0.70 ↔ 0.50).
+func TestModel_T155_Pipe_ListFocus_TogglesShare_Right(t *testing.T) {
+	m := setupRatioModelRight(t, true)
+	// Default detail=0.30 → list share=0.70 (off-preset) → first preset share=0.30 → detail=0.70.
+	m = key(m, "|")
+	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.70 {
+		t.Errorf("| list from detail=0.30: got %.3f, want 0.70", got)
+	}
+	// From detail=0.70 (share=0.30) → toggle to share=0.50 → detail=0.50.
+	m = key(m, "|")
+	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.50 {
+		t.Errorf("| list from detail=0.70: got %.3f, want 0.50", got)
+	}
+}
+
+// TestModel_T155_Equals_ResetsDefault_BothFocus_Right: `=` resets detail
+// to 0.30 regardless of focus.
+func TestModel_T155_Equals_ResetsDefault_BothFocus_Right(t *testing.T) {
+	for _, listFocus := range []bool{false, true} {
+		m := setupRatioModelRight(t, listFocus)
+		// Mutate away from default first.
+		m.cfg.Config.DetailPane.WidthRatio = 0.50
+		m.layout = m.layout.SetWidthRatio(0.50)
+		m = key(m, "=")
+		if got := m.cfg.Config.DetailPane.WidthRatio; got != appshell.RatioDefault {
+			t.Errorf("= listFocus=%v: got %.3f, want %.3f",
+				listFocus, got, appshell.RatioDefault)
+		}
+	}
+}
+
+// TestModel_T155_ClampPin_DetailFocus_Max_Right: `+` at RatioMax is a
+// no-op with detail focused.
+func TestModel_T155_ClampPin_DetailFocus_Max_Right(t *testing.T) {
+	m := setupRatioModelRight(t, false)
+	m.cfg.Config.DetailPane.WidthRatio = appshell.RatioMax
+	m.layout = m.layout.SetWidthRatio(appshell.RatioMax)
+	m = key(m, "+")
+	if got := m.cfg.Config.DetailPane.WidthRatio; got != appshell.RatioMax {
+		t.Errorf("+ at RatioMax detail-focus: got %.3f, want %.3f (no-op)", got, appshell.RatioMax)
+	}
+}
+
+// TestModel_T155_ClampPin_DetailFocus_Min_Right: `-` at RatioMin is a
+// no-op with detail focused.
+func TestModel_T155_ClampPin_DetailFocus_Min_Right(t *testing.T) {
+	m := setupRatioModelRight(t, false)
+	m.cfg.Config.DetailPane.WidthRatio = appshell.RatioMin
+	m.layout = m.layout.SetWidthRatio(appshell.RatioMin)
+	m = key(m, "-")
+	if got := m.cfg.Config.DetailPane.WidthRatio; got != appshell.RatioMin {
+		t.Errorf("- at RatioMin detail-focus: got %.3f, want %.3f (no-op)", got, appshell.RatioMin)
+	}
+}
+
+// TestModel_T155_Below_ActivatesHeightRatio: below-mode mutates
+// height_ratio (not width_ratio).
+func TestModel_T155_Below_ActivatesHeightRatio(t *testing.T) {
+	m := setupRatioModelBelow(t, false)
+	beforeH := m.cfg.Config.DetailPane.HeightRatio
+	beforeW := m.cfg.Config.DetailPane.WidthRatio
+	m = key(m, "+")
+	if m.cfg.Config.DetailPane.HeightRatio == beforeH {
+		t.Errorf("+ in below-mode must change height_ratio: %.3f unchanged", beforeH)
+	}
+	if m.cfg.Config.DetailPane.WidthRatio != beforeW {
+		t.Errorf("+ in below-mode must NOT change width_ratio: %.3f → %.3f",
+			beforeW, m.cfg.Config.DetailPane.WidthRatio)
+	}
+}
+
+// TestModel_T155_PaneClosed_AllKeys_NoOp: all four ratio keys are silent
+// no-ops when the detail pane is closed (no divider to move).
+func TestModel_T155_PaneClosed_AllKeys_NoOp(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	m = m.SetEntries(makeEntries(3))
+	if m.pane.IsOpen() {
+		t.Fatal("precondition: pane should be closed")
+	}
+	beforeW := m.cfg.Config.DetailPane.WidthRatio
+	beforeH := m.cfg.Config.DetailPane.HeightRatio
+
+	for _, k := range []string{"+", "-", "=", "|"} {
+		m = key(m, k)
+		if m.cfg.Config.DetailPane.WidthRatio != beforeW {
+			t.Errorf("%q with pane closed must not change width_ratio: %.3f → %.3f",
+				k, beforeW, m.cfg.Config.DetailPane.WidthRatio)
+		}
+		if m.cfg.Config.DetailPane.HeightRatio != beforeH {
+			t.Errorf("%q with pane closed must not change height_ratio: %.3f → %.3f",
+				k, beforeH, m.cfg.Config.DetailPane.HeightRatio)
+		}
+	}
+	// No disk write should have fired — config file must not exist.
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("pane-closed ratio keys must not trigger config save; file exists: %v", err)
 	}
 }

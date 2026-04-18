@@ -325,26 +325,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// T-155 (cavekit-app-shell R12, revised): focus-aware resize keymap
+	// (+/-/=/|). Routes AFTER list-search handoff (handled below in the
+	// FocusEntryList branch) but BEFORE any other focus-specific
+	// dispatch, so a ratio key fires whichever pane is focused (detail
+	// or list). Ratio is held on the detail pane: in below-orientation
+	// the active storage is height_ratio, in right-orientation
+	// width_ratio. When the detail pane is closed, all four keys are
+	// silent no-ops — there is no divider to move.
+	if appshell.IsRatioKey(msg.String()) && m.focus != appshell.FocusFilterPanel {
+		if m.focus == appshell.FocusEntryList && m.list.HasActiveSearch() && m.list.Search().InputMode() {
+			// List-search input mode consumes every rune — ratio keys
+			// extend the query rather than resizing.
+		} else if m.pane.IsOpen() {
+			return m.handleRatioKey(msg.String())
+		}
+	}
+
 	switch m.focus {
 	case appshell.FocusDetailPane:
-		// T-098: ratio keymap (+/-/=/|). Active ratio depends on
-		// orientation — height_ratio in below-mode, width_ratio in
-		// right-mode. Clamps to [0.10, 0.80].
-		if appshell.IsRatioKey(msg.String()) {
-			if m.resize.Orientation() == appshell.OrientationRight {
-				newR, _ := appshell.NextRatio(m.cfg.Config.DetailPane.WidthRatio, msg.String())
-				m.cfg.Config.DetailPane.WidthRatio = newR
-				m.layout = m.layout.SetWidthRatio(newR)
-			} else {
-				newR, _ := appshell.NextRatio(m.paneHeight.Ratio(), msg.String())
-				m.paneHeight = m.paneHeight.SetRatio(newR)
-				m.cfg.Config.DetailPane.HeightRatio = newR
-				m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
-			}
-			m = m.relayout()
-			m.saveConfig() // T-099: persist ratio change immediately.
-			return m, nil
-		}
 		// In-pane search. T-113/T-114: match against ContentLines
 		// (soft-wrapped, unstyled) — splitting View() would include
 		// border glyphs and syntax-highlight ANSI and mis-index matches.
@@ -677,4 +676,27 @@ func (m Model) refilter() Model {
 
 func (m Model) visibleCount() int {
 	return m.cachedVisibleCount
+}
+
+// handleRatioKey applies a focus-aware resize key press (cavekit-app-shell
+// R12 revised, T-155). Caller guarantees the detail pane is open, the key
+// is a ratio key, and focus is not the filter panel. Returns the updated
+// model + live-write command.
+func (m Model) handleRatioKey(key string) (tea.Model, tea.Cmd) {
+	listFocused := m.focus == appshell.FocusEntryList
+	if m.resize.Orientation() == appshell.OrientationRight {
+		current := m.cfg.Config.DetailPane.WidthRatio
+		newR, _ := appshell.NextDetailRatio(current, key, listFocused)
+		m.cfg.Config.DetailPane.WidthRatio = newR
+		m.layout = m.layout.SetWidthRatio(newR)
+	} else {
+		current := m.paneHeight.Ratio()
+		newR, _ := appshell.NextDetailRatio(current, key, listFocused)
+		m.paneHeight = m.paneHeight.SetRatio(newR)
+		m.cfg.Config.DetailPane.HeightRatio = newR
+		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
+	}
+	m = m.relayout()
+	m.saveConfig() // T-099: persist ratio change immediately.
+	return m, nil
 }

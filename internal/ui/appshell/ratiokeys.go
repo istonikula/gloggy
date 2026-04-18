@@ -3,7 +3,8 @@ package appshell
 import "math"
 
 // Ratio constants shared by below-mode (height_ratio) and right-mode
-// (width_ratio) keymaps. Clamp [0.10, 0.80] inclusive (DESIGN.md §5).
+// (width_ratio) keymaps. Clamp [0.10, 0.80] inclusive (DESIGN.md §5,
+// cavekit-app-shell R12).
 const (
 	RatioMin     = 0.10
 	RatioMax     = 0.80
@@ -11,23 +12,51 @@ const (
 	RatioDefault = 0.30
 )
 
-// ratioPresets is the cycle order for the `|` key (DESIGN.md §5).
-var ratioPresets = []float64{0.10, 0.30, 0.70}
+// detailPresets is the toggle set for `|` when the detail pane is focused
+// (cavekit-app-shell R12 rev 2026-04-18). The former 0.10 and 0.70
+// presets are deleted: 0.10 left the detail pane unreadably small and
+// 0.70 left the list too narrow for log-scanning.
+var detailPresets = []float64{RatioDefault, 0.50}
 
-// NextRatio computes the new ratio for a single key press. Returns
-// (newRatio, true) if the key is a ratio key (`+`, `-`, `=`, `|`), or
-// (current, false) otherwise. All adjustments clamp to [RatioMin, RatioMax]
-// (T-098).
-func NextRatio(current float64, key string) (float64, bool) {
+// listSharePresets is the toggle set for `|` when the entry list is
+// focused — expressed as a list-share value (detail ratio = 1 - listShare).
+// Share {0.30, 0.50} ⇔ detail {0.70, 0.50}.
+var listSharePresets = []float64{RatioDefault, 0.50}
+
+// NextDetailRatio computes the new detail-pane ratio for a resize key
+// press based on which pane is focused (cavekit-app-shell R12, revised).
+//
+//   - `+` grows the focused pane's share by RatioStep; with list focus
+//     this means the detail ratio shrinks by RatioStep.
+//   - `-` shrinks the focused pane's share by RatioStep.
+//   - `|` toggles the focused pane's share between 0.30 and 0.50.
+//   - `=` sets the detail ratio to RatioDefault (0.30) regardless of
+//     focus — "reset" is a global return-to-baseline.
+//
+// All results clamp to [RatioMin, RatioMax]; at the boundary a further
+// press in the same direction is a no-op (the returned ratio equals
+// `current`). Returns (current, false) for unknown keys.
+func NextDetailRatio(current float64, key string, listFocused bool) (float64, bool) {
 	switch key {
-	case "+":
-		return ClampRatio(current + RatioStep), true
-	case "-":
-		return ClampRatio(current - RatioStep), true
 	case "=":
 		return RatioDefault, true
 	case "|":
-		return cycleRatioPreset(current), true
+		if listFocused {
+			return cycleListSharePreset(current), true
+		}
+		return cycleDetailPreset(current), true
+	case "+":
+		delta := RatioStep
+		if listFocused {
+			delta = -delta
+		}
+		return ClampRatio(current + delta), true
+	case "-":
+		delta := -RatioStep
+		if listFocused {
+			delta = -delta
+		}
+		return ClampRatio(current + delta), true
 	}
 	return current, false
 }
@@ -43,19 +72,32 @@ func ClampRatio(r float64) float64 {
 	return r
 }
 
-// cycleRatioPreset advances the ratio to the next preset in
-// ratioPresets. Matches the current ratio against presets within ±step/2;
-// if no preset matches, jumps to the first preset.
-func cycleRatioPreset(current float64) float64 {
-	for i, p := range ratioPresets {
+// cycleDetailPreset advances the detail ratio to the next preset in
+// detailPresets. Uses ±RatioStep/2 tolerance; an off-preset ratio jumps
+// to the first preset.
+func cycleDetailPreset(current float64) float64 {
+	for i, p := range detailPresets {
 		if math.Abs(current-p) < RatioStep/2 {
-			return ratioPresets[(i+1)%len(ratioPresets)]
+			return detailPresets[(i+1)%len(detailPresets)]
 		}
 	}
-	return ratioPresets[0]
+	return detailPresets[0]
 }
 
-// IsRatioKey reports whether the key string is one handled by NextRatio.
+// cycleListSharePreset advances the list share (= 1 - detail ratio) to
+// the next preset in listSharePresets, then returns the corresponding
+// detail ratio. An off-preset share jumps to the first preset.
+func cycleListSharePreset(currentDetail float64) float64 {
+	share := 1 - currentDetail
+	for i, p := range listSharePresets {
+		if math.Abs(share-p) < RatioStep/2 {
+			return 1 - listSharePresets[(i+1)%len(listSharePresets)]
+		}
+	}
+	return 1 - listSharePresets[0]
+}
+
+// IsRatioKey reports whether the key string is one handled by NextDetailRatio.
 func IsRatioKey(key string) bool {
 	switch key {
 	case "+", "-", "=", "|":
