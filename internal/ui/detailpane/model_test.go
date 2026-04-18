@@ -239,3 +239,63 @@ func TestPaneModel_ContentLines_ClosedReturnsNil(t *testing.T) {
 		t.Errorf("expected nil from closed-after-open pane, got %v", got)
 	}
 }
+
+// T-114 (F-002, F-004, F-010): an active SearchModel attached via
+// WithSearch() renders a visible prompt row and (cur/total) counter in
+// the pane's View output.
+func TestPaneModel_WithSearch_RendersPromptAndCounter(t *testing.T) {
+	pane := defaultPane(12).SetWidth(60).Open(logsource.Entry{
+		IsJSON: true,
+		Time:   time.Now(),
+		Level:  "INFO",
+		Msg:    "hello",
+		Raw:    []byte(`{"level":"INFO","msg":"hello world","tag":"hello there"}`),
+	})
+	search := NewSearchModel(theme.GetTheme("tokyo-night")).Activate().SetQuery("hello", pane.ContentLines())
+	if search.MatchCount() < 1 {
+		t.Fatalf("setup: expected >=1 match, got %d", search.MatchCount())
+	}
+	view := pane.WithSearch(search).View()
+	if !strings.Contains(view, "/hello") {
+		t.Errorf("view missing active query prompt '/hello': %q", view)
+	}
+	// Counter "(1/N)" — N depends on match count but we check the format.
+	if !strings.Contains(view, "(1/") {
+		t.Errorf("view missing (cur/total) counter: %q", view)
+	}
+}
+
+// T-114: non-empty query with zero matches renders "No matches".
+func TestPaneModel_WithSearch_NoMatchesIndicator(t *testing.T) {
+	pane := defaultPane(12).SetWidth(60).Open(testEntry())
+	search := NewSearchModel(theme.GetTheme("tokyo-night")).Activate().SetQuery("zzz-nope", pane.ContentLines())
+	if search.MatchCount() != 0 {
+		t.Fatalf("setup: expected 0 matches, got %d", search.MatchCount())
+	}
+	view := pane.WithSearch(search).View()
+	if !strings.Contains(view, "No matches") {
+		t.Errorf("view should show 'No matches' for query with zero hits: %q", view)
+	}
+}
+
+// T-114: bare `/` prompt (no query yet) renders just the slash so the
+// user sees that search is running.
+func TestPaneModel_WithSearch_BarePrompt(t *testing.T) {
+	pane := defaultPane(12).SetWidth(60).Open(testEntry())
+	search := NewSearchModel(theme.GetTheme("tokyo-night")).Activate()
+	view := pane.WithSearch(search).View()
+	if !strings.Contains(view, "/") {
+		t.Errorf("view should contain '/' prompt while search is active: %q", view)
+	}
+}
+
+// T-114: when search is inactive, View() does not render a prompt row —
+// the pane reverts to its normal rendering.
+func TestPaneModel_WithSearch_InactiveNoPrompt(t *testing.T) {
+	pane := defaultPane(12).SetWidth(60).Open(testEntry())
+	search := NewSearchModel(theme.GetTheme("tokyo-night")) // not activated
+	view := pane.WithSearch(search).View()
+	if strings.Contains(view, "No matches") {
+		t.Errorf("inactive search should not render 'No matches': %q", view)
+	}
+}

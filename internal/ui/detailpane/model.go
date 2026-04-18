@@ -1,9 +1,11 @@
 package detailpane
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -25,9 +27,10 @@ type PaneModel struct {
 	scroll     ScrollModel
 	th         theme.Theme
 	height     int
-	width      int    // outer width allocation; 0 means content-driven (T-107)
-	rawContent string // unwrapped pre-rendered content; re-wrapped on width change (T-106)
-	Focused    bool   // set by app before rendering for focus indicator
+	width      int         // outer width allocation; 0 means content-driven (T-107)
+	rawContent string      // unwrapped pre-rendered content; re-wrapped on width change (T-106)
+	search     SearchModel // T-114: attached by caller via WithSearch() to drive render
+	Focused    bool        // set by app before rendering for focus indicator
 }
 
 // NewPaneModel creates a PaneModel.
@@ -142,22 +145,60 @@ func (m PaneModel) ContentHeight() int {
 
 // ContentLines returns the soft-wrapped, unstyled content lines that align
 // with the pane's visual line positions — ANSI escapes from syntax
-// highlighting are stripped. T-113 (closes F-003): splitting View() output
-// would include border glyphs AND styled ANSI; splitting rawContent alone
-// would still include syntax-highlight ANSI. Cavekit R7 requires matching
-// against pre-syntax-highlight text so match indices align with what the
-// user sees, not with SGR byte offsets. Returns nil when the pane is closed
-// or has no content.
+// highlighting are stripped, and the raw content is re-run through SoftWrap
+// at the current contentWidth so line indices match what the user actually
+// sees after the pane wraps its content. T-113 (closes F-003): splitting
+// View() output would include border glyphs AND styled ANSI; splitting
+// rawContent alone drops soft-wrap rows. Cavekit R7 requires matching
+// against pre-syntax-highlight, post-soft-wrap text. Returns nil when the
+// pane is closed or has no content.
 func (m PaneModel) ContentLines() []string {
 	if !m.open || m.rawContent == "" {
 		return nil
 	}
-	wrapped := strings.Split(m.rawContent, "\n")
-	out := make([]string, len(wrapped))
-	for i, line := range wrapped {
+	wrapped := SoftWrap(m.rawContent, m.contentWidth())
+	lines := strings.Split(wrapped, "\n")
+	out := make([]string, len(lines))
+	for i, line := range lines {
 		out[i] = ansi.Strip(line)
 	}
 	return out
+}
+
+// WithSearch attaches a SearchModel to the pane for rendering (T-114).
+// Call this from the app before View() so the pane can render the prompt
+// row, match counter, and highlight matches. The SearchModel is not
+// mutated by the pane — navigation (n/N) and activation happen in the
+// caller's Update path.
+func (m PaneModel) WithSearch(s SearchModel) PaneModel {
+	m.search = s
+	return m
+}
+
+// renderSearchPrompt builds the bottom prompt row shown while search is
+// active. Cavekit detail-pane R7 requires the active query and (cur/total)
+// to be visibly rendered; shows "No matches" when query is non-empty but
+// no matches exist; appends a wrap arrow after (cur/total) when n/N wraps.
+func (m PaneModel) renderSearchPrompt() string {
+	q := m.search.Query()
+	total := m.search.MatchCount()
+	line := "/" + q
+	switch {
+	case q == "":
+		// bare "/" — show just the prompt while the user starts typing.
+	case total == 0:
+		line += "  No matches"
+	default:
+		cur := m.search.CurrentIndex() + 1
+		line += fmt.Sprintf("  (%d/%d)", cur, total)
+		switch m.search.WrapDir() {
+		case SearchWrapFwd:
+			line += " ↓"
+		case SearchWrapBack:
+			line += " ↑"
+		}
+	}
+	return lipgloss.NewStyle().Foreground(m.th.Dim).Render(line)
 }
 
 // View renders the detail pane content, or empty string when closed.
@@ -170,8 +211,32 @@ func (m PaneModel) View() string {
 		return ""
 	}
 	// Use content height (minus border rows) so total output fits allocation.
-	m.scroll.height = m.ContentHeight()
-	content := m.scroll.View()
+	contentH := m.ContentHeight()
+	searchActive := m.search.IsActive()
+	// T-114: reserve one row at the bottom of the content area for the
+	// search prompt so the total pane height still matches the allocation.
+	if searchActive && contentH > 1 {
+		contentH--
+	}
+
+	var body string
+	if searchActive && m.search.MatchCount() > 0 {
+		// T-114: when there are live matches, render from the unstyled
+		// soft-wrapped lines with highlight styling applied. This keeps
+		// match positions in lockstep with ContentLines() (the source of
+		// truth for match indices) and gives the user visible feedback.
+		lines := m.search.HighlightLines(m.ContentLines())
+		scroll := m.scroll
+		scroll.lines = lines
+		scroll.height = contentH
+		body = scroll.View()
+	} else {
+		m.scroll.height = contentH
+		body = m.scroll.View()
+	}
+	if searchActive {
+		body += "\n" + m.renderSearchPrompt()
+	}
 
 	state := appshell.PaneStateUnfocused
 	if m.Focused {
@@ -188,5 +253,5 @@ func (m PaneModel) View() string {
 		}
 		style = style.Width(inner).MaxWidth(m.width)
 	}
-	return style.Render(content)
+	return style.Render(body)
 }

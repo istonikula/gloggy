@@ -3,7 +3,6 @@ package app
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -292,10 +291,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.saveConfig() // T-099: persist ratio change immediately.
 			return m, nil
 		}
-		// In-pane search.
+		// In-pane search. T-113/T-114: match against ContentLines
+		// (soft-wrapped, unstyled) — splitting View() would include
+		// border glyphs and syntax-highlight ANSI and mis-index matches.
 		if m.paneSearch.IsActive() || msg.String() == "/" {
-			// Get content lines for match computation.
-			lines := strings.Split(m.pane.View(), "\n")
+			lines := m.pane.ContentLines()
 			m.paneSearch, _ = m.paneSearch.Update(msg, lines)
 			return m, nil
 		}
@@ -443,6 +443,9 @@ func (m Model) View() string {
 	paneView := ""
 	if paneOpen {
 		m.pane.Focused = (m.focus == appshell.FocusDetailPane)
+		// T-114: attach the app's paneSearch so the pane renders the
+		// prompt row, (cur/total) counter, and highlights.
+		m.pane = m.pane.WithSearch(m.paneSearch)
 		paneView = m.pane.View()
 	}
 

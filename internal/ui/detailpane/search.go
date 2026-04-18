@@ -54,6 +54,11 @@ func (m SearchModel) CurrentMatchLine() int {
 	return m.matches[m.current]
 }
 
+// CurrentIndex returns the zero-based index of the current match within
+// the match set (T-114 — used by PaneModel.View() to render "cur/total").
+// Returns 0 when the match set is empty.
+func (m SearchModel) CurrentIndex() int { return m.current }
+
 // Activate opens the search input.
 func (m SearchModel) Activate() SearchModel {
 	m.active = true
