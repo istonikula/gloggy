@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T20:24:39+03:00"
+last_edited: "2026-04-18T22:44:21+03:00"
 ---
 
 # Cavekit: Entry List
@@ -109,13 +109,15 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 **Dependencies:** none
 
 ### R10: Entry Selection and Mouse
-**Description:** The currently selected entry emits a signal consumed by the detail pane. Mouse click selects an entry, scroll wheel scrolls the list, double-click opens the detail pane.
+**Description:** The currently selected entry emits a signal consumed by the detail pane. Mouse click selects the entry at the clicked row — the selection MUST land on the row the user visually clicked, not an offset row. Mouse scroll wheel scrolls the list per the R12 scrolloff-drag semantics. Double-click on a row opens the detail pane for **that** row. Click-row resolution must account for the header bar height, the list's own top border (when rendered), and any active pane-layout dividers: the mapping from terminal Y coordinate to visible list row index has a **single owner** (the layout math, cavekit-app-shell R2) and must NOT be duplicated or re-derived inside the list's mouse handler. A failure to subtract the header height and list top border from the incoming mouse Y coordinate produces an offset-by-N bug where clicking row N highlights row N+2 — specifically disallowed by the ACs below.
 **Acceptance Criteria:**
-- [ ] [auto] When the cursor moves to a new entry, a selection signal is emitted with that entry's data
-- [ ] [auto] Clicking on an entry row with the mouse selects that entry
-- [ ] [auto] Mouse scroll wheel scrolls the list
-- [ ] [auto] Double-clicking an entry opens the detail pane for that entry
-**Dependencies:** cavekit-detail-pane (receives selection signal), cavekit-app-shell (mouse routing)
+- [ ] [auto] Clicking on an entry row with the mouse selects **that** entry (the visually clicked row, not an offset row)
+- [ ] [auto] For a given terminal Y coordinate, the list's click-to-row resolver returns a row index derived by subtracting exactly the header height (1) plus the list's top border (0 or 1; the exact value is owned by cavekit-app-shell R2 layout math and must be read from there — the list's mouse handler must NOT re-derive it) from the terminal Y — verified by unit test across all combinations of orientation × focus state (no double-count, no missing subtract)
+- [ ] [auto] When the terminal Y coordinate falls outside the list's content area (on the header bar, status bar, the pane divider, or inside the detail pane), the click is NOT routed to the list at all — partitioning is owned by cavekit-app-shell R6
+- [ ] [auto] Double-click uses the same click-to-row resolver as single-click — double-clicking the Nth visible row opens the detail pane for the Nth visible row, not an offset row
+- [ ] [auto] Mouse scroll wheel scrolls the list (unchanged)
+- [ ] [human, tui-mcp] Verify via tui-mcp first: launch the TUI on `logs/small.log`, take a `snapshot` to record the coordinates of visible rows 1, 2, 5, and the last row; use `send_mouse` to click each coordinate; after each click take another `snapshot` and confirm the cursor highlight lies on the same row that was clicked (no 1- or 2-row offset). Repeat with the detail pane open in below-mode and again in right-mode (per the user's HUMAN-sign-off-via-tui-mcp preference)
+**Dependencies:** cavekit-detail-pane (receives selection signal), cavekit-app-shell (R2 layout math — single owner of terminal-Y-to-row mapping, R6 mouse routing partitioning)
 
 ### R11: Cursor Position Indicator
 **Description:** The current cursor position within the entry list is communicated to the app shell so it can be displayed in the header or status bar. The position includes the 1-based index of the cursor entry within the visible (filtered) set.
@@ -171,6 +173,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - See also: cavekit-app-shell.md (layout, mouse routing)
 
 ## Changelog
+
+### 2026-04-18 — Revision (R10 click-row alignment bug)
+- **Affected:** R10
+- **Summary:** R10 revised to tighten the mouse-click-to-row mapping after a user-observed 2-row offset (clicking row 1 highlights row 3, clicking row 2 highlights row 4). Root cause: header height (1) plus list top border (1) not subtracted from the incoming mouse Y coordinate. The prior AC "Clicking on an entry row with the mouse selects that entry" passed a shallow test because any selection occurred, not because the clicked row was the selected row. Added a unit-level AC that pins the resolver math to a single-owner (cavekit-app-shell R2 layout), an AC forbidding duplicate resolution inside the list handler, and a `[human, tui-mcp]` AC that drives `send_mouse` clicks at known row coordinates and verifies via `snapshot` that the cursor highlight lands on the same row (no offset) in both orientations.
+- **Driven by:** User feedback in /ck:sketch session: "there's something off with mouse row position calculation, when I click row 1, row 3 is highlighted, when on row 2, row 4 is highlighted, etc. it seems two rows off". Paired with the cavekit-app-shell R12/R15 resize revision in the same session.
 
 ### 2026-04-16 — Revision
 - **Affected:** R1, new R11

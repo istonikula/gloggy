@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T20:24:39+03:00"
+last_edited: "2026-04-18T22:44:21+03:00"
 ---
 
 # Cavekit: App Shell
@@ -71,15 +71,15 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** none
 
 ### R6: Mouse Mode and Routing
-**Description:** Mouse mode is enabled globally. Mouse events are routed to the correct domain component based on the click/scroll position within the layout. In right-split orientation the main area is partitioned into horizontal zones (entry list, divider column, detail pane) rather than vertical zones, and mouse clicks inside a pane transfer focus to that pane.
+**Description:** Mouse mode is enabled globally. Mouse events are routed to the correct domain component based on the click/scroll position within the layout. In right-split orientation the main area is partitioned into horizontal zones (entry list, divider column, detail pane) rather than vertical zones, and mouse clicks inside a pane transfer focus to that pane. Mouse-button-1 press on the divider cell initiates a drag; drag semantics are defined in R15.
 **Acceptance Criteria:**
 - [ ] [auto] Mouse events in the entry list area are routed to the entry list
 - [ ] [auto] Mouse events in the detail pane area are routed to the detail pane
-- [ ] [auto] Mouse drag on the pane divider between entry list and detail pane triggers pane resize
 - [ ] [auto] Mouse events do not cause crashes regardless of where in the terminal they occur
 - [ ] [auto] In right-split orientation, mouse zones partition the main area horizontally into list / divider-column / detail, with the header and status bar remaining as separate horizontal zones
 - [ ] [auto] A 1-cell buffer adjacent to the divider prevents clicks near the divider from being routed to the wrong pane
 - [ ] [auto] Clicking inside a pane transfers focus to that pane
+- [ ] [auto] Clicks landing on the divider cell itself are not routed to either pane as focus-transfer clicks — the divider cell is reserved for R15 drag initiation; focus is unchanged by a click on the divider
 **Dependencies:** cavekit-entry-list (mouse handling), cavekit-detail-pane (mouse handling)
 
 ### R7: Terminal Resize Handling
@@ -146,17 +146,21 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] Tab never closes a pane
 **Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-filter-engine
 
-### R12: Layout Resize Controls
-**Description:** A single resize keymap operates uniformly across orientations. The active ratio is `height_ratio` in below-mode and `width_ratio` in right-mode. `|` cycles three presets (0.10 / 0.30 / 0.70). `+` and `-` adjust the active ratio by ±0.05. `=` resets the active ratio to 0.30. All ratio values are clamped to the range [0.10, 0.80]. Ratio changes are written back to the config file immediately so they persist across sessions.
+### R12: Layout Resize Controls (Keyboard, Focus-Aware)
+**Description:** A single keyboard resize keymap operates uniformly across orientations and is **focus-aware** — all four keys act on the currently focused pane. The active dimension is `height_ratio` in below-mode and `width_ratio` in right-mode (stored on the detail pane per cavekit-detail-pane R6). When the detail pane is focused, keys change the detail pane's ratio directly; when the entry list is focused, keys change the list's share of the screen (the complement of the detail pane's ratio). `|` toggles the focused pane's share between two presets: 0.30 and 0.50. `+` grows the focused pane by 0.05; `-` shrinks it by 0.05. `=` resets to the layout default (detail ratio = 0.30, list share = 0.70) regardless of which pane is focused — "reset" is a global return-to-baseline, not focus-directional. All ratio values are clamped so the detail pane's ratio stays in `[0.10, 0.80]`; at the clamp boundary, further motion in the same direction is a no-op (not a wrap). Ratio changes are written back to the config file immediately so they persist across sessions. When only one pane is visible (detail pane closed), all four keys are silent no-ops — there is no divider to move.
 **Acceptance Criteria:**
-- [ ] [auto] Pressing `|` cycles the active ratio through the presets 0.10, 0.30, 0.70
-- [ ] [auto] Pressing `+` increases the active ratio by 0.05
-- [ ] [auto] Pressing `-` decreases the active ratio by 0.05
-- [ ] [auto] Pressing `=` resets the active ratio to 0.30
-- [ ] [auto] Ratio values are clamped to the range [0.10, 0.80]
-- [ ] [auto] In below orientation the active ratio is height_ratio; in right orientation the active ratio is width_ratio
-- [ ] [auto] Ratio changes are persisted to the config file via live write-back
-**Dependencies:** cavekit-detail-pane (applies new ratio), cavekit-config (live write-back, ratio settings)
+- [ ] [auto] Pressing `|` with the detail pane focused toggles the detail pane's ratio between 0.30 and 0.50
+- [ ] [auto] Pressing `|` with the entry list focused toggles the list share between 0.30 and 0.50 (detail ratio 0.70 ↔ 0.50)
+- [ ] [auto] Pressing `+` with the detail pane focused increases the detail pane's ratio by 0.05
+- [ ] [auto] Pressing `+` with the entry list focused decreases the detail pane's ratio by 0.05 (the list grows)
+- [ ] [auto] Pressing `-` is the symmetric inverse of `+` at each focus
+- [ ] [auto] Pressing `=` sets the detail pane's ratio to 0.30 (list share 0.70) regardless of which pane is focused
+- [ ] [auto] The detail pane's ratio stays in `[0.10, 0.80]`; keys at the clamp boundary are no-ops, not wrap
+- [ ] [auto] In below orientation the active dimension is `height_ratio`; in right orientation it is `width_ratio`
+- [ ] [auto] Ratio changes are persisted to the config file via live write-back (cavekit-config R6)
+- [ ] [auto] When only the entry list is visible (detail pane closed), `|`/`+`/`-`/`=` are silent no-ops — no ratio change, no error, no config write
+- [ ] [human, tui-mcp] Verify via tui-mcp first: launch the TUI on `logs/small.log`, open the detail pane, focus the list, press `+` and verify the list region grows by the expected 1 row/col in the current orientation via `snapshot`; repeat with detail focused; verify `|` toggles between 0.30 ↔ 0.50 share; verify `=` resets regardless of focus; verify clamp pin at 0.10 and 0.80. Only fall back to direct human sign-off if `send_keys` cannot emit the required key (per the user's HUMAN-sign-off-via-tui-mcp preference)
+**Dependencies:** cavekit-detail-pane (applies new ratio, R6), cavekit-config (live write-back, ratio settings), R11 (focus state)
 
 ### R13: Cross-Pane Search Activation
 **Description:** `/` activates an in-pane search. The target pane is determined by **current focus**, not by pane-open state. If the entry list is focused, `/` activates list search (cavekit-entry-list R13). If the detail pane is focused, `/` activates detail-pane search (cavekit-detail-pane R7). If the filter panel is focused, `/` is routed to the filter input as a literal character (not intercepted). The activation must never be a silent no-op at any focus. The key-hint bar and help overlay must advertise `/` accurately per focus — different label when list-focused vs pane-focused.
@@ -180,6 +184,20 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] With search active in input mode, `?` opens the help overlay; after `?`-Esc the search model still has its prior query and mode
 **Dependencies:** cavekit-entry-list R13 (list search target), cavekit-detail-pane R7 (pane search target), R11 (focus cycle via Tab), R13 (`/` activation)
 
+### R15: Layout Resize Controls (Mouse Drag)
+**Description:** The pane divider is draggable with the mouse. In below-mode the divider is the horizontal border between the entry list and the detail pane; in right-mode it is the 1-cell vertical divider (cavekit-app-shell R2). Pressing mouse-button-1 within the divider cell initiates a drag; subsequent mouse-move events while the button remains held update the active pane ratio **live** (one visible move per event — no throttling that produces stutter on typical displays); releasing the button persists the final ratio to the config file via a **single** write-back (not one per mouse-move frame). Drag is **focus-neutral** — it does not change which pane is focused. Focus transfers are governed by app-shell R6 click-in-pane routing, which does NOT fire for clicks on the divider cell itself. Dragging respects the same clamp as R12: the detail pane's ratio stays in `[0.10, 0.80]`. Dragging past the clamp pins the ratio at the boundary; further motion in the same direction is a no-op until the cursor re-enters the valid range (drag does NOT auto-close the pane — that behaviour is owned by R7 and is triggered by terminal resize, not by drag).
+**Acceptance Criteria:**
+- [ ] [auto] Pressing and holding mouse-button-1 on the divider cell initiates a drag
+- [ ] [auto] While dragging, mouse-move events update the active pane ratio live — `height_ratio` in below-mode, `width_ratio` in right-mode — proportional to cursor displacement along the drag axis
+- [ ] [auto] Releasing mouse-button-1 writes the final ratio to the config file exactly once per drag (not once per mouse-move frame)
+- [ ] [auto] Drag works in below-mode (horizontal divider, vertical drag axis): dragging down grows the detail pane, dragging up shrinks it
+- [ ] [auto] Drag works in right-mode (vertical divider, horizontal drag axis): dragging left grows the detail pane, dragging right shrinks it
+- [ ] [auto] Dragging does not change which pane has keyboard focus
+- [ ] [auto] Dragging past the `[0.10, 0.80]` clamp pins the ratio at the boundary; further cursor motion in the same direction is a no-op until the cursor re-enters the valid range
+- [ ] [auto] Starting a drag with the detail pane closed is a silent no-op — there is no divider cell to grab
+- [ ] [human, tui-mcp] Verify via tui-mcp first: launch the TUI on `logs/small.log`, open the detail pane, use `send_mouse` to emit a press-hold on the divider cell, a series of move events to the target coordinate, and a release; `snapshot` before and after and verify the divider moved, pane dimensions changed proportionally to the drag distance, and the config file reflects the new ratio. Repeat for both below-mode and right-mode. If `send_mouse` cannot reliably emit the button-hold + move + release sequence on this platform, record the limitation in a comment and fall back to direct human sign-off (per the user's HUMAN-sign-off-via-tui-mcp preference)
+**Dependencies:** cavekit-detail-pane (applies ratio change, R6), cavekit-config (live write-back, R6), R6 (mouse routing to the divider cell), R12 (shared clamp range and ratio storage)
+
 ## Out of Scope
 
 - Domain-specific logic (parsing, filtering, rendering details -- all delegated)
@@ -195,6 +213,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-18 — Revision (R12 focus-aware keyboard resize + new R15 mouse drag + R6 drag delegation)
+- **Affected:** R6, R12 (rewritten), new R15
+- **Summary:** R12 rewritten to make keyboard resize **focus-aware**: `|`/`+`/`-`/`=` act on the currently focused pane (detail or list). Preset set reduced from three values (0.10/0.30/0.70) to two (0.30/0.50) — the 0.10 preset made the detail pane too small to read and 0.70 left the list too narrow for useful log-scanning. `=` still resets to the layout default (detail=0.30) regardless of focus, because "reset" is a global return-to-baseline, not focus-directional. New R15 separates mouse-drag resize from keyboard resize (they share the ratio storage and clamp but have different trigger models and deserve independent testability). The mouse-drag AC that was shipped under R6 passed a shallow test but the feature didn't actually work in practice — R15 tightens the contract: live ratio update on every mouse-move while button is held, single persist-on-release, focus-neutral, clamp-pin (not auto-close). R6 loses the drag AC (moved to R15) and gains a one-line delegation note. Both R12 and R15 add `[human, tui-mcp]` ACs so the next build verifies keyboard-resize and mouse-drag via the tui-mcp harness first (per the user's HUMAN-sign-off-via-tui-mcp preference) before direct human sign-off.
+- **Driven by:** User feedback in /ck:sketch session: "details pane presets: too many, 0.3 and 0.5 is enough", "mouse drag (A5) does not work", "when list pane is focused, +/- targeting it would be nice". The latter generalised to focus-aware semantics across all four keys (B1 choice). Accompanied by a new entry-list R10 revision for the click-row offset bug.
 
 ### 2026-04-18 — Revision (new R14 global key-intercept ordering under active search)
 - **Affected:** new R14

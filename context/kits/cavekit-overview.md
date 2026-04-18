@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T09:40:17+03:00"
+last_edited: "2026-04-18T22:44:21+03:00"
 ---
 
 # Cavekit Overview: gloggy
@@ -16,7 +16,7 @@ A terminal UI tool for interactively analyzing JSONL log files during local deve
 | detail-pane    | cavekit-detail-pane.md      | 10   | DRAFT  | Pretty-printed JSON detail view with in-pane search      |
 | filter-engine  | cavekit-filter-engine.md    | 7    | DRAFT  | Include/exclude filter model and filter panel overlay    |
 | config         | cavekit-config.md           | 7    | DRAFT  | TOML config with themes, field visibility, live writes   |
-| app-shell      | cavekit-app-shell.md        | 13   | DRAFT  | Top-level layout, wiring, clipboard, help overlay        |
+| app-shell      | cavekit-app-shell.md        | 15   | DRAFT  | Top-level layout, wiring, clipboard, help overlay        |
 
 ## Cross-Reference Map
 
@@ -29,7 +29,7 @@ A terminal UI tool for interactively analyzing JSONL log files during local deve
 | entry-list     | config           | Reads field visibility, sub-row fields, logger depth, theme |
 | detail-pane    | filter-engine    | Mouse click on field value triggers filter creation       |
 | detail-pane    | config           | Reads/writes field visibility, reads theme and pane height |
-| detail-pane    | app-shell        | Focus cycle (Tab), shared resize controls (R12)           |
+| detail-pane    | app-shell        | Focus cycle (Tab), shared resize controls (R12 keyboard, R15 mouse drag) |
 | filter-engine  | entry-list       | Emits filtered entry index                               |
 | filter-engine  | detail-pane      | Receives filter-add requests from field clicks           |
 | config         | entry-list       | Supplies theme, field visibility, sub-row fields, logger depth |
@@ -57,12 +57,12 @@ app-shell       (depends on: all above)
 
 Parallelizable: `config` and `log-source` can be built concurrently. `filter-engine` needs only the entry data model from `log-source`. `entry-list` and `detail-pane` can be built concurrently once their dependencies exist.
 
-Note: right-split orientation introduces a vertical divider and horizontal mouse zones; see cavekit-app-shell R2, R6, R10, R11, R12.
+Note: right-split orientation introduces a vertical divider and horizontal mouse zones; see cavekit-app-shell R2, R6, R10, R11, R12, R15.
 
 ## Coverage Summary
 
 - **Total domains:** 6
-- **Total requirements:** 56 (2026-04-18: +1 new app-shell R13)
+- **Total requirements:** 58 (2026-04-18: +1 new app-shell R15; resize kit revision: app-shell R12/R15, entry-list R10)
 - **Total acceptance criteria:** 290 (2026-04-18: +7 R7 + +7 R13; was 276)
 
 ## Verification Conventions

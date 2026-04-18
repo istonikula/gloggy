@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T16:17:51+03:00"
+last_edited: "2026-04-18T22:44:21+03:00"
 ---
 
 # Cavekit: Detail Pane
@@ -76,22 +76,22 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 **Dependencies:** cavekit-config (detail pane field visibility, write-back)
 
 ### R6: Pane Size and Resize
-**Description:** In below-mode the pane's height is a ratio of terminal height (`height_ratio`, default 0.30). In right-mode the pane's width is a ratio of terminal width (`width_ratio`, default 0.30) AND its rendered vertical height equals the full main-area slot (terminal height minus header minus status bar, minus border accounting). The `height_ratio` is NOT applied vertically in right-mode — it is the below-mode vertical ratio only. Applying `height_ratio` in right-mode clips content to ~30% of the visual slot even when the pane has the full slot available, which is a content-loss bug. Both ratios are preserved independently across orientation flips. The resize keymap itself (preset cycling, ±0.05 nudges, reset, clamping, live write-back) is defined in cavekit-app-shell R12 and is not duplicated here. Mouse drag on the visible divider resizes the appropriate dimension — height in below-mode, width in right-mode.
+**Description:** In below-mode the pane's height is a ratio of terminal height (`height_ratio`, default 0.30). In right-mode the pane's width is a ratio of terminal width (`width_ratio`, default 0.30) AND its rendered vertical height equals the full main-area slot (terminal height minus header minus status bar, minus border accounting). The `height_ratio` is NOT applied vertically in right-mode — it is the below-mode vertical ratio only. Applying `height_ratio` in right-mode clips content to ~30% of the visual slot even when the pane has the full slot available, which is a content-loss bug. Both ratios are preserved independently across orientation flips. The resize keymap itself (keyboard: focus-aware preset toggle between {0.30, 0.50}, ±0.05 nudges, reset to layout default, clamping, live write-back) is defined in cavekit-app-shell R12; mouse-drag semantics are defined in cavekit-app-shell R15. Neither is duplicated here. Mouse drag on the visible divider resizes the appropriate dimension — height in below-mode, width in right-mode.
 **Acceptance Criteria:**
 - [ ] [auto] The detail pane opens at the configured height ratio in below orientation
 - [ ] [auto] Pressing `+` while the detail pane is focused in below orientation increases its height
 - [ ] [auto] Pressing `-` while the detail pane is focused in below orientation decreases its height
 - [ ] [auto] After a terminal resize event, the pane maintains its proportional height
-- [ ] [auto] Mouse drag on the pane divider resizes the pane
+- [ ] [auto] Mouse drag on the pane divider resizes the pane per cavekit-app-shell R15 semantics
 - [ ] [auto] In right orientation the detail pane opens at the configured width ratio
 - [ ] [auto] In right orientation the detail pane's rendered vertical height equals `terminal_height - header_height - status_bar_height` (before subtracting border rows) — `height_ratio` is NOT applied to the vertical dimension
 - [ ] [auto] The pane's internal content height is recomputed from the layout slot on every WindowSizeMsg AND on every `relayout()` call (open, ratio change, orientation flip) — not just on initial size
 - [ ] [auto] Pressing `+` while the detail pane is focused in right orientation increases its width ratio
 - [ ] [auto] Pressing `-` while the detail pane is focused in right orientation decreases its width ratio
-- [ ] [auto] Mouse drag on the vertical divider in right orientation resizes the pane width
+- [ ] [auto] Mouse drag on the vertical divider in right orientation resizes the pane width per cavekit-app-shell R15 semantics
 - [ ] [auto] Flipping orientation from below to right preserves the previous height_ratio, and flipping back restores it
 - [ ] [auto] Opening a large-content entry (e.g. `logs/tiny.log` line 34, JSON with 200+ fields) in right orientation on an 80x24 terminal renders the pane content area filling the full main slot (≥ 20 content rows) — not clipped to `height_ratio × terminal_height`
-**Dependencies:** cavekit-config (detail pane height ratio, width ratio), cavekit-app-shell (R2 layout math, R7 resize events, R12 resize keymap, mouse routing)
+**Dependencies:** cavekit-config (detail pane height ratio, width ratio), cavekit-app-shell (R2 layout math, R7 resize events, R12 keyboard-resize keymap, R15 mouse-drag semantics, R6 mouse routing)
 
 ### R7: In-Pane Search
 **Description:** `/` opens a search input scoped to the detail pane content (does not trigger the list filter). `n`/`N` cycle through matches with a wrap indicator. Matches are highlighted using the theme's highlight color. Esc dismisses the search. The search input, query, and current/total match counter must be **visibly rendered** in the pane while active — search state mutation alone is not sufficient; the user must see that search is running.
@@ -138,7 +138,7 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - [ ] [auto] Rendering a line containing multi-byte characters (emoji or CJK) does not produce column drift or pane overflow
 - [ ] [auto] Rendering a line containing ANSI escape sequences does not produce column drift or pane overflow
 - [ ] [auto] The detail pane's `contentWidth` used for `SoftWrap()` equals `m.width` (the value stored from `SetWidth`) — NOT `m.width − 2` or `m.width − borderCols`: border accounting is performed exactly once by the layout (app-shell R2) which publishes a post-border `DetailContentWidth`
-- [ ] [auto] Rendering at the `width_ratio = 0.70` max preset on an `80x24` terminal in right-orientation with `logs/tiny.log` line 1 (logger value `"org.hibernate.validator.internal.util.Version"`, 46 chars) produces content that fits within the allocated cells — no line extends past the right border, and no line stops 2+ cells short of the border
+- [ ] [auto] Rendering at `width_ratio = 0.70` (reachable via `+` nudges from the 0.50 preset; see app-shell R12) on an `80x24` terminal in right-orientation with `logs/tiny.log` line 1 (logger value `"org.hibernate.validator.internal.util.Version"`, 46 chars) produces content that fits within the allocated cells — no line extends past the right border, and no line stops 2+ cells short of the border
 - [ ] [human] On `logs/tiny.log` line 1 at `width_ratio = 0.70` on an `80x24` terminal in right-orientation: logger and timestamp rows fit exactly within the pane cells — no overflow past the right border, no underfill dark seam before the border
 **Dependencies:** cavekit-app-shell (R2 layout math — single owner of border accounting, publishes `DetailContentWidth`)
 
@@ -181,6 +181,11 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - See also: cavekit-app-shell.md (layout, resize events, mouse routing)
 
 ## Changelog
+
+### 2026-04-18 — Revision (R6 cross-ref touch-up for new R15 mouse drag)
+- **Affected:** R6 (cross-ref only)
+- **Summary:** R6 description updated to point at cavekit-app-shell R12 for keyboard-resize semantics AND cavekit-app-shell R15 for mouse-drag semantics (previously only R12 was referenced because drag was folded into R12). The drag ACs in R6 now reference R15 explicitly. Preset list updated from {0.10, 0.30, 0.70} to {0.30, 0.50} to match the R12 revision.
+- **Driven by:** Companion revision to cavekit-app-shell R12 rewrite + new R15 in the same /ck:sketch session.
 
 ### 2026-04-16 — Revision
 - **Affected:** R1
