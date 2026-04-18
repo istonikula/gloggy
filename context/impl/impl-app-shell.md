@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T10:45:00+03:00"
+last_edited: "2026-04-18T11:11:46+03:00"
 ---
 # Implementation Tracking: app-shell
 
@@ -46,4 +46,6 @@ Build site: context/plans/build-site.md
 | T-109 | DONE | HUMAN sign-off via tui-mcp (140x35 + 80x35 resize) across tokyo-night/catppuccin-mocha/material-dark: DividerColor reads quiet (closer to Dim than FocusBorder), UnfocusedBg subtle bg tint, divider does not recolor on focus change |
 | T-110 | DONE | HUMAN sign-off via tui-mcp across all 3 themes + both orientations: focused pane=FocusBorder+base bg+full fg; unfocused=DividerColor+UnfocusedBg+Faint fg; alone=focused treatment; cursor row keeps CursorHighlight when list unfocused; detail top border visible right + below |
 | T-116 | DONE | app/model.go: `/` from list focus transfers to detail pane + activates paneSearch in one keystroke when pane open; emits transient `searchNoPaneNotice` with auto-dismiss when closed; filter panel focus unaffected (pass-through). 3 app tests. Closes F-001, F-011 (behavioral parts — keyhint/help text in T-121). |
-| T-121 | NEW | Update `appshell/help.go` + `appshell/keyhints.go` so `/` is advertised with accurate scope per focus + pane-open state. Closes F-011. |
+| T-121 | DONE | `help.go` registry lists `/` under both entry-list and detail-pane domains with scope-accurate descriptions. `keyhints.go` View renders `/` with state-aware text: "search pane" (list+open), "search (open entry first)" (list+closed), hidden on filter panel, registry text on detail pane. 4 tests. Closes F-011. |
+| T-121-fix | DONE | `keyhints.go` notice branch now `.Width(m.width).MaxWidth(m.width)` — pads the transient notice to full width so it overwrites the previously-rendered keyhint remnants. Before the fix, `hintsStyle.MaxWidth(...)` only truncated and did not pad, leaving ~103 chars of the old bar visible to the right of the notice. Unit test `TestKeyHintBar_NoticeRenderWidth` (added then removed as a debug probe) confirmed `lipgloss.Width(view) == m.width` after the fix. |
+| T-122 | DONE | HUMAN sign-off via tui-mcp (tokyo-night @ 140x35, right-split): detail-pane `/` search flow verified — `/INFO` renders prompt row `/INFO  (1/1)`, Enter commits to navigate mode, two-step Esc chain (1st Esc dismisses search; 2nd Esc closes pane), focus transfer from list → pane, keyhint bar shows `/: Search inside this pane (Enter commits to navigate mode)` + `focus: details`, help overlay scopes `/` correctly under entry-list and detail-pane domains. Cross-pane notice padding bug discovered and fixed in T-121-fix. Remaining cross-theme / below-orientation checks deferred — behavior is theme-independent (notice uses Dim color which is defined in all themes). |

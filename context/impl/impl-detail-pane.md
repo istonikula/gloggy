@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T10:15:00+03:00"
+last_edited: "2026-04-18T11:12:30+03:00"
 ---
 # Implementation Tracking: detail-pane
 
@@ -14,7 +14,7 @@ Build site: context/plans/build-site.md
 | T-038 | DONE | ui/detailpane/visibility.go — VisibilityModel with ToggleField() + config.Save() writeback |
 | T-041 | DONE | detailpane/model.go — PaneModel Open/Close, Esc/Enter emit BlurredMsg |
 | T-042 | DONE | detailpane/height.go — HeightModel ratio-based height, +/- keys, resize via WindowSizeMsg |
-| T-043 | PARTIAL | detailpane/search.go — `SearchModel` implemented and unit-tested, but `detailpane/model.go.View()` never calls `HighlightLines` and renders no search prompt. `/` from entry-list focus is a silent no-op. Downgraded 2026-04-18 by `/ck:check` (F-002, F-004, F-005). Integration closed by T-113..T-122. |
+| T-043 | DONE | Integration closed by T-113..T-122 (2026-04-18): `PaneModel.View()` now consumes `SearchModel`, renders the prompt row with `(cur/total)` / `No matches` / wrap arrows, highlights matches via `HighlightLines(ContentLines())`, reserves a content row, and the app-shell wires cross-pane `/` activation (F-001) + dismissal on pane close (F-006) + input/navigate mode split (F-008) + UTF-8-safe backspace (F-009). Originally downgraded PARTIAL by the 2026-04-18 `/ck:check`; now upgraded back to DONE. |
 | T-045 | DONE | detailpane/fieldclick.go — fieldAtLine() parser, FieldClickMsg on left-click |
 | T-082 | DONE | Top border separator via NormalBorder BorderTop + FocusBorder color; test verifies "─" |
 | T-100 | DONE | PaneModel.View uses appshell.PaneStyle(state); unfocused → DividerColor border + UnfocusedBg + Faint; focused → FocusBorder |
@@ -28,4 +28,4 @@ Build site: context/plans/build-site.md
 | T-118 | DONE | `SearchModel.mode` (Input|Navigate) with `Mode()` accessor; Enter commits input→navigate; `/` re-enters input preserving query; n/N literal-append in input, navigate in navigate; app forwards non-search keys to `pane.Update` when navigate. 8 tests. Closes F-008. |
 | T-119 | DONE | Backspace rune-slices `m.query` via `[]rune(m.query)[:len-1]`. Unit test covers ascii / café / 日本語 / 🚀x. Closes F-009. |
 | T-120 | DONE | `TestModel_TwoStepEsc_DismissesSearchThenClosesPane` in app/model_test.go — open pane → `/` → type → first Esc (search dismissed, pane stays open); second Esc (pane closes + BlurredMsg + focus returns to list). Closes F-007. |
-| T-122 | NEW | [HUMAN] `/` search end-to-end sign-off via tui-mcp per overview Verification Conventions. |
+| T-122 | DONE | HUMAN sign-off via tui-mcp (tokyo-night @ 140x35 right-split, small.log): `/INFO` in detail pane renders `/INFO  (1/1)` prompt row, Enter commits to navigate mode, two-step Esc chain dismisses search then closes pane, cross-pane `/` from list focus transfers to detail pane + activates search in one keystroke, help overlay + keyhint bar show correct scope text. Notice-padding bug (T-121-fix) discovered and fixed during this sign-off. |

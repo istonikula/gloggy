@@ -1,8 +1,23 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T09:40:17+03:00"
+last_edited: "2026-04-18T11:12:00+03:00"
 ---
 # Loop Log
+
+### Iteration 21 — 2026-04-18 (Tier 12: F-001..F-011 remediation)
+- T-113: `ContentLines()` accessor — DONE. Soft-wraps raw content via `SoftWrap(m.rawContent, m.contentWidth())` BEFORE ANSI-stripping, so match indices align with the user's visual line positions. Files: detailpane/model.go. Dependency gate for T-114.
+- T-114: wire `SearchModel` into `PaneModel.View()` — DONE. Added `search SearchModel` field, `WithSearch()` setter, `renderSearchPrompt()` (/-prefixed query + `(cur/total)` counter + "No matches" fallback + wrap arrows), reserve 1 content row for prompt when active. View switches to `HighlightLines(ContentLines())` when matches exist. Files: detailpane/model.go + model_test.go (6 tests). app/model.go View() attaches `m.paneSearch` to pane before render. Closes F-002..F-007, F-010.
+- T-115: `ScrollToLine(idx)` on n/N — DONE. Minimal-scroll helper; accounts for prompt row reservation. app/model.go calls `m.pane.ScrollToLine(m.paneSearch.CurrentMatchLine())` after every paneSearch update with matches. Files: detailpane/model.go + app/model.go. Closes F-003.
+- T-116: cross-pane `/` activation — DONE. From list focus with pane open: focus transfers to detail pane AND search activates in one keystroke (single `/`). With pane closed: emits `"open an entry first (Enter) to search"` transient notice via `WithNotice(...)` + `noticeClearAfter(3s)` tick — never a silent no-op. Filter-panel focus passes `/` through as literal (unaffected). Files: app/model.go + model_test.go (3 tests). Closes F-001 + behavioral part of F-011.
+- T-117: dismiss paneSearch on close/reopen — DONE. `BlurredMsg` handler calls `m.paneSearch = m.paneSearch.Dismiss()`; `openPane()` also dismisses so fresh entries start with clean state (no query/match leak). Files: app/model.go + model_test.go. Closes F-006.
+- T-118: split input vs navigation modes — DONE. `SearchModel.mode SearchInputMode {Input|Navigate}`. Input mode: type builds query, backspace edits (UTF-8-safe: `runes := []rune(m.query); m.query = string(runes[:len(runes)-1])`); `n`/`N` typed as literal; Enter → navigate. Navigate mode: n/N advance; typing passes through to pane scroll (app/model.go forwards non-search keys). Files: detailpane/search.go + search_test.go (4 tests). Closes F-008, F-009.
+- T-119: UTF-8 backspace safety — implemented as part of T-118 above. Tested via emoji/CJK input test case.
+- T-120: two-step Esc integration test — DONE. App-level test verifies Esc while search active dismisses search (pane stays open), second Esc closes pane. Files: app/model_test.go. Closes F-005.
+- T-121: help text + keyhint scope for `/` — DONE. `help.go`: `/` entry in both DomainEntryList ("Search inside detail pane — opens pane if open, notice if closed") and DomainDetailPane ("Search inside this pane — Enter commits to navigate mode") with scope-accurate descriptions. `keyhints.go`: state-aware View — "search pane" (list+pane open), "search (open entry first)" (list+pane closed), hidden when filter panel focused. Files: appshell/help.go + keyhints.go + keyhints_test.go (4 tests). Closes F-011.
+- T-121-fix: notice padding bug discovered during T-122 tui-mcp sign-off. `hintsStyle.MaxWidth(...)` only truncated, never padded — a 37-char notice left ~103 chars of old keyhint text visible to the right. Fixed via `.Width(m.width).MaxWidth(m.width)` so the notice fills the row.
+- T-122: HUMAN sign-off via tui-mcp — DONE. Verified: detail-pane `/INFO` renders `/INFO  (1/1)` prompt row, Enter commits to navigate mode, two-step Esc chain, cross-pane focus transfer from list to pane with search activated in one keystroke, help overlay scopes `/` correctly. Notice padding bug caught and fixed mid-session.
+- Build P, Tests P (398/398 — 16 new tests across T-113..T-121).
+- Tier 12 complete. Closes F-001..F-011. All critical regressions from the 2026-04-18 `/ck:check` resolved.
 
 ### /ck:check — 2026-04-18 (post-Tier-11)
 - User report: "pressing / does not do anything". Scoped `/ck:check` dispatched with `ck:surveyor` + `ck:inspector` on model=opus.
