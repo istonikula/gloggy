@@ -101,3 +101,36 @@ func TestSearchModel_NoFilterSetReference(t *testing.T) {
 	_ = m.Query()
 	_ = m.MatchCount()
 }
+
+// T-119 (F-009): backspace on a multi-byte rune query must trim exactly one
+// rune without corrupting UTF-8. The pre-fix code sliced a byte string with
+// a rune-count index, producing invalid UTF-8 for café/日本語/emoji.
+func TestSearchModel_UTF8Backspace(t *testing.T) {
+	cases := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{"ascii", "hello", "hell"},
+		{"latin1 accent", "café", "caf"},
+		{"cjk", "日本語", "日本"},
+		{"emoji + ascii", "🚀x", "🚀"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := defaultSearch().Activate()
+			// Type the query rune-by-rune through Update so the code path
+			// matches real input handling.
+			for _, r := range tc.query {
+				m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}, testLines)
+			}
+			if m.Query() != tc.query {
+				t.Fatalf("setup: Query()=%q, want %q", m.Query(), tc.query)
+			}
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace}, testLines)
+			if m.Query() != tc.want {
+				t.Errorf("after backspace: Query()=%q, want %q", m.Query(), tc.want)
+			}
+		})
+	}
+}

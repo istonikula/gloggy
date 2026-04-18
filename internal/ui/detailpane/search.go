@@ -179,7 +179,11 @@ func (m SearchModel) Update(msg tea.Msg, lines []string) (SearchModel, tea.Cmd) 
 			}
 		case "backspace", "ctrl+h":
 			if m.active && len(m.query) > 0 {
-				m.query = m.query[:len([]rune(m.query))-1]
+				// T-119 (F-009): rune-slice, not byte-slice. The old
+				// `m.query[:len([]rune(m.query))-1]` used a rune count to
+				// index a byte slice, corrupting multi-byte queries.
+				runes := []rune(m.query)
+				m.query = string(runes[:len(runes)-1])
 				m = m.SetQuery(m.query, lines)
 			}
 		case "n":

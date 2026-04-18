@@ -205,3 +205,37 @@ func TestPaneModel_TopBorder_InBothOrientationContexts(t *testing.T) {
 		}
 	}
 }
+
+// T-113 (cavekit-detail-pane R7 / F-003): ContentLines() returns the
+// pre-render soft-wrapped content — no border glyphs, no ANSI escapes.
+// This is the authoritative match source for in-pane search.
+func TestPaneModel_ContentLines_NoBordersNoANSI(t *testing.T) {
+	m := defaultPane(10).SetWidth(40).Open(testEntry())
+	lines := m.ContentLines()
+	if len(lines) == 0 {
+		t.Fatal("expected non-empty ContentLines after Open()")
+	}
+	borderGlyphs := []string{"│", "─", "╭", "╮", "╰", "╯", "┌", "┐", "└", "┘"}
+	for i, line := range lines {
+		if strings.Contains(line, "\x1b[") {
+			t.Errorf("line %d contains ANSI escape: %q", i, line)
+		}
+		for _, g := range borderGlyphs {
+			if strings.Contains(line, g) {
+				t.Errorf("line %d contains border glyph %q: %q", i, g, line)
+			}
+		}
+	}
+}
+
+// T-113: ContentLines() returns nil when pane is closed or has no content.
+func TestPaneModel_ContentLines_ClosedReturnsNil(t *testing.T) {
+	m := defaultPane(10)
+	if got := m.ContentLines(); got != nil {
+		t.Errorf("expected nil from closed pane, got %v", got)
+	}
+	m = m.Open(testEntry()).Close()
+	if got := m.ContentLines(); got != nil {
+		t.Errorf("expected nil from closed-after-open pane, got %v", got)
+	}
+}

@@ -1,7 +1,10 @@
 package detailpane
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
@@ -135,6 +138,26 @@ func (m PaneModel) ContentHeight() int {
 		h = 1
 	}
 	return h
+}
+
+// ContentLines returns the soft-wrapped, unstyled content lines that align
+// with the pane's visual line positions — ANSI escapes from syntax
+// highlighting are stripped. T-113 (closes F-003): splitting View() output
+// would include border glyphs AND styled ANSI; splitting rawContent alone
+// would still include syntax-highlight ANSI. Cavekit R7 requires matching
+// against pre-syntax-highlight text so match indices align with what the
+// user sees, not with SGR byte offsets. Returns nil when the pane is closed
+// or has no content.
+func (m PaneModel) ContentLines() []string {
+	if !m.open || m.rawContent == "" {
+		return nil
+	}
+	wrapped := strings.Split(m.rawContent, "\n")
+	out := make([]string, len(wrapped))
+	for i, line := range wrapped {
+		out[i] = ansi.Strip(line)
+	}
+	return out
 }
 
 // View renders the detail pane content, or empty string when closed.
