@@ -1,8 +1,14 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T14:58:49+03:00"
+last_edited: "2026-04-18T13:40:00+03:00"
 ---
 # Loop Log
+
+### Iteration 30 — 2026-04-18 (Tier 15 Wave 1: T-138)
+- T-138: clipboard feedback notice + error surfacing — DONE. `appshell/clipboard.go` adds `clipboardWriteFn` test seam + `CopyMarkedEntriesCmd(entries, marked) tea.Cmd` wrapper emitting `ClipboardCopiedMsg{Count}` / `ClipboardErrorMsg{Err}`. `app/model.go` y-handler: zero marks → "no marked entries" notice (2s auto-dismiss); otherwise dispatch `CopyMarkedEntriesCmd`; new Update cases route `ClipboardCopiedMsg` → "copied N entry/entries" (2s) and `ClipboardErrorMsg` → "clipboard error: <err>" (3s) via `keyhints.WithNotice` + existing `noticeClearAfter` helper. Removed forbidden `//nolint:errcheck`. 5 tests in `clipboard_feedback_test.go` via `withStubClipboard` helper swapping `clipboardWriteFn` (Success→CopiedMsg, WriteError→ErrorMsg, Single→Count=1, ZeroMarks→no-write, NoNolintErrcheck regression). Closes F-102 (P1, silent clipboard failure).
+- Wave 1 inline (parent opus = EXECUTION_MODEL; prior ck:task-builder dispatch returned zero tool-uses — likely output-size cap; inline path more reliable here).
+- Build P, Tests P (157/157 in appshell + app). Files: appshell/clipboard.go, app/model.go, appshell/clipboard_feedback_test.go.
+- Frontier for Wave 2: T-139 (single-owner border width fix, detailpane — ready), T-140 (SGR-preserving soft wrap, detailpane/wrap.go — ready), T-141 (cursor-row SGR reset strip — ready). All touch `detailpane/` — one packet.
 
 ### Iteration 29 — 2026-04-18 (Tier 14 Wave 4: T-137)
 - T-137: HUMAN sign-off via tui-mcp — DONE. Session `/tmp/gloggy logs/small.log` at 140×35, tokyo-night, vertical split, scrolloff=5. Verified: (1) entry-list `j` moves cursor row-by-row with `CursorHighlight` bg, viewport anchored at entry 1 until cursor=24; past margin the viewport follows keeping cursor ~5 rows from bottom (observed at cursor=27). (2) `G` jumps to entry 300/300 with document-edge yield (cursor on last row). (3) `Enter` opens pane with list retaining focus (`focus: list`, dim pane cursor bg). (4) `Tab` transfers focus to pane (`focus: details`, list dims, pane cursor crisp). (5) `j` in pane advances cursor row visibly. 15+ unit tests cover wheel drag, search cursor placement, effective-scrolloff clamp, scrolloff=0, half-page + goto-top/bottom. Observations attached to `context/impl/impl-scrolloff.md`. Closes F-026.

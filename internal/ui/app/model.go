@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,6 +34,23 @@ const autoCloseNoticeText = "detail pane auto-closed — terminal too small"
 // searchNoPaneNotice is shown when `/` is pressed with the detail pane
 // closed (T-116, app-shell R13). Auto-dismisses via noticeClearAfter.
 const searchNoPaneNotice = "open an entry first (Enter) to search"
+
+// clipboardNoMarksNotice + clipboardNoticeDuration + clipboardErrorDuration
+// back the visible feedback required by cavekit-app-shell R9 (T-138).
+const (
+	clipboardNoMarksNotice  = "no marked entries"
+	clipboardNoticeDuration = 2 * time.Second
+	clipboardErrorDuration  = 3 * time.Second
+)
+
+// formatClipboardCopiedNotice returns the status-bar text for a successful
+// clipboard write — singular vs plural mirrors the kit AC phrasing.
+func formatClipboardCopiedNotice(count int) string {
+	if count == 1 {
+		return "copied 1 entry"
+	}
+	return "copied " + strconv.Itoa(count) + " entries"
+}
 
 // Model is the root Bubble Tea model.
 type Model struct {
@@ -260,6 +278,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uifilter.FilterChangedMsg:
 		m = m.refilter()
 		return m, nil
+
+	// T-138 (cavekit-app-shell R9): surface clipboard result to the user.
+	case appshell.ClipboardCopiedMsg:
+		m.keyhints = m.keyhints.WithNotice(formatClipboardCopiedNotice(msg.Count))
+		return m, noticeClearAfter(clipboardNoticeDuration)
+	case appshell.ClipboardErrorMsg:
+		m.keyhints = m.keyhints.WithNotice("clipboard error: " + msg.Err.Error())
+		return m, noticeClearAfter(clipboardErrorDuration)
 	}
 
 	return m, nil
@@ -404,7 +430,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.keyhints = m.keyhints.WithNotice(searchNoPaneNotice)
 			return m, noticeClearAfter(autoCloseNoticeDuration)
 		}
-		// Clipboard copy of marked entries.
+		// Clipboard copy of marked entries (cavekit-app-shell R9).
+		// Every `y` press MUST produce visible feedback — success count,
+		// error detail, or "no marked entries". Never a silent action.
 		if msg.String() == "y" {
 			marks := m.list.Marks()
 			markedIDs := make(map[int]bool)
@@ -413,8 +441,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					markedIDs[e.LineNumber] = true
 				}
 			}
-			appshell.CopyMarkedEntries(m.entries, markedIDs) //nolint:errcheck
-			return m, nil
+			if len(markedIDs) == 0 {
+				m.keyhints = m.keyhints.WithNotice(clipboardNoMarksNotice)
+				return m, noticeClearAfter(clipboardNoticeDuration)
+			}
+			return m, appshell.CopyMarkedEntriesCmd(m.entries, markedIDs)
 		}
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
