@@ -13,6 +13,6 @@ Implements:
 - cavekit-detail-pane.md R10 (Width Awareness)
 - cavekit-detail-pane.md R11 (Cursor-Tracking Viewport + Scrolloff)
 
-Build tasks: T-035, T-036, T-037, T-038, T-041, T-042, T-043, T-045, T-082, T-100, T-103, T-106, T-107, T-113, T-114, T-115, T-117, T-118, T-119, T-120, T-122, T-123, T-123-fix, T-124, T-125, T-127, T-129, T-131, T-132, T-133, T-134 (build-site.md)
+Build tasks: T-035, T-036, T-037, T-038, T-041, T-042, T-043, T-045, T-082, T-100, T-103, T-106, T-107, T-113, T-114, T-115, T-117, T-118, T-119, T-120, T-122, T-123, T-123-fix, T-124, T-125, T-127, T-129, T-131, T-132, T-133, T-134, T-139, T-140, T-141, T-142 (build-site.md)
 
 Visual design: follows DESIGN.md §4 (pane visual-state matrix), §4.3 (Shared scrolloff), §4.4 (Cursor and scrolloff), §6 focus cue #4, and §9 keymap rows for `j`/`k`/`g`/`G`/`PgDn`/`PgUp`/`Ctrl+d`/`Ctrl+u`/mouse-wheel.
