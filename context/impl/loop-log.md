@@ -1,8 +1,12 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T14:40:26+03:00"
+last_edited: "2026-04-18T14:58:49+03:00"
 ---
 # Loop Log
+
+### Iteration 29 — 2026-04-18 (Tier 14 Wave 4: T-137)
+- T-137: HUMAN sign-off via tui-mcp — DONE. Session `/tmp/gloggy logs/small.log` at 140×35, tokyo-night, vertical split, scrolloff=5. Verified: (1) entry-list `j` moves cursor row-by-row with `CursorHighlight` bg, viewport anchored at entry 1 until cursor=24; past margin the viewport follows keeping cursor ~5 rows from bottom (observed at cursor=27). (2) `G` jumps to entry 300/300 with document-edge yield (cursor on last row). (3) `Enter` opens pane with list retaining focus (`focus: list`, dim pane cursor bg). (4) `Tab` transfers focus to pane (`focus: details`, list dims, pane cursor crisp). (5) `j` in pane advances cursor row visibly. 15+ unit tests cover wheel drag, search cursor placement, effective-scrolloff clamp, scrolloff=0, half-page + goto-top/bottom. Observations attached to `context/impl/impl-scrolloff.md`. Closes F-026.
+- Tier 14 complete: T-130..T-137 all DONE.
 
 ### Iteration 28 — 2026-04-18 (Tier 14 Wave 3: T-136)
 - T-136: DESIGN.md consistency audit — DONE. Verified §4 matrix cursor-row scope covers both panes (no stale "list only" wording); §4.3 "Shared scrolloff" + §4.4 "Cursor and scrolloff" cite same top-level key + same clamp formula `[0, floor(PaneContentHeight/2)]`; §9 keymap rows match impl in `internal/ui/detailpane/scroll.go` + `internal/ui/entrylist/scroll.go`; §6 focus cue #4 matches `paintCursorRow` Focused/unfocused paths. No code edits needed. Appended audit row to `context/designs/design-changelog.md`. Files: design-changelog.md. Closes F-026 doc consistency.
