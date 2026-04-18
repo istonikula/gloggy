@@ -351,6 +351,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// top of Update, the filter panel case closes itself, and the
 		// detail-pane branch forwards Esc to pane.Update (T-041).
 		if msg.String() == "esc" {
+			// T-126 (F-024): Esc from list-focus with the pane open closes
+			// the pane. Users do not need to Tab to the pane first just to
+			// dismiss it — Esc is the single dismissal key everywhere.
+			if m.pane.IsOpen() {
+				m.pane = m.pane.Close()
+				m.paneSearch = m.paneSearch.Dismiss()
+				m = m.relayout()
+				return m, nil
+			}
 			if m.list.HasTransient() {
 				m.list = m.list.ClearTransient()
 			}
@@ -514,8 +523,11 @@ func (m Model) SetEntries(entries []logsource.Entry) Model {
 
 func (m Model) openPane(entry logsource.Entry) Model {
 	m.pane = m.pane.Open(entry)
-	m.focus = appshell.FocusDetailPane
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane).WithPaneOpen(true)
+	// T-126 (F-017): opening the pane does NOT transfer keyboard focus —
+	// focus stays on the entry list so `j`/`k` keep moving the cursor and
+	// the pane acts as a live preview. Focus transfers only on explicit
+	// user action: Tab (R11), mouse click on pane (R6), cross-pane `/` (R13).
+	m.keyhints = m.keyhints.WithPaneOpen(true)
 	// T-117 (F-006): a fresh entry must start with clean search state so
 	// matches and the query do not leak across open/close cycles.
 	m.paneSearch = m.paneSearch.Dismiss()

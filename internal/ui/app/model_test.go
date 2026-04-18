@@ -198,7 +198,8 @@ func TestModel_F_OpensFocusOnFilterPanel(t *testing.T) {
 }
 
 // TestModel_Enter_OpensDetailPane verifies pressing Enter when entries exist
-// opens the detail pane and moves focus to it.
+// opens the detail pane. T-126 (F-017): focus stays on the entry list so
+// `j`/`k` keep navigating the list with the pane as a live preview.
 func TestModel_Enter_OpensDetailPane(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
@@ -209,8 +210,8 @@ func TestModel_Enter_OpensDetailPane(t *testing.T) {
 	if !m.pane.IsOpen() {
 		t.Error("pane should be open after Enter")
 	}
-	if m.focus != appshell.FocusDetailPane {
-		t.Errorf("focus after Enter: got %v, want FocusDetailPane", m.focus)
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after Enter: got %v, want FocusEntryList (pane open does NOT transfer focus)", m.focus)
 	}
 }
 
@@ -238,7 +239,9 @@ func TestModel_BlurredMsg_ReturnsFocusToList(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	m = key(m, "enter") // open pane
+	m = key(m, "enter") // open pane (focus stays on list per T-126)
+	// Tab to the pane to mirror the path where BlurredMsg originates.
+	m = key(m, "tab")
 
 	if m.focus != appshell.FocusDetailPane {
 		t.Fatal("expected FocusDetailPane before sending BlurredMsg")
@@ -257,7 +260,8 @@ func TestModel_EscInPane_EmitsBlurredMsg(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	m = key(m, "enter") // open pane — focus is now FocusDetailPane
+	m = key(m, "enter") // open pane (focus stays on list per T-126)
+	m = key(m, "tab")   // move focus to pane before testing pane-local Esc
 
 	// Esc in the detail pane emits BlurredMsg asynchronously via a returned cmd.
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -367,23 +371,22 @@ func TestModel_OpenDetailPane_ViaMsg(t *testing.T) {
 	if !m.pane.IsOpen() {
 		t.Error("pane should be open after OpenDetailPaneMsg")
 	}
-	if m.focus != appshell.FocusDetailPane {
-		t.Errorf("focus: got %v, want FocusDetailPane", m.focus)
+	// T-126 (F-017): opening the pane does NOT transfer focus.
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus: got %v, want FocusEntryList (pane open does not steal focus)", m.focus)
 	}
 }
 
 // ---------- T-096: Tab focus cycle ----------
 
 // TestModel_Tab_CyclesListToDetails verifies Tab flips list → details when
-// both panes are visible.
+// both panes are visible. T-126: after Enter the focus stays on the list,
+// so no manual reset is needed before Tab.
 func TestModel_Tab_CyclesListToDetails(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	m = key(m, "enter") // opens pane, focus → details
-	// Move focus back to list via BlurredMsg shortcut for a clean start.
-	m.focus = appshell.FocusEntryList
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	m = key(m, "enter") // open pane (focus stays on list per T-126)
 
 	m = key(m, "tab")
 	if m.focus != appshell.FocusDetailPane {
@@ -395,13 +398,19 @@ func TestModel_Tab_CyclesListToDetails(t *testing.T) {
 }
 
 // TestModel_Tab_WrapsDetailsToList verifies Tab wraps details → list.
+// T-126: Enter opens the pane with focus on the list, so we need an extra
+// Tab to put focus on the pane first.
 func TestModel_Tab_WrapsDetailsToList(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	m = key(m, "enter") // focus = FocusDetailPane
+	m = key(m, "enter") // open pane (focus stays on list per T-126)
+	m = key(m, "tab")   // list → details
+	if m.focus != appshell.FocusDetailPane {
+		t.Fatalf("precondition: Tab from list with pane open should focus details, got %v", m.focus)
+	}
 
-	m = key(m, "tab")
+	m = key(m, "tab") // details → list (wrap)
 	if m.focus != appshell.FocusEntryList {
 		t.Errorf("Tab from details: got %v, want FocusEntryList", m.focus)
 	}
@@ -610,7 +619,11 @@ func TestModel_Click_ListZone_TransfersFocusToList(t *testing.T) {
 	m = resize(m, 200, 24)
 	entries := makeEntries(5)
 	m = m.SetEntries(entries)
-	m = m.openPane(entries[0]) // focus = FocusDetailPane
+	m = m.openPane(entries[0]) // T-126: openPane does NOT transfer focus
+	// Simulate a prior focus transfer (Tab / click on pane) so we can
+	// verify that clicking the list zone returns focus to the list.
+	m.focus = appshell.FocusDetailPane
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
 	if m.focus != appshell.FocusDetailPane {
 		t.Fatalf("precondition: focus should be detail, got %v", m.focus)
 	}
@@ -659,6 +672,11 @@ func TestModel_RatioKey_PersistsToConfigFile(t *testing.T) {
 	m = resize(m, 200, 24)
 	m = m.SetEntries(makeEntries(3))
 	m = m.openPane(makeEntries(3)[0])
+	// T-126: openPane no longer auto-focuses the pane, but the `+` ratio
+	// key only fires when the pane is focused (handleKey's FocusDetailPane
+	// branch). Simulate the Tab-to-pane step.
+	m.focus = appshell.FocusDetailPane
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
 
 	if m.resize.Orientation() != appshell.OrientationRight {
 		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
@@ -1127,6 +1145,87 @@ func TestModel_OrientationFlip_VerticalSizeTracks(t *testing.T) {
 	if m.cfg.Config.DetailPane.HeightRatio != 0.30 {
 		t.Errorf("height_ratio mutated by orientation flip: got %.3f, want 0.300",
 			m.cfg.Config.DetailPane.HeightRatio)
+	}
+}
+
+// ---------- T-126 (F-017, F-024): pane open-time focus policy ----------
+
+// T-126 (F-017): Enter opens the pane with focus STAYING on the list so
+// the user can keep navigating entries with `j`/`k` and the pane acts as
+// a live preview.
+func TestModel_OpenPane_KeepsListFocus(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "enter")
+	if !m.pane.IsOpen() {
+		t.Fatal("pane should be open after Enter")
+	}
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after Enter: got %v, want FocusEntryList", m.focus)
+	}
+}
+
+// T-126 (F-017): OpenDetailPaneMsg (double-click path) also leaves focus
+// on the list.
+func TestModel_OpenPaneViaMsg_KeepsListFocus(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = send(m, entrylist.OpenDetailPaneMsg{Entry: entries[1]})
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after OpenDetailPaneMsg: got %v, want FocusEntryList", m.focus)
+	}
+}
+
+// T-126 (F-024): Esc with the list focused and the pane open closes the
+// pane — the user should not need to Tab to the pane just to dismiss it.
+func TestModel_EscFromList_WithPaneOpen_ClosesPane(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "enter") // open pane, focus stays on list
+	if !m.pane.IsOpen() || m.focus != appshell.FocusEntryList {
+		t.Fatalf("precondition: pane open + list focused; got open=%v focus=%v",
+			m.pane.IsOpen(), m.focus)
+	}
+
+	m = key(m, "esc")
+	if m.pane.IsOpen() {
+		t.Error("pane should close on Esc from list-focus")
+	}
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after Esc: got %v, want FocusEntryList", m.focus)
+	}
+}
+
+// T-126 (F-017): with the pane open and the list focused, pressing `j`
+// moves the list cursor and the detail pane re-renders with the new
+// entry (live preview flow).
+func TestModel_J_FromList_WithPaneOpen_ReRendersPane(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = key(m, "enter") // open pane (focus stays on list)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("expected SelectionMsg cmd after `j` from list with pane open")
+	}
+	selMsg := cmd()
+	if _, ok := selMsg.(entrylist.SelectionMsg); !ok {
+		t.Fatalf("expected entrylist.SelectionMsg, got %T", selMsg)
+	}
+	// Deliver the SelectionMsg to the parent so the pane re-renders.
+	m = send(m, selMsg)
+	if !m.pane.IsOpen() {
+		t.Error("pane should still be open after cursor move")
+	}
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after `j`: got %v, want FocusEntryList (should not transfer)", m.focus)
 	}
 }
 
