@@ -211,3 +211,31 @@ func TestScrollModel_View(t *testing.T) {
 		t.Errorf("after scroll View() = %q, want %q", m.View(), "C\nD\nE")
 	}
 }
+
+// F-013 visual fix: View must always return exactly height rows so the
+// detail pane keeps its allocated outer height when content is shorter
+// than the viewport. Without bottom-padding, the pane's outer border
+// shrinks to fit content (visible regression in the right-orientation
+// pane at full main-slot allocation).
+func TestScrollModel_View_PadsShortContentToFullHeight(t *testing.T) {
+	m := NewScrollModel("A\nB\nC", 10)
+	got := m.View()
+	rows := strings.Count(got, "\n") + 1
+	if rows != 10 {
+		t.Errorf("short-content View() rows = %d, want 10 (got %q)", rows, got)
+	}
+	if !strings.HasPrefix(got, "A\nB\nC\n") {
+		t.Errorf("short-content View() must keep content prefix; got %q", got)
+	}
+}
+
+// Empty content still produces a full-height blank viewport so the
+// surrounding pane border draws at full size.
+func TestScrollModel_View_EmptyContentReturnsFullHeightBlank(t *testing.T) {
+	m := NewScrollModel("", 5)
+	got := m.View()
+	rows := strings.Count(got, "\n") + 1
+	if rows != 5 {
+		t.Errorf("empty View() rows = %d, want 5", rows)
+	}
+}

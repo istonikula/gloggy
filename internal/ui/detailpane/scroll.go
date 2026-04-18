@@ -117,14 +117,28 @@ func (m ScrollModel) Update(msg tea.Msg) (ScrollModel, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the visible portion of the content.
+// View renders the visible portion of the content. Always returns exactly
+// m.height rows — short content is bottom-padded with empty lines so the
+// pane keeps its allocated outer height (F-013 visual fix). When lines are
+// empty, returns m.height blank rows so the surrounding border still draws
+// at full size.
 func (m ScrollModel) View() string {
-	if len(m.lines) == 0 {
-		return ""
+	h := m.height
+	if h < 1 {
+		h = 1
 	}
-	end := m.offset + m.height
+	if len(m.lines) == 0 {
+		return strings.Repeat("\n", h-1)
+	}
+	end := m.offset + h
 	if end > len(m.lines) {
 		end = len(m.lines)
 	}
-	return strings.Join(m.lines[m.offset:end], "\n")
+	visible := m.lines[m.offset:end]
+	if len(visible) >= h {
+		return strings.Join(visible, "\n")
+	}
+	out := strings.Join(visible, "\n")
+	out += strings.Repeat("\n", h-len(visible))
+	return out
 }
