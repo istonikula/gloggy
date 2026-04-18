@@ -1376,6 +1376,30 @@ func TestModel_Q_ListSearchInputMode_DoesNotQuit(t *testing.T) {
 	if !m.list.HasActiveSearch() {
 		t.Error("list search should still be active after typed q")
 	}
+
+	// F-117: chained keystrokes — the whole word "quit" must land in the query
+	// without the trailing "uit" ever escaping through to the global quit
+	// handler. Assert no tea.QuitMsg across the full sequence.
+	for _, r := range []rune{'u', 'i', 't'} {
+		updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(Model)
+		if cmd != nil {
+			if msg := cmd(); msg != nil {
+				if _, isQuit := msg.(tea.QuitMsg); isQuit {
+					t.Fatalf("keystroke %q in list-search input mode must NOT quit", string(r))
+				}
+			}
+		}
+	}
+	if got := m.list.Search().Query(); got != "quit" {
+		t.Errorf("chained q/u/i/t should build query %q, got %q", "quit", got)
+	}
+	if !m.list.HasActiveSearch() {
+		t.Error("list search should still be active after chained keystrokes")
+	}
+	if !m.list.Search().InputMode() {
+		t.Error("search should still be in input mode after chained keystrokes")
+	}
 }
 
 // TestModel_Q_ListSearchNavigateMode_StillQuits verifies that after Enter
@@ -1475,5 +1499,97 @@ func TestModel_F_FocusTransfer_ClearsActiveListSearch(t *testing.T) {
 	}
 	if m.list.Search().Query() != "" {
 		t.Errorf("list search query should be cleared, got %q", m.list.Search().Query())
+	}
+}
+
+// ---------- T-153 (cavekit-app-shell R14 AC 5): help overlay Esc preserves list search ----------
+
+// TestModel_HelpOverlay_PreservesListSearchState verifies that opening the
+// help overlay (`?`) and dismissing it (`Esc`) over an active, input-mode
+// list search leaves the search state fully intact: still active, same
+// partial query, still in input mode. The help overlay is a separate
+// model from list.search so preservation is by construction — this test
+// pins that no future refactor accidentally dismisses the search on
+// overlay exit (F-118).
+func TestModel_HelpOverlay_PreservesListSearchState(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(5))
+	m = key(m, "/")
+	m = key(m, "a")
+	m = key(m, "b")
+	m = key(m, "c")
+	if !m.list.HasActiveSearch() {
+		t.Fatal("precondition: list search should be active")
+	}
+	if !m.list.Search().InputMode() {
+		t.Fatal("precondition: search should be in input mode")
+	}
+	if m.list.Search().Query() != "abc" {
+		t.Fatalf("precondition: query should be %q, got %q", "abc", m.list.Search().Query())
+	}
+
+	m = key(m, "?")
+	if !m.help.IsOpen() {
+		t.Fatal("? should open the help overlay")
+	}
+	m = key(m, "esc")
+	if m.help.IsOpen() {
+		t.Fatal("esc should dismiss the help overlay")
+	}
+
+	if !m.list.HasActiveSearch() {
+		t.Error("list search should still be active after help-overlay cycle")
+	}
+	if !m.list.Search().InputMode() {
+		t.Error("list search should still be in input mode after help-overlay cycle")
+	}
+	if got := m.list.Search().Query(); got != "abc" {
+		t.Errorf("list search query should be preserved as %q, got %q", "abc", got)
+	}
+}
+
+// ---------- T-154 (cavekit-entry-list R13 AC 7): mouse-click-off-list clears search ----------
+
+// TestModel_MouseClick_DetailZone_ClearsActiveListSearch verifies that a
+// left-button press inside the detail-pane zone while the list has an
+// active search both transfers focus AND deactivates the search — the
+// paired semantics from T-095 + T-143. The focus-only branch is pinned
+// by TestModel_Click_DetailZone_TransfersFocusToDetail; this test pins
+// the search-clear branch so the two cannot drift apart (F-119).
+func TestModel_MouseClick_DetailZone_ClearsActiveListSearch(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(5)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right orientation at width 200, got %v", m.resize.Orientation())
+	}
+	m.focus = appshell.FocusEntryList
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+
+	m = key(m, "/")
+	m = key(m, "t")
+	if !m.list.HasActiveSearch() {
+		t.Fatal("precondition: list search should be active")
+	}
+
+	l := m.layout.Layout()
+	detailX := l.ListContentWidth() + 4 // past listEnd buffer + divider + detailStart buffer
+	m = send(m, tea.MouseMsg{
+		X: detailX, Y: 5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+
+	if m.focus != appshell.FocusDetailPane {
+		t.Errorf("click in detail zone: focus = %v, want FocusDetailPane", m.focus)
+	}
+	if m.list.HasActiveSearch() {
+		t.Error("click in detail zone should deactivate list search")
+	}
+	if got := m.list.Search().Query(); got != "" {
+		t.Errorf("list search query should be cleared, got %q", got)
 	}
 }
