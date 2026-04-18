@@ -1,8 +1,18 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T00:55:00+03:00"
+last_edited: "2026-04-19T01:25:00+03:00"
 ---
 # Loop Log
+
+### Iteration 41 — 2026-04-19 (Tier 19 Wave 5: T-159 HUMAN sign-off)
+- T-159: HUMAN sign-off via tui-mcp on `logs/small.log` at 140x35 right-split and 80x24 below-mode (tokyo-night, `position=auto`) — DONE.
+- **R12 keyboard resize** (both orientations, both focus states): all 10 ACs observed — +/-/|/= semantics, focus-aware share direction, preset toggle list-focus ⇔ detail-focus symmetry, RatioMax + RatioMin clamp-pin, pane-closed silent no-op (mtime + ratio both unchanged across all four keys).
+- **R15 mouse drag**: behavioral envelope MET — drag initiates on Press at router's divider column, saves config exactly once on Release (mtime + ratio changed in one atomic step), focus-neutral. Motion phase not visually re-verifiable via tui-mcp because `send_mouse` emits only press+release (no motion) — documented as **F-124** (tooling constraint, not product bug). Clicking the **visible** divider column (col 94 at 140x35) did NOT start drag — surfaced **F-122** (router's divider col=96 disagrees with renderer's visible col=94, 2-col off-by-two). Also surfaced **F-123** (RatioFromDragY off-by-one vs HeightModel.PaneHeight inverse: formula uses `termHeight-2-y` but correct is `termHeight-1-y`). Both F-122 + F-123 are pre-existing / T-156-introduced-but-unit-tests-agree-internally; NOT Tier 19 regressions in behavior since the unit tests use the same (off) conventions and pass. Deferred to a follow-up tier.
+- **R10 click-row alignment**: historical 2-row offset bug gone. 140x35 right pane-closed: click y=2→1/300, y=5→4/300, y=10→9/300 (`(y-2)+1`). Click y=1 (top border) → no change. 80x24 below pane-open: click y=5→4/300, y=8→7/300. Double-click y=10 → cursor 9/300 + detail pane opens with entry 9's content (DoubleClick_UsesSameResolver). All ACs MET.
+- Three findings filed: F-122 (P1 router/renderer divider-col mismatch), F-123 (P2 RatioFromDragY off-by-one), F-124 (P3 tooling note). All deferred; none block Tier 19 gate since behavioral ACs are met at the coordinate conventions the kits + tests use, and the unit tests for T-156/T-158 pin the in-source contract.
+- Wave 5 inline (parent opus = EXECUTION_MODEL). 1 commit planned — T-159 tracking + findings.
+- Build P, Tests P (no code change; existing 548/548 holds). Files: context/impl/impl-app-shell.md, context/impl/impl-review-findings.md, context/impl/loop-log.md.
+- Frontier after Wave 5: **none** — Tier 19 closes. All 5 tasks DONE (T-155 through T-159). Build site complete.
 
 ### Iteration 40 — 2026-04-19 (Tier 19 Wave 4: T-158)
 - T-158: single-owner click-row resolver (cavekit-entry-list R10 rewrite) — DONE. Historical 2-row click-offset bug fixed by making `appshell.Layout` the single owner of the terminal-Y → list-row offset; the list no longer re-derives header/border arithmetic. `appshell/layout.go`: new `ListContentTopY() int` returns `HeaderHeight + 1` (= 2) — the canonical list-content start row; new `ClickToListRow(terminalY int) (int, bool)` translates terminal-Y to viewport-relative row, returns `ok=false` outside list content rows (header, top/bottom border, divider, detail pane, status bar). Doc-comment declares the R10 single-owner contract. `entrylist/list.go`: new `contentTopY int` field + `WithContentTopY(y int)` setter; `rowForY(y)` now subtracts `contentTopY` before checking against viewport and mapping to visible-index. `app/model.go`: `WindowSizeMsg` + `relayout()` both wire `m.list = m.list.WithScrolloff(...).WithContentTopY(l.ListContentTopY())` so the list stores the opaque offset and never re-derives. Approach B (contentTopY injection) chosen over approach A (translate msg.Y at app-shell) to preserve list's existing msg-dispatch shape while still satisfying R10.

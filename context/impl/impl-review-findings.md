@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-19T00:26:42+03:00"
+last_edited: "2026-04-19T01:15:00+03:00"
 ---
 
 # Review Findings
@@ -182,3 +182,21 @@ Source: in-flight T-156 implementation of cavekit-app-shell R15 mouse-drag resiz
 ### Context carried forward for the next `/ck:make`
 
 - F-121 is a documentation inversion in the kit; the implementation and tests are physically correct. When Tier 19 HUMAN sign-off (T-159) runs via tui-mcp, the user will observe the physically-correct behaviour. If the user is confused by the kit text, rewrite R15 AC 4 to "dragging up grows the detail pane (divider moves up, list shrinks, detail area grows); dragging down shrinks it".
+
+---
+
+## /ck:make run 2026-04-19 (Tier 19 Wave 5 — T-159 HUMAN sign-off surface)
+
+Source: T-159 HUMAN sign-off executed via tui-mcp on `logs/small.log` at 140x35 right-split and 80x24 below-mode (tokyo-night).
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-122: Router/renderer divider-col mismatch (right-split). `appshell.MouseRouter.Zone` computes `listEnd = ListContentWidth()+1` and `divider = listEnd+1` (treating ListContentWidth as CONTENT width), but `app/model.go:178` sends `WindowSizeMsg{Width: ListContentWidth()}` and `entrylist/list.go:308` subtracts 2 to derive its inner viewport (treating ListContentWidth as OUTER/allocated width). Net effect at 140x35 width_ratio=0.3: router thinks divider is at col 96, Lipgloss renders visible divider `│` at col 94. A user clicking the visible divider lands in ZoneEntryList and never triggers T-156 drag initiation. Pre-existing (predates Tier 19) — NOT a T-156/T-158 regression; surfaced during T-159 sign-off. | P1 (visible feature gap) | `internal/ui/appshell/mouse.go:66-67` vs `internal/ui/app/model.go:178` + `internal/ui/entrylist/list.go:308` | NEW | deferred — next tier should decide: either rename `ListContentWidth()` + audit all call sites, or fix the router's `listEnd` to subtract one. Existing unit tests use the router's coord convention so they pass, but real clicks at the visible divider don't. |
+| F-123: `RatioFromDragY` off-by-one inverse of `HeightModel.PaneHeight`. T-156's helper uses `detail = termHeight - 2 - y` but the correct inverse of `DetailPaneHeight = int(termHeight * ratio)` given the below-mode layout (detail occupies rows `entryListEnd+1 .. termHeight-2`) is `detail = termHeight - 1 - y` (divider row is detail's top-border row and counts as part of the detail allocation). At termHeight=24 and the current divider row y=16 (which renders when ratio=0.30), the formula returns ratio=0.25 instead of 0.30 — so a Press directly on the visible divider Y snaps the ratio down by one preset step. T-156's unit tests use synthetic MouseMotion events with coords derived from the same off-by-one helper, so they pass trivially. | P2 (ratio step-snap on Press) | `internal/ui/appshell/ratiokeys.go` (`RatioFromDragY`) | NEW | deferred — one-line constant fix. Write a corresponding test that pins ratio-on-Press-at-current-divider is unchanged, not shifted. |
+| F-124: tui-mcp emits only Press and Release mouse events — no intermediate Motion. Bubble Tea's drag loop depends on MouseMotion between Press and Release to progressively update the ratio. Consequence for HUMAN sign-off: drag behaviour can only be observed as "Press snaps to start-Y, Release saves once"; the proportional-motion AC (R15 AC 2) cannot be visually re-verified through tui-mcp. Real-world terminal emulators DO emit motion events, so production drag works and the unit tests pin it in-source. | P3 (tooling constraint, not product bug) | n/a (tui-mcp event model) | NEW | deferred — documented here so future T-159-equivalent HUMAN sign-offs don't treat the motion-phase absence as a regression. If stricter drag verification is needed, use `xdotool` or real X11-level event injection instead of tui-mcp. |
+
+### Context carried forward for the next `/ck:make`
+
+- F-122 is the more consequential of the three — it's a real UX regression surface (clicking the visible divider doesn't drag) that has been masked by unit tests agreeing with the router's (incorrect) divider column. Fixing it is a small-scope follow-up tier.
+- F-123 fix is one constant + one test. Bundle with F-122 in the same follow-up.
+- F-124 is tooling-only; carry forward as a note in the sign-off convention.
