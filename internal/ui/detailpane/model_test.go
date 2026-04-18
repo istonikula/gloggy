@@ -299,3 +299,34 @@ func TestPaneModel_WithSearch_InactiveNoPrompt(t *testing.T) {
 		t.Errorf("inactive search should not render 'No matches': %q", view)
 	}
 }
+
+// T-115 (F-005): ScrollToLine brings an out-of-window line into view.
+// Uses many-line content so the viewport can actually be smaller than
+// the line count.
+func TestPaneModel_ScrollToLine_BringsMatchIntoView(t *testing.T) {
+	// Build an entry whose rendered JSON will have plenty of fields so
+	// the wrapped content exceeds the pane height.
+	raw := `{"a":"1","b":"2","c":"3","d":"4","e":"5","f":"6","g":"7","h":"8","i":"9","j":"10","target":"find-me"}`
+	entry := logsource.Entry{IsJSON: true, Time: time.Now(), Level: "INFO", Msg: "x", Raw: []byte(raw)}
+	pane := defaultPane(6).SetWidth(40).Open(entry) // content height ~4
+	lines := pane.ContentLines()
+	// Locate the line containing "target".
+	targetIdx := -1
+	for i, l := range lines {
+		if strings.Contains(l, "target") {
+			targetIdx = i
+			break
+		}
+	}
+	if targetIdx < 0 {
+		t.Fatalf("setup: no 'target' in content: %v", lines)
+	}
+	if targetIdx <= pane.ContentHeight()-1 {
+		t.Skipf("target at idx=%d already in initial viewport (content height %d); test not applicable", targetIdx, pane.ContentHeight())
+	}
+	scrolled := pane.ScrollToLine(targetIdx)
+	view := scrolled.View()
+	if !strings.Contains(view, "target") {
+		t.Errorf("after ScrollToLine(%d), view should contain 'target': %q", targetIdx, view)
+	}
+}

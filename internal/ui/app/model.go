@@ -297,6 +297,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.paneSearch.IsActive() || msg.String() == "/" {
 			lines := m.pane.ContentLines()
 			m.paneSearch, _ = m.paneSearch.Update(msg, lines)
+			// T-115: after any search update that has a current match,
+			// scroll the pane viewport so the match line is visible.
+			if m.paneSearch.MatchCount() > 0 {
+				m.pane = m.pane.ScrollToLine(m.paneSearch.CurrentMatchLine())
+			}
 			return m, nil
 		}
 		var cmd tea.Cmd

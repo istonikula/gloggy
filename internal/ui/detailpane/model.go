@@ -143,6 +143,32 @@ func (m PaneModel) ContentHeight() int {
 	return h
 }
 
+// ScrollToLine adjusts the scroll offset so line index `idx` is visible
+// in the current viewport (T-115, cavekit R7). If idx is already inside
+// the window, the offset is unchanged; otherwise it scrolls the minimum
+// amount needed — aligning to the top when idx is above, to the bottom
+// when idx is below. Negative indices and out-of-range values are
+// clamped by the underlying scroll model.
+func (m PaneModel) ScrollToLine(idx int) PaneModel {
+	if len(m.scroll.lines) == 0 {
+		return m
+	}
+	viewport := m.ContentHeight()
+	if m.search.IsActive() && viewport > 1 {
+		viewport-- // prompt row reserves the same row as View() does.
+	}
+	if viewport < 1 {
+		viewport = 1
+	}
+	if idx < m.scroll.offset {
+		m.scroll.offset = idx
+	} else if idx >= m.scroll.offset+viewport {
+		m.scroll.offset = idx - viewport + 1
+	}
+	m.scroll.clamp()
+	return m
+}
+
 // ContentLines returns the soft-wrapped, unstyled content lines that align
 // with the pane's visual line positions — ANSI escapes from syntax
 // highlighting are stripped, and the raw content is re-run through SoftWrap
