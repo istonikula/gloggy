@@ -159,7 +159,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		l := m.layout.Layout()
 		m.list, _ = m.list.Update(tea.WindowSizeMsg{Width: l.ListContentWidth(), Height: l.EntryListHeight()})
-		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight()).SetWidth(l.DetailContentWidth())
+		// T-123 (F-013): vertical allocation is orientation-aware — in
+		// right-split the pane gets the full main-area slot, not
+		// height_ratio × terminalHeight.
+		m.pane = m.pane.SetHeight(appshell.DetailPaneVerticalRows(l)).SetWidth(l.DetailContentWidth())
 		m.header = m.header.WithWidth(w)
 		m.keyhints = m.keyhints.WithWidth(w).WithPaneOpen(m.pane.IsOpen())
 		return m, cmd
@@ -531,7 +534,12 @@ func (m Model) relayout() Model {
 		Width:  l.ListContentWidth(),
 		Height: l.EntryListHeight(),
 	})
-	m.pane = m.pane.SetWidth(l.DetailContentWidth())
+	// T-123 (F-013, F-014): recompute pane vertical allocation on every
+	// relayout (open, ratio change, orientation flip). In right-split that
+	// means the full main-area slot; in below-mode it stays height_ratio.
+	m.pane = m.pane.
+		SetHeight(appshell.DetailPaneVerticalRows(l)).
+		SetWidth(l.DetailContentWidth())
 	return m
 }
 

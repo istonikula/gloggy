@@ -217,3 +217,46 @@ func TestLayout_IsBelowMinFloor(t *testing.T) {
 		}
 	}
 }
+
+// T-123 (F-013): In right-split the detail pane gets the full main-area
+// slot (terminal_height - header - status). height_ratio must NOT be
+// applied to the vertical dimension.
+func TestDetailPaneVerticalRows_RightUsesFullSlot(t *testing.T) {
+	// 80x24 terminal, detail pane open at height_ratio 0.30 → below-mode
+	// PaneHeight == 7. Right-mode must override to 22 (24 - 1 - 1).
+	l := NewLayout(80, 24, true, 7)
+	l.Orientation = OrientationRight
+	if got := DetailPaneVerticalRows(l); got != 22 {
+		t.Errorf("right-split vertical rows: got %d, want 22", got)
+	}
+}
+
+// T-123: In below-mode the function preserves DetailPaneHeight (height_ratio).
+func TestDetailPaneVerticalRows_BelowUsesRatio(t *testing.T) {
+	l := NewLayout(80, 24, true, 7)
+	l.Orientation = OrientationBelow
+	if got := DetailPaneVerticalRows(l); got != 7 {
+		t.Errorf("below-mode vertical rows: got %d, want 7", got)
+	}
+}
+
+// T-123: closed pane returns 0 in both orientations.
+func TestDetailPaneVerticalRows_ClosedReturnsZero(t *testing.T) {
+	l := NewLayout(80, 24, false, 0)
+	if got := DetailPaneVerticalRows(l); got != 0 {
+		t.Errorf("closed below: got %d, want 0", got)
+	}
+	l.Orientation = OrientationRight
+	if got := DetailPaneVerticalRows(l); got != 0 {
+		t.Errorf("closed right: got %d, want 0", got)
+	}
+}
+
+// T-123: degenerate dimensions (header+status exceed height) still return ≥ 1.
+func TestDetailPaneVerticalRows_FloorAtOne(t *testing.T) {
+	l := NewLayout(80, 2, true, 0)
+	l.Orientation = OrientationRight
+	if got := DetailPaneVerticalRows(l); got < 1 {
+		t.Errorf("degenerate right: got %d, want ≥ 1", got)
+	}
+}

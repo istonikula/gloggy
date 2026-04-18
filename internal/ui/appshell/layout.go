@@ -85,6 +85,26 @@ func (l Layout) DetailContentWidth() int {
 	return u - int(float64(u)*(1.0-l.WidthRatio))
 }
 
+// DetailPaneVerticalRows returns the outer vertical allocation (rows,
+// border-inclusive) for the detail pane. In below-mode this is
+// DetailPaneHeight (height_ratio * terminalHeight). In right-mode the pane
+// occupies the full main-area slot between the header and status bar and
+// height_ratio must NOT be applied to the vertical dimension (T-123, F-013).
+// Returns 0 when the pane is closed.
+func DetailPaneVerticalRows(l Layout) int {
+	if !l.DetailPaneOpen {
+		return 0
+	}
+	if l.Orientation == OrientationRight {
+		h := l.Height - l.HeaderHeight - l.StatusBarHeight
+		if h < 1 {
+			h = 1
+		}
+		return h
+	}
+	return l.DetailPaneHeight
+}
+
 // NewLayout creates a below-mode Layout. detailPaneHeight is only used when
 // detailPaneOpen is true.
 func NewLayout(width, height int, detailPaneOpen bool, detailPaneHeight int) Layout {

@@ -1000,6 +1000,136 @@ func TestModel_Search_InputMode_JAppendsToQuery(t *testing.T) {
 	}
 }
 
+// ---------- T-123: detail-pane vertical height in right orientation (P0 / F-013) ----------
+
+// TestModel_PaneHeight_RightOrientation_UsesFullSlot verifies that in
+// right-split the pane's ContentHeight fills the main-area slot
+// (terminal_height - header - status - border_rows), not height_ratio.
+func TestModel_PaneHeight_RightOrientation_UsesFullSlot(t *testing.T) {
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "right" // force right so auto-threshold is bypassed
+	cfg.Config.DetailPane.HeightRatio = 0.30 // the below-mode value that used to clip
+
+	m := New("", false, "", cfg)
+	m = resize(m, 140, 24) // wide enough to keep right-split stable (detail ≥ 30 cells)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: forced orientation=right, got %v", m.resize.Orientation())
+	}
+	// 24 (height) - 1 (header) - 1 (status) = 22 outer rows → ContentHeight ≥ 20.
+	if got := m.pane.ContentHeight(); got < 20 {
+		t.Errorf("right-split ContentHeight: got %d, want ≥ 20 (F-013)", got)
+	}
+	// Regression: height_ratio × terminalHeight = 7. If ContentHeight is ≤ 5
+	// we are still applying below-mode math in right orientation.
+	if got := m.pane.ContentHeight(); got <= 5 {
+		t.Errorf("right-split ContentHeight = %d — still clipped to height_ratio", got)
+	}
+}
+
+// TestModel_PaneHeight_BelowOrientation_UsesRatio verifies the ratio-based
+// vertical sizing still governs below-mode.
+func TestModel_PaneHeight_BelowOrientation_UsesRatio(t *testing.T) {
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "below"
+	cfg.Config.DetailPane.HeightRatio = 0.30
+
+	m := New("", false, "", cfg)
+	m = resize(m, 80, 24) // below-mode orientation
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: forced orientation=below, got %v", m.resize.Orientation())
+	}
+	// 24 × 0.30 = 7 outer rows → ContentHeight = 5.
+	wantOuter := 7 // int(24 * 0.30) = 7
+	if got := m.paneHeight.PaneHeight(); got != wantOuter {
+		t.Errorf("below-mode outer height: got %d, want %d", got, wantOuter)
+	}
+	if got := m.pane.ContentHeight(); got != wantOuter-2 {
+		t.Errorf("below-mode ContentHeight: got %d, want %d", got, wantOuter-2)
+	}
+}
+
+// TestModel_RatioKey_StillWorksInBelowMode verifies that `+` in below-mode
+// still increases height_ratio after the T-123 refactor (guards against
+// accidental regression on the resize keymap path).
+func TestModel_RatioKey_StillWorksInBelowMode(t *testing.T) {
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "below"
+	cfg.Config.DetailPane.HeightRatio = 0.30
+
+	m := New("", false, "", cfg)
+	m = resize(m, 80, 30)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	// Transfer focus to the pane so the ratio keymap fires.
+	m.focus = appshell.FocusDetailPane
+
+	before := m.paneHeight.Ratio()
+	m = key(m, "+")
+	if m.paneHeight.Ratio() <= before {
+		t.Errorf("`+` in below-mode: ratio = %.2f, want > %.2f", m.paneHeight.Ratio(), before)
+	}
+}
+
+// TestModel_OrientationFlip_VerticalSizeTracks verifies that flipping from
+// below to right uses the full main-area slot (T-123 F-013), and flipping
+// back restores the below-mode ratio-derived height.
+func TestModel_OrientationFlip_VerticalSizeTracks(t *testing.T) {
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "auto"
+	cfg.Config.DetailPane.HeightRatio = 0.30
+	cfg.Config.DetailPane.OrientationThresholdCols = 100
+
+	m := New("", false, "", cfg)
+	m = resize(m, 80, 24) // below (under threshold)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: 80 cols should be below, got %v", m.resize.Orientation())
+	}
+	belowOuter := m.paneHeight.PaneHeight()
+	if got, want := belowOuter, 7; got != want {
+		t.Errorf("below outer height: got %d, want %d", got, want)
+	}
+
+	// Flip to right — wide terminal, detailW ≥ 30 so pane stays open.
+	m = resize(m, 140, 24)
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: 140 cols should flip to right, got %v", m.resize.Orientation())
+	}
+	if !m.pane.IsOpen() {
+		t.Fatalf("precondition: pane should still be open after flip to right")
+	}
+	// Right-mode vertical = full main slot = 24 - 1 - 1 = 22.
+	if got := m.pane.ContentHeight(); got < 20 {
+		t.Errorf("right-mode ContentHeight after flip: got %d, want ≥ 20", got)
+	}
+
+	// Flip back to below — height_ratio preserved, ContentHeight returns to
+	// the ratio-derived value.
+	m = resize(m, 80, 24)
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: 80 cols should flip back to below, got %v", m.resize.Orientation())
+	}
+	if got := m.paneHeight.PaneHeight(); got != belowOuter {
+		t.Errorf("below outer height after round-trip: got %d, want %d (ratio not preserved)", got, belowOuter)
+	}
+	if m.cfg.Config.DetailPane.HeightRatio != 0.30 {
+		t.Errorf("height_ratio mutated by orientation flip: got %.3f, want 0.300",
+			m.cfg.Config.DetailPane.HeightRatio)
+	}
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

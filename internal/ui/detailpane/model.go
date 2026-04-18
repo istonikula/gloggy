@@ -47,10 +47,14 @@ func NewPaneModel(th theme.Theme, height int) PaneModel {
 // using lipgloss cell-width measurement so emoji and CJK do not overflow.
 // T-106: re-wraps the stored content at the new content width so the
 // scroll viewport reflects the wrapped layout.
+// T-123 (F-018): re-wrap passes ContentHeight (border-subtracted) to the
+// scroll model, not the outer pane height. Passing the outer height caused
+// SetContent to size the viewport to outer height which extends the visible
+// window past the last renderable content row and masks clipping bugs.
 func (m PaneModel) SetWidth(w int) PaneModel {
 	m.width = w
 	if m.open && m.rawContent != "" {
-		m.scroll = m.scroll.SetContent(SoftWrap(m.rawContent, m.contentWidth()), m.height)
+		m.scroll = m.scroll.SetContent(SoftWrap(m.rawContent, m.contentWidth()), m.ContentHeight())
 	}
 	return m
 }
@@ -74,6 +78,8 @@ func (m PaneModel) IsOpen() bool { return m.open }
 // Open activates the detail pane with the given entry.
 // T-106: stores the raw rendered content so SetWidth can re-wrap it on
 // width changes.
+// T-123 (F-018): seeds the scroll viewport with ContentHeight (border-
+// subtracted), so internal offset clamping stays inside the visible window.
 func (m PaneModel) Open(entry logsource.Entry) PaneModel {
 	var content string
 	if entry.IsJSON {
@@ -84,7 +90,7 @@ func (m PaneModel) Open(entry logsource.Entry) PaneModel {
 	m.entry = entry
 	m.open = true
 	m.rawContent = content
-	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.height)
+	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.ContentHeight())
 	return m
 }
 
@@ -94,10 +100,14 @@ func (m PaneModel) Close() PaneModel {
 	return m
 }
 
-// SetHeight updates the visible height of the pane.
+// SetHeight updates the outer visible height (border-inclusive) of the pane.
+// T-123 (F-014, F-018): keeps scroll.height in sync with ContentHeight so
+// offset clamping bounds the viewport to the renderable content rows — not
+// the outer pane including borders.
 func (m PaneModel) SetHeight(h int) PaneModel {
 	m.height = h
-	m.scroll.height = h
+	m.scroll.height = m.ContentHeight()
+	m.scroll = m.scroll.Clamp()
 	return m
 }
 
@@ -255,9 +265,11 @@ func (m PaneModel) View() string {
 		scroll := m.scroll
 		scroll.lines = lines
 		scroll.height = contentH
+		scroll = scroll.Clamp()
 		body = scroll.View()
 	} else {
 		m.scroll.height = contentH
+		m.scroll = m.scroll.Clamp()
 		body = m.scroll.View()
 	}
 	if searchActive {

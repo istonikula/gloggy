@@ -58,6 +58,14 @@ func (m *ScrollModel) clamp() {
 	}
 }
 
+// Clamp returns a copy of m with offset clamped to the current lines/height.
+// Call after mutating height or lines externally to keep the viewport valid
+// (T-123, F-019).
+func (m ScrollModel) Clamp() ScrollModel {
+	m.clamp()
+	return m
+}
+
 // AtTop returns true when already at the top.
 func (m ScrollModel) AtTop() bool { return m.offset == 0 }
 
