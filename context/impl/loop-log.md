@@ -1,8 +1,21 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T01:15:09+03:00"
+last_edited: "2026-04-18T09:40:17+03:00"
 ---
 # Loop Log
+
+### /ck:check — 2026-04-18 (post-Tier-11)
+- User report: "pressing / does not do anything". Scoped `/ck:check` dispatched with `ck:surveyor` + `ck:inspector` on model=opus.
+- **Verdict: REJECT.** R7 (In-Pane Search) fails 6/7 ACs: state works in isolation, but `detailpane/model.go.View()` never consumes `SearchModel` — no prompt, no highlights, no match counter, no wrap glyph render. Unit tests in `search_test.go` pass because they exercise the model directly; integration was never wired. Additionally `/` from entry-list focus silently fell through, matching the user's report.
+- **Findings logged:** F-001..F-011 → `context/impl/impl-review-findings.md`. F-012 closed by kit revision.
+- **Kit revisions:**
+  - `cavekit-overview.md`: new "Verification Conventions" section codifying tui-mcp as the HUMAN sign-off method (captures the existing de-facto practice; previously uncodified).
+  - `cavekit-detail-pane.md` R7: +6 auto ACs + 1 HUMAN — requires visible prompt, `(cur/total)` counter, "No matches" state, unstyled content-line match source, viewport scroll on n/N, state dismissal on pane close, two-step Esc integration test, UTF-8-safe backspace.
+  - `cavekit-app-shell.md` new R13: `/` must never be a silent no-op; pane-open → focus-transfer + activate; pane-closed → transient notice; help overlay + keyhint bar advertise with accurate scope.
+  - Overview coverage: 55 reqs / 276 ACs → 56 reqs / 290 ACs.
+- **Site additions:** Tier 12 (T-113..T-122). T-113 (`ContentLines()` accessor) gates T-114 (render wiring); T-114 gates T-115/T-116/T-117/T-120/T-121; T-118, T-119 can run in parallel; T-122 is HUMAN gate last.
+- **Impl downgrades:** `impl-detail-pane.md` T-043 DONE → PARTIAL (search model shipped without integration).
+- Next: `/ck:make` to execute Tier 12. Existing Tier 11 HUMAN sign-off (T-066/T-067) remains valid — scope was entry-list wrap/filtered-out indicator, not search.
 
 ### Iteration 20 — 2026-04-18
 - T-111: wrap indicator render — DONE. Files: entrylist/list.go View() + applyLevelJump helper, list_test.go (+TestListModel_View_RendersWrapIndicator, +TestListModel_View_NoIndicator_AfterClearTransient). `↻` glyph (theme.Mark) on cursor row when wrapDir != NoWrap. Build P, Tests P (368/368). tui-mcp confirmed via small.log: G then e wraps to first ERROR with visible ↻.

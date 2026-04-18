@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T21:40:06+03:00"
+last_edited: "2026-04-18T09:40:17+03:00"
 ---
 
 # Cavekit: Detail Pane
@@ -79,7 +79,7 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 **Dependencies:** cavekit-config (detail pane height ratio, width ratio), cavekit-app-shell (R12 resize keymap, resize events, mouse routing)
 
 ### R7: In-Pane Search
-**Description:** `/` opens a search input scoped to the detail pane content (does not trigger the list filter). `n`/`N` cycle through matches with a wrap indicator. Matches are highlighted using the theme's highlight color. Esc dismisses the search.
+**Description:** `/` opens a search input scoped to the detail pane content (does not trigger the list filter). `n`/`N` cycle through matches with a wrap indicator. Matches are highlighted using the theme's highlight color. Esc dismisses the search. The search input, query, and current/total match counter must be **visibly rendered** in the pane while active — search state mutation alone is not sufficient; the user must see that search is running.
 **Acceptance Criteria:**
 - [ ] [auto] Pressing `/` while the detail pane is focused opens a search input within the pane
 - [ ] [auto] Typing a search term highlights matching text in the pane content
@@ -88,7 +88,14 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - [ ] [auto] When matches wrap around, a wrap indicator is displayed
 - [ ] [auto] Pressing Esc dismisses the search input and clears highlights
 - [ ] [auto] The search does not affect the entry-list filter
-**Dependencies:** cavekit-config (theme highlight color)
+- [ ] [auto] The active query and match index `(current/total)` are visible while search is open; when `query != "" && matches == 0` the prompt shows a "No matches" indicator
+- [ ] [auto] Search matches the **soft-wrapped, unstyled** content lines (pre-border, pre-syntax-highlight), never the bordered/ANSI-styled View output; match line indices align with the user's visual line positions
+- [ ] [auto] After `n`/`N` the pane viewport scrolls so the current match line is visible if it is outside the current scroll window
+- [ ] [auto] Search state is dismissed automatically when the pane closes or a different entry is opened (no stale query across open/close cycles)
+- [ ] [auto] Two-step Esc: first Esc dismisses active search, second Esc closes the pane (integration-tested)
+- [ ] [auto] Backspace on a query containing multi-byte runes (emoji / CJK) removes exactly one rune without corrupting UTF-8
+- [ ] [human] Pressing `/` then typing a query on `logs/small.log` visibly highlights matches, shows `(cur/total)`, and `n`/`N` scrolls the viewport to each match (verify per overview "Verification Conventions" §1–§5)
+**Dependencies:** cavekit-config (theme highlight color), cavekit-app-shell (cross-pane `/` behavior — see app-shell R13)
 
 ### R8: Mouse Filter Interaction
 **Description:** Clicking on a field value in the detail pane initiates adding a filter for that field, prompting for include or exclude mode.
@@ -146,3 +153,8 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - **Affected:** R1, R6 (renamed), new R9, new R10
 - **Summary:** R1 gained an AC that the detail pane's top border is visible in both below and right orientations. R6 renamed from "Pane Height and Resize" to "Pane Size and Resize" and extended with width-ratio semantics for right orientation, mouse-drag on the vertical divider, and independent ratio preservation across orientation flips; the resize keymap itself is delegated to cavekit-app-shell R12. New R9 introduces `wrap_mode` with `soft` as the shipping default (preventing silent truncation). New R10 requires width awareness and safe width measurement for emoji, CJK, and ANSI content. Out of Scope extended with v1.5/v2 wrap modes and non-planned tree-fold.
 - **Driven by:** DESIGN.md + research-brief-details-pane-redesign.md
+
+### 2026-04-18 — Revision (R7 search rendering + integration)
+- **Affected:** R7
+- **Summary:** Added 6 automated ACs + 1 human sign-off to R7. Before this revision R7 was under-specified — it described state semantics (activate / cycle / dismiss) but never required the search input, query text, match counter, or wrap indicator to be **rendered**. The implementation shipped a complete `SearchModel` with passing unit tests, but `detailpane/model.go` `View()` never consumed it; pressing `/` toggled state invisibly. User reported "pressing / does not do anything". New ACs lock down: visible prompt + `(cur/total)`, unstyled-content match source (prevents off-by-one when splitting bordered View), viewport-scroll on `n`/`N`, state reset on pane close, two-step Esc, UTF-8-safe backspace.
+- **Driven by:** `/ck:check` finding F-002 (search dead code path). Related findings F-001, F-003..F-011 in `context/impl/impl-review-findings.md`.

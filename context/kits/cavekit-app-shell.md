@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T21:40:06+03:00"
+last_edited: "2026-04-18T09:40:17+03:00"
 ---
 
 # Cavekit: App Shell
@@ -150,6 +150,18 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] Ratio changes are persisted to the config file via live write-back
 **Dependencies:** cavekit-detail-pane (applies new ratio), cavekit-config (live write-back, ratio settings)
 
+### R13: Cross-Pane Search Activation
+**Description:** `/` is the in-pane search activation key (owned by cavekit-detail-pane R7). The app shell defines what happens when `/` is pressed while a pane *other than* the detail pane has focus — the activation must never be a silent no-op. If the detail pane is open but unfocused, `/` transfers focus to the detail pane and activates search there in a single keypress. If the detail pane is closed, `/` surfaces a transient status-bar notice (≤ 3s via `keyhints.WithNotice`) telling the user to open an entry first. The key-hint bar and help overlay must advertise `/` honestly in both contexts so the key is discoverable without a hidden focus precondition.
+**Acceptance Criteria:**
+- [ ] [auto] With entry list focused and detail pane open, pressing `/` sets focus to the detail pane and activates `SearchModel` in one keypress (no Tab required)
+- [ ] [auto] With entry list focused and detail pane closed, pressing `/` emits a transient keyhint notice instructing the user to open an entry first; the notice auto-dismisses within 3 seconds
+- [ ] [auto] With filter panel focused, pressing `/` is routed to the filter input as a literal character (not intercepted as a search activation)
+- [ ] [auto] Pressing `/` is never a silent no-op at any focus; every focus state either activates search or produces a visible notice
+- [ ] [auto] The key-hint bar shows `/` with accurate scope when a precondition exists (e.g. `/ search pane` when pane open, `/ search (open entry first)` when pane closed, hidden when filter panel focused)
+- [ ] [auto] The help overlay entry for `/` states its scope explicitly (e.g. "Search inside detail pane — opens pane if closed")
+- [ ] [human] Walking through `logs/small.log` with list focused, pressing `/` immediately opens search in the detail pane with no intermediate keystroke (verify per overview "Verification Conventions")
+**Dependencies:** cavekit-detail-pane R1 (pane open/close), R7 (search activation target), cavekit-config (theme for notice styling)
+
 ## Out of Scope
 
 - Domain-specific logic (parsing, filtering, rendering details -- all delegated)
@@ -165,6 +177,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-18 — Revision (R13 cross-pane search activation)
+- **Affected:** new R13
+- **Summary:** New R13 added to close a discoverability gap: with the entry list focused, pressing `/` fell through to `list.Update` which doesn't bind it, producing a silent no-op. Users with vim muscle memory try `/` first and believe search is broken. R13 requires `/` to either focus-transfer to the detail pane (if open) or surface a transient notice (if closed), and demands that the key-hint bar + help overlay advertise the key with accurate scope. Paired with cavekit-detail-pane R7 revisions that fix the rendering side.
+- **Driven by:** `/ck:check` finding F-001 (silent no-op on list focus) and F-011 (keyhint discoverability). Related findings logged in `context/impl/impl-review-findings.md`.
 
 ### 2026-04-16 — Revision
 - **Affected:** R3, new R10

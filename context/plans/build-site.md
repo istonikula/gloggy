@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T21:58:10+03:00"
+last_edited: "2026-04-18T09:40:17+03:00"
 ---
 
 # Build Site: gloggy
@@ -13,11 +13,11 @@ last_edited: "2026-04-17T21:58:10+03:00"
 | Metric | Value |
 |---|---|
 | Source Kits | 6 domains |
-| Requirements | 55 |
-| Acceptance Criteria | 276 |
-| Plan Tasks | 110 |
-| Human Sign-off Tasks | 14 |
-| Tiers | 11 (0 through 10) |
+| Requirements | 56 |
+| Acceptance Criteria | 290 |
+| Plan Tasks | 122 |
+| Human Sign-off Tasks | 15 |
+| Tiers | 13 (0 through 12) |
 
 ---
 
@@ -202,6 +202,23 @@ Foundational model + theme extensions, right-split layout, focus cycle, resize k
 |---|---|---|---|---|---|
 | T-111 | Render wrap indicator on level-jump and mark-nav | entry-list/R8, R9 | T-032, T-033 | S | `internal/ui/entrylist/list.go` `View()` does not render any visual indicator when `wrapDir != NoWrap`. Acceptance criteria R8 #6 ("when a wrap occurs, an indicator is shown") and R9 #5 ("mark navigation wraps with an indicator") are not met. The state is tracked (`wrapDir`, `HasTransient()`, `WrapDir()`) but only consumed by Esc-clear in `app/model.go:324`. Render a transient marker (e.g., `↻` glyph or "wrapped" notice) when `WrapDir() != NoWrap`, cleared by `ClearTransient()` (already wired to Esc + next nav). Re-verify via tui-mcp: 2 marks → `u` past end → wrap indicator visible. |
 | T-112 | Render filtered-out indicator when level-jump lands outside filter | entry-list/R8 | T-032, T-019 | S | When level-jump (`e`/`E`/`w`/`W`) lands on an entry excluded by the active filter set, the entry is shown but no visual indicator distinguishes it as outside the current filter. Acceptance criteria R8 #7 ("entry is shown and a visual indicator communicates it is outside the current filter") and R8 #8 (human readability) are not met. Decide on indicator (e.g., a leading `⌀` or per-row badge) and render it when the cursor's underlying entry index is not in the current `FilteredIndex`. Re-verify via tui-mcp: filter to INFO → press `e` → cursor jumps to filtered-out ERROR → indicator visible. |
+
+### Tier 12 -- Search Integration (discovered by /ck:check 2026-04-18)
+
+Triggered by user report "pressing / does nothing". Root cause: `detailpane/model.go` `View()` never consumes `SearchModel`; `/` from entry-list focus falls through to a dead branch. Addresses cavekit-detail-pane R7 (expanded) and new cavekit-app-shell R13. Tasks are ordered so T-113 unblocks the rest.
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-113 | Expose unstyled content lines from PaneModel | detail-pane/R7 | T-043, T-106 | S | Add `func (m PaneModel) ContentLines() []string` that returns the soft-wrapped, un-bordered, un-syntax-styled content currently fed into `style.Render(content)` in `internal/ui/detailpane/model.go`. Do not split the post-`View()` string — splitting the bordered output includes top/bottom border rows and ANSI SGR codes, shifting match indices by 1 and corrupting highlight composition (see F-003). Unit test: `ContentLines()` returns exactly the wrapped raw lines with no border characters and no ANSI escapes. Used by T-114 as the search match source. |
+| T-114 | Wire SearchModel into PaneModel render path | detail-pane/R7 | T-113 | M | Give `PaneModel` a `WithSearch(SearchModel) PaneModel` setter and have `View()` call `search.HighlightLines(contentLines)` before `style.Render`. Prepend a search prompt row inside the bordered pane when `search.IsActive()`: `"/" + query + "  (" + current+1 + "/" + total + ")"` — when `query != "" && MatchCount() == 0` render `"No matches"` instead. Include a wrap glyph (e.g. `↻` / `↺`) when `WrapDir() != SearchNoWrap`. In `internal/ui/app/model.go`, replace `lines := strings.Split(m.pane.View(), "\n")` (line 298) with `lines := m.pane.ContentLines()`, and after `paneSearch.Update` call `m.pane = m.pane.WithSearch(m.paneSearch)`. Integration test: activate search, type query, assert the composed app `View()` contains the prompt line, `(c/t)` counter, and ANSI highlight bytes on matching lines. Closes F-002, F-003, F-004, F-010. |
+| T-115 | Scroll viewport to current match on n/N | detail-pane/R7 | T-114 | S | Add `func (m PaneModel) ScrollToLine(line int) PaneModel` (scroll so `line` is visible within the current viewport). After `paneSearch.Update` in `internal/ui/app/model.go`, when `msg.String() == "n"` or `"N"`, call `m.pane = m.pane.ScrollToLine(m.paneSearch.CurrentMatchLine())`. Unit test with a 50-line content + pane height 10: sequential `n` presses keep the current match visible. Closes F-005. |
+| T-116 | Cross-pane `/` activation from entry-list focus | app-shell/R13 | T-114 | S | In `internal/ui/app/model.go` `handleKey` default (`FocusEntryList`) branch, intercept `msg.String() == "/"` before forwarding to `m.list.Update`: (a) if `m.pane.IsOpen()`, set `m.focus = FocusDetailPane`, call `m.paneSearch, _ = m.paneSearch.Update(msg, m.pane.ContentLines())` so search activates on the same keypress; (b) if pane closed, `m.keyhints = m.keyhints.WithNotice("Open an entry first (Enter)")` with the 3s `tea.Tick` auto-clear used by T-091. Unit tests: `/` with pane open transfers focus and sets `paneSearch.IsActive() == true`; `/` with pane closed leaves focus on list and sets `keyhints.HasNotice() == true`. Closes F-001. |
+| T-117 | Dismiss search on pane close / re-open | detail-pane/R7 | T-114 | S | In `internal/ui/app/model.go`: on receipt of `detailpane.BlurredMsg` (pane close) call `m.paneSearch = m.paneSearch.Dismiss()`; in `openPane()` also dismiss before opening a different entry. Unit test: open pane, activate search, type `hi`, press Esc-Esc to close pane, reopen pane, press `j` — assert `paneSearch.IsActive() == false` and `j` routes to pane scroll (not to query). Closes F-006. |
+| T-118 | Split search input-mode vs navigation-mode | detail-pane/R7 | T-114 | M | In `internal/ui/detailpane/search.go` introduce an `inputMode bool` field: `Activate` sets it `true`; Enter commits the query and sets it `false` (search stays "active" for highlight purposes but no longer consumes keystrokes as runes); `/` re-enters input mode. In `Update`, only append runes when `inputMode == true`; when in navigation mode, only `n`, `N`, Esc, `/` are intercepted — `j`, `k`, `g`, `G`, `Ctrl+d`, `Ctrl+u` pass through to the pane scroll model. Route from `internal/ui/app/model.go` accordingly. Unit tests: active-search `j` in input-mode appends to query; active-search `j` in navigation-mode does not appear in query and pane scrolls. Closes F-008. |
+| T-119 | UTF-8-safe backspace in search query | detail-pane/R7 | T-043 | S | In `internal/ui/detailpane/search.go:181-184`, replace `m.query = m.query[:len([]rune(m.query))-1]` with `runes := []rune(m.query); m.query = string(runes[:len(runes)-1])`. Unit test: query `"café"` backspace → `"caf"`; query `"日本語"` backspace → `"日本"`; query `"🚀x"` backspace → `"🚀"`. Closes F-009. |
+| T-120 | Two-step Esc integration test for search + pane | detail-pane/R7 | T-114, T-117 | S | Add an integration test in `tests/integration/` (or extend `detailpane_filter_test.go`): open pane, activate search, press Esc — assert `paneSearch.IsActive() == false` AND `pane.IsOpen() == true`; press Esc again — assert `pane.IsOpen() == false`. Prevents regressions if anyone reorders the key-route branches in `app/model.go`. Closes F-007. |
+| T-121 | Update help overlay + keyhint bar for `/` scope | app-shell/R13 | T-116 | S | In `internal/ui/appshell/help.go`, rewrite the `/` entry under `DomainDetailPane` to `{Key: "/", Desc: "Search inside detail pane — opens pane if closed"}`. In `internal/ui/appshell/keyhints.go` add a `/` hint to the `FocusEntryList` hint set when `m.pane.IsOpen()` (via a new `WithPaneOpen(bool)` method mirroring `WithNotice`), with text like `/ search pane`; when pane closed, show `/ search (open entry first)`. Unit tests assert the hint set depends on pane-open state. Closes F-011. |
+| T-122 | [HUMAN] `/` search end-to-end sign-off | detail-pane/R7, app-shell/R13 | T-114, T-115, T-116, T-117, T-118, T-121 | S | Per overview "Verification Conventions" §1–§5, verify via tui-mcp on `logs/small.log` across all three bundled themes at `80x24` + `140x35` in both right and below orientations: (1) with list focused and pane closed, `/` shows the "open entry first" notice which auto-dismisses; (2) with list focused and pane open, `/` immediately activates search in the detail pane in one keypress; (3) typing a matching query shows `(cur/total)` counter and highlights matches in the theme's `SearchHighlight` color; (4) typing a non-matching query shows "No matches"; (5) `n`/`N` scroll the pane viewport so the current match is visible, with wrap indicator on wrap; (6) Esc once dismisses search, Esc again closes pane; (7) re-opening a different entry starts with search dismissed. Attach theme + geometry + orientation observations to impl-detail-pane.md Notes. |
 
 ---
 
@@ -918,6 +935,16 @@ The 2026-04-17 kit revision (commit `a2fe53c`) added **27 new plan tasks** (T-08
 ---
 
 ## Revision Log
+
+### 2026-04-18 — Search integration (Tier 12)
+- **Source:** `/ck:check` findings F-001..F-011 after user report "pressing / does not do anything".
+- **Kits changed:** `cavekit-detail-pane.md` R7 (+6 auto ACs + 1 human sign-off); `cavekit-app-shell.md` new R13 (cross-pane `/` activation, 6 auto ACs + 1 human); `cavekit-overview.md` new "Verification Conventions" section codifying tui-mcp as the HUMAN sign-off method.
+- **Acceptance-criteria delta:** 276 → 290 (+14).
+- **Requirement count delta:** 55 → 56 (+1 new: app-shell R13).
+- **Tasks added:** 10 (T-113 through T-122). T-113 introduces a shared `ContentLines()` accessor that unblocks T-114 (render wiring), which in turn unblocks T-115..T-121; T-122 is the HUMAN sign-off gate.
+- **Tiers added:** 12 (search integration). Previous tier ceiling was 11.
+- **Root cause:** `SearchModel` shipped as an isolated, unit-tested module but `detailpane/model.go.View()` never consumed it — state mutation invisible to user. Compounded by `/` not being routed from entry-list focus.
+- **Commit history referenced:** T-043 (search model, impl-detail-pane.md line 18 marked DONE prematurely).
 
 ### 2026-04-17 — Details-pane redesign extension
 - **Source:** kit revision in commit `a2fe53c` (`cavekit-app-shell.md`, `cavekit-config.md`, `cavekit-detail-pane.md` all bumped to `last_edited: 2026-04-17`).
