@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T12:19:37+03:00"
+last_edited: "2026-04-18T12:24:01+03:00"
 ---
 # Loop Log
 
@@ -33,6 +33,11 @@ last_edited: "2026-04-18T12:19:37+03:00"
 - Wave 2 executed inline sequentially (parent opus = EXECUTION_MODEL). T-125 and T-127 both touch detailpane/model.go; T-126 and T-127 both touch app/model.go — inline serialization avoids file conflicts.
 - Build P, Tests P (437/437 across 11 pkgs). 3 commits: 4db9865 (T-125), 30330a8 (T-126), 69dd7dd (T-127).
 - Frontier for Wave 3: T-128 (design-system update, blocked by T-124+T-125 → ready). T-129 HUMAN gate after T-128.
+
+### Iteration 24 — 2026-04-18 (Tier 13 Wave 3: T-128)
+- T-128: DESIGN.md §4.4 + §6 + §9 updates — DONE. §4.4 adds "Scroll position feedback" subsection describing NN% overlay (theme.Dim fg, right-aligned on last content row, omitted when content fits, must not alter pane dimensions). §6 Focus model adds open-time focus policy paragraph (opening pane does NOT transfer focus; link to cavekit-app-shell.md R11) + Esc-from-list-with-pane-open rule. §9 keymap matrix extended with 6 new rows covering g/G/Home/End/PgDn/Ctrl+d/Space/PgUp/Ctrl+u/b under Detail pane. Appended 2026-04-18 entry to `context/designs/design-changelog.md`. Files: DESIGN.md + context/designs/design-changelog.md. Closes F-021.
+- Wave 3 executed inline (docs-only, no code/tests changed).
+- Frontier for Wave 4: T-129 (HUMAN sign-off via tui-mcp) — final Tier 13 task.
 
 ### /ck:check — 2026-04-18 (post-Tier-11)
 - User report: "pressing / does not do anything". Scoped `/ck:check` dispatched with `ck:surveyor` + `ck:inspector` on model=opus.

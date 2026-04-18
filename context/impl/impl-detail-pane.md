@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T12:19:37+03:00"
+last_edited: "2026-04-18T12:24:01+03:00"
 ---
 # Implementation Tracking: detail-pane
 
@@ -34,3 +34,4 @@ Build site: context/plans/build-site.md
 | T-125 | DONE | `PaneModel.ScrollPercent()` returns 0..100 or -1 sentinel when indicator should be omitted (pane closed, content fits viewport). `overlayScrollIndicator()` composes " NN%" (theme `Dim` fg) onto body's last line, right-aligned via `lipgloss.Width` + `ansi.Truncate` — does not add rows or columns. Respects search-prompt row reservation. 6 tests (percent at top/bottom/fits, view includes/omits indicator, width preserved). Closes F-016 (P1). |
 | T-126 | DONE | `openPane()` no longer sets `FocusDetailPane`; `handleKey` FocusEntryList Esc branch closes pane + dismisses paneSearch + relayouts before falling through to transient-clear. Tracked primary in impl-app-shell.md. Closes F-017 (P1), F-024 (P3). |
 | T-127 | DONE | `PaneModel.hiddenFields []string` + `WithHiddenFields([]string) PaneModel` (deep-copies); `Open()` passes stored set to `RenderJSON`. New `Rerender()` re-renders current entry with current `hiddenFields` + width + theme, preserving scroll offset (no jump on toggle). `app.openPane` + `SelectionMsg` handler wire `visibility.HiddenFields()` via `WithHiddenFields` before Open. 5 tests (Open honors hidden, Rerender removes newly hidden, Rerender preserves offset, closed-pane no-op, app-level openPane honors HiddenFields). Closes F-020 (P2). |
+| T-128 | DONE | DESIGN.md §4.4 adds "Scroll position feedback" subsection (NN% overlay, `theme.Dim` fg, right-aligned on last content row, omitted when content fits, must not alter pane dimensions); §6 Focus model inserts open-time focus policy paragraph (opening pane does NOT transfer focus; link to `cavekit-app-shell.md` R11) + Esc-from-list-with-pane-open rule; §9 keymap matrix extended with 6 new rows covering `g`/`G`/`Home`/`End`/`PgDn`/`Ctrl+d`/`Space`/`PgUp`/`Ctrl+u`/`b` under Detail pane context. Dated entry appended to `context/designs/design-changelog.md` citing T-128 + F-021. Closes F-021 (P2). |

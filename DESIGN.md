@@ -240,6 +240,23 @@ rendered), `open, soft-wrap` (default), `open, scroll` (v1.5), `open, modal`
 - Unfocused: `UnfocusedBg` bg + fg blend toward `Dim` + `DividerColor`
   borders. Syntax colors remain but are perceptually muted by the bg.
 
+**Scroll position feedback:**
+
+When the rendered JSON exceeds the visible viewport, the pane shows an
+`NN%` indicator right-aligned on the **last content row** (above any
+search prompt row), using `theme.Dim` foreground. The indicator must be
+strictly an **overlay** — it does not add a row, does not widen the pane,
+and does not displace body text. Implementation overlays by composing
+onto the existing last line using cell-width truncation (`lipgloss.Width`
++ `ansi.Truncate`), so total rendered rows/cols match the pane's
+allocated size.
+
+Omit the indicator when content fits the viewport (0 scroll range). At
+the top show `0%`; at the bottom show `100%`; intermediate positions are
+`round(offset / (total - viewport) * 100)`. The indicator reflects the
+current scroll state only — it does not replace the search-prompt row,
+which always wins the last reserved row when search is active.
+
 **Minimum:** ~30 cells × 3 rows. Below this the pane auto-closes and the
 status bar emits a notice (§8).
 
@@ -370,12 +387,22 @@ intensity + background tint + content contrast**.
 ### Focus model
 
 - There is always **exactly one focused pane** among visible panes.
+- **Opening the detail pane does NOT transfer focus.** Pressing `Enter` on
+  an entry opens the pane with that entry's content, but focus stays on
+  the list so `j`/`k` continue to move the list cursor and re-render the
+  pane as a live preview. Users explicitly request focus with `Tab`
+  (or mouse click on the pane). This preserves browse-without-commit as
+  the primary interaction — see `cavekit-app-shell.md` R11 for the
+  open-time focus policy and rationale.
 - `Tab` cycles focus: `list → details → list`. When the filter overlay opens
   it takes focus and cycling is paused until it closes.
 - `Esc` is context-sensitive:
   1. Overlay open → close the overlay.
   2. Else details open and focused → close details, return focus to list.
-  3. Else list focused → clear transient state (active search, mark
+  3. Else **list focused with details open** → close details (matches the
+     Esc-closes-pane rule so the user can dismiss the pane without first
+     refocusing it).
+  4. Else list focused → clear transient state (active search, mark
      selection). Otherwise no-op.
 - Mouse click on a pane focuses it.
 - `h` / `l` are **reserved** for horizontal scroll inside the detail pane
@@ -583,6 +610,12 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
 | `?` | Toggle help overlay | Any |
 | `q` | Quit | Any |
 | `j` / `k` | Scroll down / up | Focused pane |
+| `g` | Jump to top | Detail pane |
+| `G` | Jump to bottom | Detail pane |
+| `Home` | Jump to top | Detail pane |
+| `End` | Jump to bottom | Detail pane |
+| `PgDn` / `Ctrl+d` / `Space` | Page down (viewport − 1) | Detail pane |
+| `PgUp` / `Ctrl+u` / `b` | Page up (viewport − 1) | Detail pane |
 | `m` | Mark row | Entry list |
 | `y` | Copy marked rows as JSONL | Any |
 | `f` | Open filter panel (in progress) | Any |
