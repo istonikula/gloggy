@@ -45,6 +45,10 @@ func key(m Model, k string) Model {
 		msg = tea.KeyMsg{Type: tea.KeyEnter}
 	case "esc":
 		msg = tea.KeyMsg{Type: tea.KeyEsc}
+	case "tab":
+		msg = tea.KeyMsg{Type: tea.KeyTab}
+	case "backspace":
+		msg = tea.KeyMsg{Type: tea.KeyBackspace}
 	default:
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 	}
@@ -789,8 +793,9 @@ func TestModel_PaneSearch_DismissedOnBlurred(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	m = key(m, "enter") // open pane, focus → detail
-	m = key(m, "/")     // start search
+	m = key(m, "enter") // open pane (focus stays on list per T-126)
+	m = key(m, "tab")   // Tab → focus detail pane (T-144: `/` is focus-based)
+	m = key(m, "/")     // start pane search
 	m = key(m, "t")     // type a char
 	if !m.paneSearch.IsActive() {
 		t.Fatal("precondition: search should be active after '/'")
@@ -839,8 +844,9 @@ func TestModel_TwoStepEsc_DismissesSearchThenClosesPane(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	m = key(m, "enter") // open pane
-	m = key(m, "/")     // activate search
+	m = key(m, "enter") // open pane (focus stays on list per T-126)
+	m = key(m, "tab")   // Tab → focus detail pane (T-144: focus-based `/`)
+	m = key(m, "/")     // activate pane search
 	m = key(m, "h")     // type something to exercise the query path
 	if !m.paneSearch.IsActive() {
 		t.Fatal("precondition: search should be active before first Esc")
@@ -881,38 +887,41 @@ func TestModel_TwoStepEsc_DismissesSearchThenClosesPane(t *testing.T) {
 	}
 }
 
-// ---------- T-116: cross-pane `/` activation (app-shell R13 / F-001, F-011) ----------
+// ---------- T-144: focus-based `/` routing (cavekit-app-shell R13 revised) ----------
 
-// TestModel_Slash_ListFocus_PaneOpen_TransfersAndActivates verifies that
-// `/` with list focused and pane open transfers focus to the pane AND
-// activates search in a single keypress.
-func TestModel_Slash_ListFocus_PaneOpen_TransfersAndActivates(t *testing.T) {
+// TestModel_Slash_ListFocus_PaneOpen_ActivatesListSearch verifies that
+// `/` with list focused opens list-scope search — even when the pane is
+// open, focus stays on the list and list search activates (T-144).
+func TestModel_Slash_ListFocus_PaneOpen_ActivatesListSearch(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	// Move focus back to list so we're testing the cross-pane activation.
-	m.focus = appshell.FocusEntryList
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	// Focus stays on the list after openPane per T-126 — that is the
+	// premise we want to test: `/` activates list search from here.
+	if m.focus != appshell.FocusEntryList {
+		t.Fatalf("precondition: want list focus after openPane, got %v", m.focus)
+	}
 
 	m = key(m, "/")
 
-	if m.focus != appshell.FocusDetailPane {
-		t.Errorf("/ with pane open should transfer focus to detail pane, got %v", m.focus)
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("/ with list focused must NOT transfer focus, got %v", m.focus)
 	}
-	if !m.paneSearch.IsActive() {
-		t.Error("/ with pane open should activate paneSearch")
+	if !m.list.HasActiveSearch() {
+		t.Error("/ with list focused should activate list search")
 	}
-	if m.paneSearch.Mode() != detailpane.SearchModeInput {
-		t.Errorf("activated search should be in input mode, got %v", m.paneSearch.Mode())
+	if m.paneSearch.IsActive() {
+		t.Error("/ with list focused must NOT activate pane search")
 	}
 }
 
-// TestModel_Slash_ListFocus_PaneClosed_ShowsNotice verifies that `/` with
-// list focused and pane closed emits a transient notice and never acts
-// as a silent no-op.
-func TestModel_Slash_ListFocus_PaneClosed_ShowsNotice(t *testing.T) {
+// TestModel_Slash_ListFocus_PaneClosed_ActivatesListSearch verifies that
+// `/` with list focused and pane closed activates list search (T-144).
+// The old T-116 "open entry first" notice is gone — list search is
+// always available when the list is focused.
+func TestModel_Slash_ListFocus_PaneClosed_ActivatesListSearch(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
@@ -920,20 +929,58 @@ func TestModel_Slash_ListFocus_PaneClosed_ShowsNotice(t *testing.T) {
 		t.Fatal("precondition: pane should be closed")
 	}
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
-	m = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = key(m, "/")
 
-	if !m.keyhints.HasNotice() {
-		t.Error("/ with pane closed should set a transient keyhint notice")
-	}
-	if cmd == nil {
-		t.Error("expected auto-dismiss cmd from notice")
+	if !m.list.HasActiveSearch() {
+		t.Error("/ with list focused (pane closed) should activate list search")
 	}
 	if m.paneSearch.IsActive() {
-		t.Error("/ with pane closed must NOT activate search")
+		t.Error("/ with list focused must NOT activate pane search")
 	}
 	if m.focus != appshell.FocusEntryList {
-		t.Errorf("/ with pane closed should not steal focus, got %v", m.focus)
+		t.Errorf("/ with list focused should stay on list, got %v", m.focus)
+	}
+}
+
+// TestModel_Slash_DetailPaneFocus_ActivatesPaneSearch verifies that
+// `/` with the detail pane focused activates in-pane search (T-144).
+func TestModel_Slash_DetailPaneFocus_ActivatesPaneSearch(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	m = key(m, "tab") // focus → detail pane
+
+	m = key(m, "/")
+
+	if !m.paneSearch.IsActive() {
+		t.Error("/ with pane focused should activate pane search")
+	}
+	if m.list.HasActiveSearch() {
+		t.Error("/ with pane focused must NOT activate list search")
+	}
+}
+
+// TestModel_ListSearch_TabCycle_ClearsSearch verifies that Tab-cycling
+// off the list clears any active list search (cavekit-entry-list R13 AC).
+func TestModel_ListSearch_TabCycle_ClearsSearch(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	// Focus is on list. Activate list search.
+	m = key(m, "/")
+	m = key(m, "e")
+	if !m.list.HasActiveSearch() {
+		t.Fatal("precondition: list search should be active")
+	}
+
+	m = key(m, "tab") // focus → detail pane
+
+	if m.list.HasActiveSearch() {
+		t.Error("Tab cycling off the list should clear list search")
 	}
 }
 
@@ -972,7 +1019,8 @@ func TestModel_Search_NavigateMode_JPassesThroughToPane(t *testing.T) {
 	entries := []logsource.Entry{{LineNumber: 1, IsJSON: true, Level: "INFO", Msg: "x", Raw: []byte(rawJSON)}}
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	m = key(m, "/") // activate — input mode
+	m = key(m, "tab") // focus detail pane (T-144: `/` is focus-based)
+	m = key(m, "/")   // activate — input mode
 	if !m.paneSearch.IsActive() {
 		t.Fatal("precondition: search should be active after '/'")
 	}
@@ -1010,8 +1058,9 @@ func TestModel_Search_InputMode_JAppendsToQuery(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	m = key(m, "enter") // open pane
-	m = key(m, "/")     // activate search — input mode
+	m = key(m, "enter") // open pane (focus stays on list per T-126)
+	m = key(m, "tab")   // Tab → focus detail pane (T-144)
+	m = key(m, "/")     // activate pane search — input mode
 	m = key(m, "j")     // should extend query
 	if m.paneSearch.Query() != "j" {
 		t.Errorf("input-mode `j` should extend query to 'j', got %q", m.paneSearch.Query())

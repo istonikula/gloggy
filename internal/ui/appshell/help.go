@@ -31,7 +31,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "Ctrl+d", Desc: "Half page down"},
 			{Key: "Ctrl+u", Desc: "Half page up"},
 			{Key: "Enter", Desc: "Open entry in detail pane"},
-			{Key: "/", Desc: "Search inside detail pane (opens pane if open, notice if closed)"},
+			{Key: "/", Desc: "Search within list (focus-scoped — detail pane has its own / search)"},
 			{Key: "m", Desc: "Toggle mark on current entry"},
 			{Key: "u", Desc: "Jump to next mark"},
 			{Key: "U", Desc: "Jump to previous mark"},

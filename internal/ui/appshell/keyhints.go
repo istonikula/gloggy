@@ -92,20 +92,22 @@ func (m KeyHintBarModel) View() string {
 
 	var parts []string
 	for _, kb := range bindings {
-		// T-121 (app-shell R13): replace the static `/` description
-		// when focused on the entry list so the keyhint reflects the
-		// actual pane-state scope. Hide `/` entirely when the filter
-		// panel is focused — `/` is a literal input there.
+		// T-144 (cavekit-app-shell R13 revised): focus-based `/` label.
+		// When the list is focused, `/` opens the list-scope free-text
+		// search (cavekit-entry-list R13). When the detail pane is
+		// focused, `/` opens the in-pane search. When the filter panel
+		// is focused, `/` is a literal character — hide the hint so it
+		// does not falsely promise a shortcut.
 		if kb.Key == "/" {
 			if m.focus == FocusFilterPanel {
 				continue
 			}
 			if m.focus == FocusEntryList {
-				if m.paneOpen {
-					parts = append(parts, "/: search pane")
-				} else {
-					parts = append(parts, "/: search (open entry first)")
-				}
+				parts = append(parts, "/: search list")
+				continue
+			}
+			if m.focus == FocusDetailPane {
+				parts = append(parts, "/: search pane")
 				continue
 			}
 		}

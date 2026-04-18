@@ -59,24 +59,33 @@ func TestKeyHintBar_FocusLabel_ListFocus(t *testing.T) {
 	}
 }
 
-// T-121 (app-shell R13): the `/` hint in the entry-list focus shows
-// "search pane" when the pane is open — advertising that a single
-// keystroke jumps the user into an active search.
+// T-144 (cavekit-app-shell R13 revised): the `/` hint in the entry-list
+// focus advertises list-scope search — pane state no longer matters
+// because list search is always available when the list is focused.
 func TestKeyHintBar_Slash_EntryList_PaneOpen(t *testing.T) {
 	m := defaultKeyHints().WithFocus(FocusEntryList).WithPaneOpen(true)
 	v := m.View()
-	if !strings.Contains(v, "/: search pane") {
-		t.Errorf("expected '/: search pane' hint when pane is open: %q", v)
+	if !strings.Contains(v, "/: search list") {
+		t.Errorf("expected '/: search list' hint when pane is open: %q", v)
 	}
 }
 
-// T-121: with no pane open, `/` advertises that the user must open an
-// entry first — honest about the precondition.
+// T-144: `/` still advertises list-scope search when pane is closed —
+// list is the only pane, and its own search is what activates.
 func TestKeyHintBar_Slash_EntryList_PaneClosed(t *testing.T) {
 	m := defaultKeyHints().WithFocus(FocusEntryList).WithPaneOpen(false)
 	v := m.View()
-	if !strings.Contains(v, "open entry first") {
-		t.Errorf("expected '/ search (open entry first)' hint when pane is closed: %q", v)
+	if !strings.Contains(v, "/: search list") {
+		t.Errorf("expected '/: search list' hint when pane is closed: %q", v)
+	}
+}
+
+// T-144: when the detail pane is focused, `/` advertises pane-scope search.
+func TestKeyHintBar_Slash_DetailPane(t *testing.T) {
+	m := defaultKeyHints().WithFocus(FocusDetailPane).WithPaneOpen(true)
+	v := m.View()
+	if !strings.Contains(v, "/: search pane") {
+		t.Errorf("expected '/: search pane' hint when detail pane is focused: %q", v)
 	}
 }
 
@@ -90,15 +99,14 @@ func TestKeyHintBar_Slash_FilterPanel_Hidden(t *testing.T) {
 	}
 }
 
-// T-121: help overlay lists `/` under both the entry-list and detail
-// pane domains with scope-accurate descriptions.
+// T-144: help overlay lists `/` under both the entry-list and detail
+// pane domains with focus-based descriptions.
 func TestHelpOverlay_SlashScopeDescribed(t *testing.T) {
 	h := NewHelpOverlayModel().Open()
 	v := h.View()
-	// Entry-list scope: mentions "inside detail pane" to make clear
-	// where the search happens.
-	if !strings.Contains(v, "Search inside detail pane") {
-		t.Errorf("help overlay should describe `/` scope for entry list: %q", v)
+	// Entry-list scope: list-scope free-text search.
+	if !strings.Contains(v, "Search within list") {
+		t.Errorf("help overlay should describe list `/` scope: %q", v)
 	}
 	// Detail pane scope: mentions "inside this pane" + commits note.
 	if !strings.Contains(v, "Search inside this pane") {

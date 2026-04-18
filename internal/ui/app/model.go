@@ -31,10 +31,6 @@ const autoCloseNoticeDuration = 3 * time.Second
 
 const autoCloseNoticeText = "detail pane auto-closed — terminal too small"
 
-// searchNoPaneNotice is shown when `/` is pressed with the detail pane
-// closed (T-116, app-shell R13). Auto-dismisses via noticeClearAfter.
-const searchNoPaneNotice = "open an entry first (Enter) to search"
-
 // clipboardNoMarksNotice + clipboardNoticeDuration + clipboardErrorDuration
 // back the visible feedback required by cavekit-app-shell R9 (T-138).
 const (
@@ -312,8 +308,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		overlayOpen := m.focus == appshell.FocusFilterPanel
 		next := appshell.NextFocus(m.focus, visible, overlayOpen)
 		if next != m.focus {
+			prevFocus := m.focus
 			m.focus = next
 			m.keyhints = m.keyhints.WithFocus(m.focus)
+			// T-143 (cavekit-entry-list R13): list search state clears
+			// when the list loses focus via Tab cycle.
+			if prevFocus == appshell.FocusEntryList && m.list.HasActiveSearch() {
+				m.list = m.list.DeactivateSearch()
+			}
 		}
 		return m, nil
 	}
@@ -414,21 +416,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		// T-116 (app-shell R13 / F-001, F-011): cross-pane `/`.
-		// - Pane open: transfer focus to the pane AND activate search in
-		//   a single keystroke so the user does not have to Tab first.
-		// - Pane closed: emit a transient notice and auto-dismiss it so
-		//   `/` is never a silent no-op.
+		// T-144 (cavekit-app-shell R13 revised, cavekit-entry-list R13):
+		// focus-based `/` routing. When the list is focused, `/` opens
+		// the list-scope free-text search (T-143) — regardless of
+		// whether the detail pane is also open. The old behaviour
+		// (transfer focus + activate pane search, or show "open entry
+		// first" notice) is replaced because the list now has its own
+		// search. Pane search is reached via Tab → pane then `/`, or
+		// via clicking the pane then `/`.
 		if msg.String() == "/" {
-			if m.pane.IsOpen() {
-				m.focus = appshell.FocusDetailPane
-				m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
-				lines := m.pane.ContentLines()
-				m.paneSearch, _ = m.paneSearch.Update(msg, lines)
-				return m, nil
-			}
-			m.keyhints = m.keyhints.WithNotice(searchNoPaneNotice)
-			return m, noticeClearAfter(autoCloseNoticeDuration)
+			m.list = m.list.ActivateSearch()
+			return m, nil
 		}
 		// Clipboard copy of marked entries (cavekit-app-shell R9).
 		// Every `y` press MUST produce visible feedback — success count,
@@ -491,6 +489,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 		case appshell.ZoneDetailPane:
 			if m.pane.IsOpen() && m.focus != appshell.FocusDetailPane {
+				// T-143: focus leaving the list clears list search.
+				if m.list.HasActiveSearch() {
+					m.list = m.list.DeactivateSearch()
+				}
 				m.focus = appshell.FocusDetailPane
 				m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
 			}
@@ -545,12 +547,40 @@ func (m Model) View() string {
 		paneView = m.pane.View()
 	}
 
+	// T-143 (cavekit-entry-list R13): when list search is active, the
+	// key-hint bar surfaces the prompt + query + (cur/total) match
+	// counter — or "No matches" when the query yields zero hits.
+	if m.list.HasActiveSearch() && !m.keyhints.HasNotice() {
+		m.keyhints = m.keyhints.WithNotice(formatListSearchNotice(m.list.Search()))
+	}
+
 	status := m.keyhints.View()
 	if m.loading.IsActive() {
 		status = m.loading.View()
 	}
 
 	return m.layout.Render(header, list, paneView, status)
+}
+
+// formatListSearchNotice builds the status-bar text shown while list
+// search is active (T-143, cavekit-entry-list R13). Input mode shows a
+// trailing `_` cursor; navigate mode shows `(cur/total)`. An empty
+// query in input mode just shows the prompt. A non-empty query with
+// zero matches shows "No matches".
+func formatListSearchNotice(s entrylist.SearchModel) string {
+	if s.InputMode() {
+		if s.Query() == "" {
+			return "/: "
+		}
+		if s.NotFound() {
+			return "/: " + s.Query() + "  (No matches)"
+		}
+		return "/: " + s.Query() + "_"
+	}
+	if s.MatchCount() == 0 {
+		return "/: " + s.Query() + "  (No matches) — Esc to dismiss"
+	}
+	return "/: " + s.Query() + "  (" + strconv.Itoa(s.CurrentIndex()+1) + "/" + strconv.Itoa(s.MatchCount()) + ") n/N next/prev, Esc dismiss"
 }
 
 // SetEntries loads entries synchronously (used for stdin).

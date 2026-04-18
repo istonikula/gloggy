@@ -42,6 +42,10 @@ type ListModel struct {
 	pinnedFullIdx int           // -1 = none; full-entries index of a level-jump match that is filtered out, pinned into the visible list with a "outside filter" indicator
 	lastClickRow  int
 	lastClickTime time.Time
+	// search holds list-scope free-text search state (T-143, cavekit-
+	// entry-list R13). Activated by app via ActivateSearch() when `/` is
+	// pressed with the list focused.
+	search SearchModel
 	// Focused is set by the app shell before View() is called (T-100).
 	// When true, the pane uses PaneStateFocused styling; otherwise
 	// PaneStateUnfocused, unless Alone is set.
@@ -60,6 +64,7 @@ func NewListModel(th theme.Theme, cfg config.Config, width, height int) ListMode
 		marks:         NewMarkSet(),
 		scroll:        ScrollState{ViewportHeight: height, Scrolloff: cfg.Scrolloff},
 		pinnedFullIdx: -1,
+		search:        NewSearchModel(th),
 	}
 }
 
@@ -111,10 +116,35 @@ func (m ListModel) SelectedEntry() (logsource.Entry, bool) {
 	return m.entries[m.scroll.Cursor], true
 }
 
+// Search returns the current list search model (T-143, cavekit-entry-list
+// R13). Callers (app, View) read query/matches/current state via this
+// accessor.
+func (m ListModel) Search() SearchModel { return m.search }
+
+// ActivateSearch opens the list search input (T-143). The app calls this
+// when `/` is pressed with the list focused and detail pane not focused
+// (cavekit-app-shell R13 focus-based routing, T-144).
+func (m ListModel) ActivateSearch() ListModel {
+	m.search = m.search.Activate()
+	return m
+}
+
+// DeactivateSearch clears the list search (T-143). Called on Esc, on Tab
+// focus cycle leaving the list, and on filter change.
+func (m ListModel) DeactivateSearch() ListModel {
+	m.search = m.search.Deactivate()
+	return m
+}
+
+// HasActiveSearch reports whether list search is currently open.
+func (m ListModel) HasActiveSearch() bool { return m.search.IsActive() }
+
 // SetFilter applies a filtered index (slice of entry indices that pass filters).
 // On filter change, keeps selection if still passing, else moves to nearest.
 // Any pinned out-of-filter level-jump match is cleared (the new filter set
-// invalidates it).
+// invalidates it). List search state is also cleared — the match set is
+// no longer valid once the visible entries change (cavekit-entry-list
+// R13 AC).
 func (m ListModel) SetFilter(indices []int) ListModel {
 	// Check if current cursor entry still passes.
 	current := m.scroll.Cursor
@@ -132,6 +162,7 @@ func (m ListModel) SetFilter(indices []int) ListModel {
 	}
 	m.filtered = indices
 	m.pinnedFullIdx = -1
+	m.search = m.search.Deactivate()
 	if found {
 		m.scroll.Cursor = current
 	} else if len(indices) > 0 {
@@ -259,6 +290,24 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// T-143 (cavekit-entry-list R13): when list search is active, all
+		// typing / navigation keys route to search first. Esc dismisses
+		// search, Enter commits input→navigate, Backspace edits the query,
+		// runes extend the query (input mode), n/N cycle the cursor
+		// through matches (navigate mode) honouring R12 scrolloff.
+		if m.search.IsActive() {
+			consumed := false
+			m, consumed = m.handleSearchKey(msg, vis)
+			if consumed {
+				vis = m.visibleEntries()
+				n = len(vis)
+				if m.scroll.Cursor != prev && m.scroll.Cursor < len(vis) {
+					entry := vis[m.scroll.Cursor]
+					cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
+				}
+				return m, cmd
+			}
+		}
 		switch msg.String() {
 		case "j", "down":
 			m.pinnedFullIdx = -1
@@ -497,6 +546,71 @@ func (m ListModel) applyLevelJump(forward bool, level string) ListModel {
 // WrapDir returns the last wrap direction from a level-jump or mark nav.
 func (m ListModel) WrapDir() WrapDirection { return m.wrapDir }
 
+// handleSearchKey processes a KeyMsg while list search is active (T-143,
+// cavekit-entry-list R13). Returns (updatedModel, consumed). When
+// consumed == false, the caller should fall through to the normal
+// navigation handlers — used for keys like `j`/`k`/`g`/`G` during navigate
+// mode so the user can move the cursor while search stays open.
+func (m ListModel) handleSearchKey(msg tea.KeyMsg, vis []logsource.Entry) (ListModel, bool) {
+	key := msg.String()
+	// Esc always dismisses, regardless of mode (R13 AC: "Esc dismisses
+	// the search input, clears the SearchHighlight bg on all rows").
+	if key == "esc" {
+		m.search = m.search.Deactivate()
+		return m, true
+	}
+	if m.search.InputMode() {
+		switch key {
+		case "enter":
+			m.search = m.search.CommitInput()
+			// Jump cursor to the first match if any so the next `n`/`N`
+			// cycles from the actual match set, not the old cursor pos.
+			if line := m.search.CurrentMatchLine(); line >= 0 && line < len(vis) {
+				m.scroll.Cursor = line
+				m.scroll.TotalEntries = len(vis)
+				m.scroll = followCursor(m.scroll)
+			}
+			return m, true
+		case "backspace", "ctrl+h":
+			m.search = m.search.BackspaceRune(vis, m.width, m.cfg)
+			return m, true
+		default:
+			// Append runes (covers a..z/A..Z/digits/space, and
+			// multi-byte emoji/CJK via msg.Runes). Control keys with
+			// no runes fall through as unconsumed.
+			if len(msg.Runes) == 0 {
+				return m, false
+			}
+			for _, r := range msg.Runes {
+				m.search = m.search.AppendRune(r, vis, m.width, m.cfg)
+			}
+			return m, true
+		}
+	}
+	// Navigate mode.
+	switch key {
+	case "n":
+		m.search = m.search.Next()
+		if line := m.search.CurrentMatchLine(); line >= 0 && line < len(vis) {
+			m.scroll.Cursor = line
+			m.scroll.TotalEntries = len(vis)
+			m.scroll = followCursor(m.scroll)
+		}
+		return m, true
+	case "N":
+		m.search = m.search.Prev()
+		if line := m.search.CurrentMatchLine(); line >= 0 && line < len(vis) {
+			m.scroll.Cursor = line
+			m.scroll.TotalEntries = len(vis)
+			m.scroll = followCursor(m.scroll)
+		}
+		return m, true
+	}
+	// Any other key in navigate mode falls through to normal list
+	// handling so the user can j/k/g/G while search stays visible.
+	return m, false
+}
+
 // View renders exactly ViewportHeight rows — no more, no less.
 // Rows are taken from offset..offset+ViewportHeight; shortfalls are padded with
 // empty lines so the layout never overflows or underflows.
@@ -514,6 +628,15 @@ func (m ListModel) View() string {
 		end = n
 	}
 
+	// T-143: precompute a match-set lookup for SearchHighlight rendering
+	// on non-cursor rows. R13 AC: cursor-row bg takes visual priority
+	// over SearchHighlight, so only non-cursor matches get the highlight.
+	matchSet := map[int]bool{}
+	if m.search.IsActive() {
+		for _, idx := range m.search.MatchLines() {
+			matchSet[idx] = true
+		}
+	}
 	var sb strings.Builder
 	rendered := 0
 	for i := start; i < end; i++ {
@@ -533,9 +656,13 @@ func (m ListModel) View() string {
 		case m.marks.IsMarked(vis[i].LineNumber):
 			prefix = lipgloss.NewStyle().Foreground(m.th.Mark).Render("* ")
 		}
-		if isCursor {
+		switch {
+		case isCursor:
 			sb.WriteString(prefix + RenderCompactRowWithBg(vis[i], m.width, m.th, m.cfg, m.th.CursorHighlight))
-		} else {
+		case matchSet[i]:
+			// T-143: non-cursor match row → SearchHighlight bg.
+			sb.WriteString(prefix + RenderCompactRowWithBg(vis[i], m.width, m.th, m.cfg, m.th.SearchHighlight))
+		default:
 			sb.WriteString(prefix + RenderCompactRow(vis[i], m.width, m.th, m.cfg))
 		}
 		rendered++

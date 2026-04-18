@@ -1,8 +1,15 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T18:08:01+03:00"
+last_edited: "2026-04-18T18:23:37+03:00"
 ---
 # Loop Log
+
+### Iteration 32 — 2026-04-18 (Tier 16 Wave 1: T-143 + T-144)
+- T-143: list-scope free-text search — DONE. `internal/ui/entrylist/search.go` (`SearchModel` with input/navigate modes, UTF-8-safe BackspaceRune via `utf8.DecodeLastRuneInString`, `composeSearchRow` mirroring RenderCompactRow field order so matches align with rendered view). `ListModel` gets `search` field + `Activate/Deactivate/HasActiveSearch/Search` accessors + `handleSearchKey` at top of Update. View() paints `SearchHighlight` bg on non-cursor match rows via `RenderCompactRowWithBg`; cursor-row `CursorHighlight` keeps priority (R13 AC 10). `SetFilter` auto-deactivates. 10 tests in `search_test.go`. Closes F-101 (cavekit-entry-list R13).
+- T-144: focus-based `/` routing — DONE. `app/model.go` handleKey FocusEntryList now calls `m.list.ActivateSearch()` on `/` (no focus transfer, no "open entry first" notice — that was T-116 semantics under the old R13). Detail-focus branch unchanged (routes to paneSearch). Filter-focus falls through to literal. Tab cycle + click-to-focus off the list clear list search. View() surfaces `/: <query>_` / `(cur/total) n/N next/prev, Esc dismiss` / `No matches` via `keyhints.WithNotice` when list search active. Keyhint labels now focus-sensitive: `/: search list` | `/: search pane` | hidden (filter). Help overlay entry-list `/` desc rewritten. Removed `searchNoPaneNotice`. Obsolete T-116 app tests replaced with T-144 tests (list-focus → list search; detail-focus → pane search; Tab clears). Existing T-118 tests fixed to `Tab→pane` before `/`. Closes cavekit-app-shell R13 revision.
+- Wave 1 inline (parent opus = EXECUTION_MODEL). Two-task packet spans entrylist + app-shell + appshell — one coherent user-visible feature (list search + its `/` activation).
+- Build P, Tests P (485/485 across 11 pkgs). Files: entrylist/search.go (new), entrylist/list.go, entrylist/search_test.go (new), app/model.go, app/model_test.go, appshell/keyhints.go, appshell/keyhints_test.go, appshell/help.go, impl-entry-list.md, impl-app-shell.md, loop-log.md.
+- Frontier for Wave 2: T-142 HUMAN sign-off (Tier 15) + T-145 HUMAN sign-off (Tier 16) — both via tui-mcp across 3 themes × 2 geometries × 2 orientations. Gates Tier 15 + Tier 16 Codex reviews.
 
 ### Iteration 31 — 2026-04-18 (Tier 15 Wave 2: T-139 + T-140 + T-141)
 - T-139: single-owner border width — DONE. `PaneModel.contentWidth() = m.width` (not m.width-2); `View()` applies `Width(m.width).MaxWidth(m.width+2)`. Layout's `DetailContentWidth` was already post-border. 3 existing tests updated to reflect new semantic (outer = content+2); new `TestPaneModel_T139_ExactContentWidthFits`. Closes F-103 (P1).
