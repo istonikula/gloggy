@@ -153,8 +153,7 @@ func (m SearchModel) ExtendMatches(newEntries []logsource.Entry, baseIdx int, wi
 	}
 	needle := strings.ToLower(m.query)
 	for i, e := range newEntries {
-		hay := strings.ToLower(composeSearchRow(e, width, cfg))
-		if strings.Contains(hay, needle) {
+		if matchRow(needle, e, width, cfg) {
 			m.matches = append(m.matches, baseIdx+i)
 		}
 	}
@@ -178,13 +177,22 @@ func (m SearchModel) computeMatches(entries []logsource.Entry, width int, cfg co
 	}
 	needle := strings.ToLower(m.query)
 	for i, e := range entries {
-		hay := strings.ToLower(composeSearchRow(e, width, cfg))
-		if strings.Contains(hay, needle) {
+		if matchRow(needle, e, width, cfg) {
 			m.matches = append(m.matches, i)
 		}
 	}
 	m.notFound = len(m.matches) == 0
 	return m
+}
+
+// matchRow is the single source of truth for list-search row matching:
+// case-insensitive substring against the composed compact-row text. The
+// needle must be pre-lowered. Shared by computeMatches (full scan) and
+// ExtendMatches (streaming append) so their semantics can never drift
+// (F-116).
+func matchRow(lowerNeedle string, entry logsource.Entry, width int, cfg config.Config) bool {
+	hay := strings.ToLower(composeSearchRow(entry, width, cfg))
+	return strings.Contains(hay, lowerNeedle)
 }
 
 // composeSearchRow returns the plain-text compact row that the user sees,
