@@ -237,6 +237,78 @@ func (m PaneModel) renderSearchPrompt() string {
 	return lipgloss.NewStyle().Foreground(m.th.Dim).Render(line)
 }
 
+// ScrollPercent returns the scroll-position percentage (0..100) for the
+// currently visible viewport, or -1 when an indicator should not be
+// rendered (content fits entirely within the viewport, or pane closed).
+// Exported so tests can assert without parsing the rendered view.
+// T-125 (F-016).
+func (m PaneModel) ScrollPercent() int {
+	if !m.open {
+		return -1
+	}
+	total := len(m.scroll.lines)
+	h := m.ContentHeight()
+	if m.search.IsActive() && h > 1 {
+		h--
+	}
+	if h < 1 {
+		h = 1
+	}
+	if total <= h {
+		return -1
+	}
+	lastVisible := m.scroll.offset + h
+	if lastVisible > total {
+		lastVisible = total
+	}
+	pct := lastVisible * 100 / total
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
+}
+
+// overlayScrollIndicator right-aligns the percentage label on the last
+// line of body. It does NOT add rows or columns — the indicator composes
+// within the allocated content width. When the indicator is omitted
+// (content fits viewport), body is returned unchanged.
+// T-125 (F-016).
+func (m PaneModel) overlayScrollIndicator(body string, contentH int) string {
+	_ = contentH // contentH captured in ScrollPercent via ContentHeight
+	pct := m.ScrollPercent()
+	if pct < 0 {
+		return body
+	}
+	label := fmt.Sprintf(" %d%%", pct)
+	styled := lipgloss.NewStyle().Foreground(m.th.Dim).Render(label)
+	labelW := lipgloss.Width(label)
+
+	lines := strings.Split(body, "\n")
+	if len(lines) == 0 {
+		return body
+	}
+	lastIdx := len(lines) - 1
+	lastLine := lines[lastIdx]
+	lastW := lipgloss.Width(lastLine)
+
+	cellW := m.contentWidth()
+	if cellW == 0 {
+		lines[lastIdx] = lastLine + styled
+		return strings.Join(lines, "\n")
+	}
+	if lastW+labelW <= cellW {
+		padN := cellW - lastW - labelW
+		lines[lastIdx] = lastLine + strings.Repeat(" ", padN) + styled
+	} else {
+		keepW := cellW - labelW
+		if keepW < 0 {
+			keepW = 0
+		}
+		lines[lastIdx] = ansi.Truncate(lastLine, keepW, "") + styled
+	}
+	return strings.Join(lines, "\n")
+}
+
 // View renders the detail pane content, or empty string when closed.
 // T-082: Renders a top border separator line.
 // T-100: Uses the DESIGN.md §4 pane style matrix — focused panes get
@@ -272,6 +344,9 @@ func (m PaneModel) View() string {
 		m.scroll = m.scroll.Clamp()
 		body = m.scroll.View()
 	}
+	// T-125 (F-016): overlay scroll-position indicator on the last content
+	// row when content exceeds the viewport. Omitted when content fits.
+	body = m.overlayScrollIndicator(body, contentH)
 	if searchActive {
 		body += "\n" + m.renderSearchPrompt()
 	}

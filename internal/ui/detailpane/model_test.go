@@ -330,3 +330,93 @@ func TestPaneModel_ScrollToLine_BringsMatchIntoView(t *testing.T) {
 		t.Errorf("after ScrollToLine(%d), view should contain 'target': %q", targetIdx, view)
 	}
 }
+
+// T-125 (F-016): scroll indicator reports a percentage when content
+// exceeds the viewport.
+func TestPaneModel_ScrollPercent_ExceedingViewport(t *testing.T) {
+	m := defaultPane(22) // ContentHeight = 20
+	// Seed scroll with 200 lines of known content.
+	lines := make([]string, 200)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	m.open = true
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	// offset 0, height 20, total 200 → (0+20)/200 = 10%
+	if got := m.ScrollPercent(); got != 10 {
+		t.Errorf("ScrollPercent at offset=0: got %d, want 10", got)
+	}
+}
+
+// T-125: at the bottom of a long document the indicator reads 100%.
+func TestPaneModel_ScrollPercent_AtBottom(t *testing.T) {
+	m := defaultPane(22)
+	lines := make([]string, 200)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	m.open = true
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	m.scroll.offset = 180 // max offset = 200-20
+	if got := m.ScrollPercent(); got != 100 {
+		t.Errorf("ScrollPercent at bottom: got %d, want 100", got)
+	}
+}
+
+// T-125: content that fits entirely → indicator omitted (sentinel -1).
+func TestPaneModel_ScrollPercent_FitsViewport(t *testing.T) {
+	m := defaultPane(22)
+	lines := []string{"only", "a", "few", "lines"}
+	m.open = true
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	if got := m.ScrollPercent(); got != -1 {
+		t.Errorf("ScrollPercent with short content: got %d, want -1", got)
+	}
+}
+
+// T-125: View overlays the indicator on the last body line (dim text).
+func TestPaneModel_View_IncludesScrollIndicator(t *testing.T) {
+	m := defaultPane(22).SetWidth(30)
+	lines := make([]string, 200)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.open = true
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	view := m.View()
+	if !strings.Contains(view, "10%") {
+		t.Errorf("view should contain \"10%%\" indicator, got: %q", view)
+	}
+}
+
+// T-125: View omits the indicator when content fits (no "0%" noise).
+func TestPaneModel_View_OmitsIndicatorOnShortContent(t *testing.T) {
+	m := defaultPane(22).SetWidth(30).Open(testEntry())
+	view := m.View()
+	if strings.Contains(view, "%") {
+		t.Errorf("short-content view should not render a percentage indicator, got: %q", view)
+	}
+}
+
+// T-125: Overlay preserves overall pane width — indicator does NOT add columns.
+func TestPaneModel_View_IndicatorDoesNotExpandWidth(t *testing.T) {
+	m := defaultPane(22).SetWidth(30)
+	lines := make([]string, 200)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.open = true
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	view := m.View()
+	// Inspect each row's cell width; all should equal outer pane width.
+	for i, row := range strings.Split(view, "\n") {
+		if w := lipgloss.Width(row); w != 30 {
+			t.Errorf("row %d cell width: got %d, want 30; row=%q", i, w, row)
+		}
+	}
+}
