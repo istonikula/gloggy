@@ -7,10 +7,14 @@ import (
 )
 
 // ScrollModel holds the scrollable detail pane content state.
+// T-131 (F-026): cursor is the 0-indexed document line currently under the
+// cursor-tracking viewport. It exists whenever the pane is open regardless
+// of focus; the View renders it with CursorHighlight bg.
 type ScrollModel struct {
 	lines  []string
 	offset int // first visible line index
 	height int // number of visible lines
+	cursor int // 0-indexed document line; always >= 0
 }
 
 // NewScrollModel creates a ScrollModel with the given content and visible height.
@@ -19,17 +23,26 @@ func NewScrollModel(content string, height int) ScrollModel {
 	if height < 1 {
 		height = 1
 	}
-	return ScrollModel{lines: lines, height: height}
+	return ScrollModel{lines: lines, height: height, cursor: 0}
 }
 
-// SetContent replaces the content and resets the scroll position.
+// SetContent replaces the content and resets the scroll position and cursor.
 func (m ScrollModel) SetContent(content string, height int) ScrollModel {
 	lines := strings.Split(content, "\n")
 	if height < 1 {
 		height = 1
 	}
-	return ScrollModel{lines: lines, height: height, offset: 0}
+	return ScrollModel{lines: lines, height: height, offset: 0, cursor: 0}
 }
+
+// Cursor returns the current cursor document line (0-indexed).
+func (m ScrollModel) Cursor() int { return m.cursor }
+
+// Offset returns the current viewport offset (first visible line).
+func (m ScrollModel) Offset() int { return m.offset }
+
+// LineCount returns the total number of content lines.
+func (m ScrollModel) LineCount() int { return len(m.lines) }
 
 // ScrollDown moves down by n lines, clamped at the bottom.
 func (m ScrollModel) ScrollDown(n int) ScrollModel {

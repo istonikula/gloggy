@@ -309,6 +309,44 @@ func (m PaneModel) ScrollPercent() int {
 	return pct
 }
 
+// paintCursorRow applies CursorHighlight bg to the body line under the
+// cursor (T-131, F-026, cavekit R11). Focused → Bold + full CursorHighlight;
+// unfocused-but-visible → no Bold + Faint (reduced intensity per DESIGN.md
+// §4 matrix). Returns body unchanged when cursor row is outside the
+// visible window or pane is closed. The bg spans the pane's full content
+// width so the highlight is unambiguous even on short lines.
+//
+// Cursor bg is applied AFTER overlayScrollIndicator so, when the cursor
+// sits on the last content row, the NN% indicator keeps rendering (its Dim
+// fg is preserved) and the CursorHighlight bg visually takes priority —
+// per R11 AC 8 "the NN% scroll-position indicator continues to render
+// independently of the cursor row — the cursor does not replace or
+// displace it".
+func (m PaneModel) paintCursorRow(body string, contentH int) string {
+	if !m.open || contentH <= 0 {
+		return body
+	}
+	visible := m.scroll.cursor - m.scroll.offset
+	if visible < 0 || visible >= contentH {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	if visible >= len(lines) {
+		return body
+	}
+	style := lipgloss.NewStyle().Background(m.th.CursorHighlight)
+	if m.Focused {
+		style = style.Bold(true)
+	} else {
+		style = style.Faint(true)
+	}
+	if cellW := m.contentWidth(); cellW > 0 {
+		style = style.Inline(true).Width(cellW).MaxWidth(cellW)
+	}
+	lines[visible] = style.Render(lines[visible])
+	return strings.Join(lines, "\n")
+}
+
 // overlayScrollIndicator right-aligns the percentage label on the last
 // line of body. It does NOT add rows or columns — the indicator composes
 // within the allocated content width. When the indicator is omitted
@@ -388,6 +426,10 @@ func (m PaneModel) View() string {
 	// T-125 (F-016): overlay scroll-position indicator on the last content
 	// row when content exceeds the viewport. Omitted when content fits.
 	body = m.overlayScrollIndicator(body, contentH)
+	// T-131 (F-026): paint cursor row with CursorHighlight bg. Applied
+	// AFTER indicator so the indicator is not displaced when cursor sits
+	// on the last row (cavekit R11 AC 8).
+	body = m.paintCursorRow(body, contentH)
 	if searchActive {
 		body += "\n" + m.renderSearchPrompt()
 	}

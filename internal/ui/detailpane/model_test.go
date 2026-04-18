@@ -477,6 +477,140 @@ func TestPaneModel_Rerender_ClosedPaneNoOp(t *testing.T) {
 	}
 }
 
+// bgSGRFor extracts the background SGR prefix that lipgloss emits for a
+// given color under the current render profile. Keeps the tests robust
+// against termenv's color-profile rounding (truecolor RGB can drift by 1
+// when lipgloss routes through 256-color intermediates).
+func bgSGRFor(c lipgloss.Color) string {
+	rendered := lipgloss.NewStyle().Background(c).Render("x")
+	// The SGR is everything from "48;" up to the closing "m" before the
+	// character payload. Extract the "48;2;r;g;b" substring — the caller
+	// just needs a reliable sentinel.
+	i := strings.Index(rendered, "48;")
+	if i < 0 {
+		return ""
+	}
+	end := strings.Index(rendered[i:], "m")
+	if end < 0 {
+		return ""
+	}
+	return rendered[i : i+end]
+}
+
+// T-131: cursor row renders with CursorHighlight bg + Bold when focused.
+func TestPaneModel_View_CursorHighlight_FocusedBold(t *testing.T) {
+	th := theme.GetTheme("tokyo-night")
+	m := defaultPane(12).SetWidth(30)
+	m.open = true
+	lines := make([]string, 40)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	m.Focused = true
+	view := m.View()
+	bgSGR := bgSGRFor(th.CursorHighlight)
+	if bgSGR == "" {
+		t.Fatal("could not synthesize CursorHighlight bg SGR")
+	}
+	if !strings.Contains(view, bgSGR) {
+		t.Errorf("expected CursorHighlight bg SGR %q in focused view; view=%q", bgSGR, view)
+	}
+	// Focused cursor row should be bold — lipgloss emits SGR 1 combined
+	// with the bg attribute, e.g. `\x1b[1;48;2;...m`.
+	if !strings.Contains(view, "\x1b[1;48;") && !strings.Contains(view, ";1;48;") {
+		t.Errorf("expected Bold+bg combined SGR on focused cursor row; view=%q", view)
+	}
+}
+
+// T-131: cursor row keeps CursorHighlight bg when pane is unfocused but
+// uses Faint instead of Bold.
+func TestPaneModel_View_CursorHighlight_UnfocusedNoBold(t *testing.T) {
+	th := theme.GetTheme("tokyo-night")
+	m := defaultPane(12).SetWidth(30)
+	m.open = true
+	lines := make([]string, 40)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	m.Focused = false
+	view := m.View()
+	bgSGR := bgSGRFor(th.CursorHighlight)
+	if !strings.Contains(view, bgSGR) {
+		t.Errorf("expected CursorHighlight bg SGR %q in unfocused view; view=%q", bgSGR, view)
+	}
+	// Unfocused cursor row combines Faint (SGR 2) with bg.
+	if !strings.Contains(view, "\x1b[2;48;") && !strings.Contains(view, ";2;48;") {
+		t.Errorf("expected Faint+bg combined SGR on unfocused cursor row; view=%q", view)
+	}
+	// And no Bold on the cursor row.
+	if strings.Contains(view, "\x1b[1;48;") || strings.Contains(view, ";1;48;") {
+		t.Errorf("expected no Bold SGR on unfocused cursor row; view=%q", view)
+	}
+}
+
+// T-131: cursor row paints at the correct visible position when offset > 0.
+func TestPaneModel_View_CursorHighlight_HonorsOffset(t *testing.T) {
+	th := theme.GetTheme("tokyo-night")
+	m := defaultPane(10).SetWidth(20)
+	m.open = true
+	lines := make([]string, 50)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	m.scroll.cursor = 7
+	m.scroll.offset = 3
+	m.Focused = true
+	view := m.View()
+	bgSGR := bgSGRFor(th.CursorHighlight)
+	if !strings.Contains(view, bgSGR) {
+		t.Errorf("expected CursorHighlight bg in view with cursor=7, offset=3; view=%q", view)
+	}
+	// visible row = cursor - offset = 4. Rendered content rows start at
+	// index 1 (after top border row), so cursor visually lands at row 5.
+	rows := strings.Split(view, "\n")
+	if len(rows) < 6 {
+		t.Fatalf("expected >=6 rows, got %d", len(rows))
+	}
+	// The cursor row must contain the CursorHighlight bg; other content rows
+	// (index 1..4 and 6..contentH) must not.
+	for i := 1; i <= 4; i++ {
+		if strings.Contains(rows[i], bgSGR) {
+			t.Errorf("row %d should not have CursorHighlight bg; row=%q", i, rows[i])
+		}
+	}
+	if !strings.Contains(rows[5], bgSGR) {
+		t.Errorf("row 5 (visible cursor row) should have CursorHighlight bg; row=%q", rows[5])
+	}
+}
+
+// T-131: closed pane renders nothing at all — no cursor paint possible.
+func TestPaneModel_View_Closed_NoCursor(t *testing.T) {
+	m := defaultPane(10)
+	if m.View() != "" {
+		t.Error("closed pane should render empty string")
+	}
+}
+
+// T-131: SetContent resets cursor to 0.
+func TestScrollModel_SetContent_ResetsCursor(t *testing.T) {
+	m := NewScrollModel("a\nb\nc\nd\ne\nf", 3)
+	m.cursor = 4
+	m.offset = 2
+	m = m.SetContent("x\ny\nz", 3)
+	if m.Cursor() != 0 {
+		t.Errorf("SetContent should reset cursor to 0, got %d", m.Cursor())
+	}
+	if m.Offset() != 0 {
+		t.Errorf("SetContent should reset offset to 0, got %d", m.Offset())
+	}
+}
+
 // T-125: Overlay preserves overall pane width — indicator does NOT add columns.
 func TestPaneModel_View_IndicatorDoesNotExpandWidth(t *testing.T) {
 	m := defaultPane(22).SetWidth(30)
