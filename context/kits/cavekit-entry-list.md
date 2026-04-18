@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-16T21:49:47+03:00"
+last_edited: "2026-04-18T14:20:33+03:00"
 ---
 
 # Cavekit: Entry List
@@ -125,6 +125,19 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] When filters change, the cursor position reflects the new filtered set
 **Dependencies:** cavekit-app-shell (displays the position)
 
+### R12: Scrolloff Context Rows
+**Description:** The entry list is a cursor-tracking viewport and honours the shared top-level `scrolloff` config (default 5) — the same key consumed by the detail pane (see cavekit-detail-pane.md R11 and DESIGN.md §4.3 "Shared scrolloff"). All vertical navigation (`j`/`k`, level jumps `e`/`w`, mark jumps, `g`/`G`, PgDn/PgUp/Ctrl+d/Ctrl+u) scrolls the viewport to keep the cursor at least `scrolloff` rows away from the nearest edge wherever the filtered-entry count permits. Mouse wheel scrolls the viewport; if the cursor would leave the visible window minus `scrolloff` rows from the nearest edge, the cursor is **dragged along** so it stays on the `scrolloff`-th row from that edge (nvim-style scrolloff drag). When the visible set is shorter than `2 × scrolloff + 1` rows, the margin is proportionally reduced (clamped to `floor(VisibleRows / 2)`).
+**Acceptance Criteria:**
+- [ ] [auto] When the cursor is far from both edges and the user presses `j`/`k`, the viewport does not scroll until the cursor comes within `scrolloff` rows of the top or bottom edge
+- [ ] [auto] Once the cursor is within `scrolloff` rows of the bottom edge, pressing `j` scrolls the viewport by one and keeps the cursor exactly `scrolloff` rows from the bottom
+- [ ] [auto] Once the cursor is within `scrolloff` rows of the top edge, pressing `k` scrolls the viewport by one and keeps the cursor exactly `scrolloff` rows from the top
+- [ ] [auto] At document boundaries (cursor at first or last row) scrolloff yields — the cursor is allowed to sit on the very first / very last visible row so no rows are ever hidden below `scrolloff`-rows of blank space
+- [ ] [auto] Mouse wheel down scrolls the viewport; when the cursor is more than `scrolloff` rows from both edges it stays on its current document line; when the cursor would leave the `scrolloff` margin it is dragged along to stay on the `scrolloff`-th row from the nearest edge
+- [ ] [auto] `g`/`G`/PgDn/PgUp/Ctrl+d/Ctrl+u + level-jump + mark-jump all honour scrolloff — after they move the cursor, the viewport is adjusted so the cursor sits with `scrolloff` rows of context above and below where possible
+- [ ] [auto] `scrolloff` value is read from the shared top-level config key `scrolloff` (NOT a list-specific key); at use time it is clamped to `[0, floor(VisibleContentRows / 2)]`
+- [ ] [human] On `logs/small.log`, pressing `j` repeatedly with a moderate-sized filtered set shows the cursor staying 5 rows above the bottom border before the viewport starts scrolling; mouse-wheel scrolling in the middle of the list keeps the cursor on its document line while rows move under it; wheel near an edge drags the cursor to stay in the scrolloff margin
+**Dependencies:** cavekit-config (shared top-level `scrolloff`), cavekit-detail-pane (shares the same config key — R11)
+
 ## Out of Scope
 
 - Detail pane rendering (handled by detail-pane)
@@ -146,6 +159,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - **Affected:** R1, new R11
 - **Summary:** R1 updated to require cursor row highlighting with theme background color. New R11 added for cursor position indicator (1-based index in visible set) to be displayed in header/status bar. Both driven by user observation that cursor row has no visual indication and no position info is shown.
 - **Commits:** manual testing feedback (no commit)
+
+### 2026-04-18 — Revision (R12 scrolloff)
+- **Affected:** new R12
+- **Summary:** Added R12 to legislate nvim-style `scrolloff` on the entry list — the viewport keeps a configurable number of context rows (default 5, shared top-level `scrolloff` config) between cursor and edges. All cursor-moving navigation (j/k, g/G, PgDn/PgUp, level-jump, mark-jump) adjusts the viewport to honour the margin; mouse wheel drags the cursor along when the cursor would leave the margin. Same config key used by cavekit-detail-pane.md R11 — users tune one number for both panes. Companion to DESIGN.md §4.3 "Shared scrolloff" subsection.
+- **Driven by:** `/ck:check` run 2026-04-18 after user report "I still see no row highlight where cursor is when focused on details pane" + follow-up "scrolloff should be implemented on the list as well". Addresses finding F-026 (list portion).
 
 ### 2026-04-16 — Revision (layout fixes)
 - **Affected:** R1, R6

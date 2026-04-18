@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T21:40:06+03:00"
+last_edited: "2026-04-18T14:20:33+03:00"
 ---
 
 # Cavekit: Config
@@ -48,7 +48,7 @@ Loading, validating, and persisting application configuration from a TOML file. 
 **Dependencies:** R1, R2
 
 ### R5: Field and Display Settings
-**Description:** Config controls: which fields appear in the compact list row (default: time, level, logger, msg), which extra fields appear as sub-rows (default: none), which fields are hidden in the detail pane (default: none), logger abbreviation depth (default: 2), detail pane height ratio (default: 0.30), detail pane orientation position (`below` | `right` | `auto`, default `auto`), auto-orientation threshold in columns (default 100), detail pane width ratio for right-split mode (default 0.30), and wrap mode for detail pane content (default `soft`). The two ratios are independent settings — flipping orientation must never overwrite one with the other.
+**Description:** Config controls: which fields appear in the compact list row (default: time, level, logger, msg), which extra fields appear as sub-rows (default: none), which fields are hidden in the detail pane (default: none), logger abbreviation depth (default: 2), detail pane height ratio (default: 0.30), detail pane orientation position (`below` | `right` | `auto`, default `auto`), auto-orientation threshold in columns (default 100), detail pane width ratio for right-split mode (default 0.30), wrap mode for detail pane content (default `soft`), and a **shared top-level `scrolloff`** (default 5) honoured by both the entry list and the detail pane (see cavekit-entry-list.md R12, cavekit-detail-pane.md R11, DESIGN.md §4.3 + §4.4). The two pane ratios are independent settings — flipping orientation must never overwrite one with the other. `scrolloff` is a single top-level key so users tune one "context rows" value for both scrolling panes; do NOT split it into `entry_list.scrolloff` + `detail_pane.scrolloff`.
 **Acceptance Criteria:**
 - [ ] [auto] The default compact row fields are time, level, logger, and msg
 - [ ] [auto] Setting sub-row fields in config causes those fields to appear as sub-rows in the entry list
@@ -61,6 +61,10 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - [ ] [auto] detail_pane.width_ratio defaults to 0.30
 - [ ] [auto] detail_pane.wrap_mode defaults to "soft"
 - [ ] [auto] detail_pane.height_ratio and detail_pane.width_ratio are preserved independently across orientation flips — changing one does not overwrite the other
+- [ ] [auto] The default top-level `scrolloff` is 5
+- [ ] [auto] `scrolloff` is exposed as a top-level TOML int key (not nested under `entry_list` or `detail_pane`)
+- [ ] [auto] An integer `scrolloff` value in config file is read by both the entry-list model and the detail-pane model (same source of truth)
+- [ ] [auto] A negative or non-integer `scrolloff` is clamped to 0 at load time with a warning, per R2 (invalid config handling)
 **Dependencies:** R1
 
 ### R6: Live Write-Back
@@ -104,3 +108,8 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - **Affected:** R4, R5
 - **Summary:** R4 extended to require DividerColor and UnfocusedBg tokens in every bundled theme, supporting the pane visual-state matrix. R5 extended to cover the new detail pane orientation keys (position, orientation_threshold_cols, width_ratio, wrap_mode) and to guarantee height_ratio and width_ratio are preserved independently across orientation flips.
 - **Driven by:** DESIGN.md + research-brief-details-pane-redesign.md
+
+### 2026-04-18 — Revision (shared top-level `scrolloff`)
+- **Affected:** R5
+- **Summary:** R5 extended to define a shared top-level `scrolloff` int key (default 5) consumed by both the entry list and the detail pane. Single source of truth for the "context rows between cursor and edge" setting — must NOT be split into two pane-specific keys. Negative values clamped to 0 at load time per R2. Companion to cavekit-entry-list.md R12 + cavekit-detail-pane.md R11 + DESIGN.md §4.3 "Shared scrolloff".
+- **Driven by:** `/ck:check` run 2026-04-18 after user report on row highlight + scrolloff behaviour.

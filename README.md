@@ -1,6 +1,6 @@
 # gloggy
 
-> **100% vibe coded.** This project was designed, architected, and implemented entirely by [Claude Sonnet 4.6](https://anthropic.com/claude) via [Claude Code](https://claude.ai/code) — zero hand-written lines of Go. No prompts like "write me a log viewer"; instead, a structured methodology called [Cavekit](https://github.com/JuliusBrussee/cavekit) was used to translate product ideas into kits, kits into a dependency-ordered build plan, and the build plan into working code — autonomously, wave by wave. Development will continue the same way.
+> **100% vibe coded.** This project was designed, architected, and implemented entirely by [Claude](https://anthropic.com/claude) via [Claude Code](https://claude.ai/code) — zero hand-written lines of Go. No prompts like "write me a log viewer"; instead, a structured methodology called [Cavekit](https://github.com/JuliusBrussee/cavekit) was used to translate product ideas into kits, kits into a dependency-ordered build plan, and the build plan into working code — autonomously, wave by wave. Development will continue the same way.
 
 > ⚠️ **Not yet human tested.** The codebase has 100% automated test coverage against its acceptance criteria, but has not been run as an actual TUI by a human yet. Screenshots and real-world validation are coming soon.
 
@@ -45,16 +45,17 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 - **Virtual rendering** — only visible rows plus a small buffer are rendered, keeping the list responsive with 100k+ entry files.
 - **Level-jump navigation** — `e`/`E` jump to the next/previous ERROR, `w`/`W` for WARN. Wraps with an indicator.
 - **Two-level cursor** — magit-style: `j`/`k` move between entries; `l`/`Tab`/`→` expand into per-field sub-rows; `h`/`←`/`Esc` collapse back.
-- **Scroll navigation** — `g`/`G` go to top/bottom, `Ctrl-d`/`Ctrl-u` half-page.
+- **Scroll navigation** — `g`/`G` go to top/bottom, `Ctrl-d`/`Ctrl-u` half-page. Viewport follows the cursor with a configurable `scrolloff` margin of context rows around the cursor (default 5).
 - **Marks** — `m` toggles a bookmark; `u`/`U` jump between marks. Marked entries are visually indicated.
-- **Mouse support** — click to select, scroll wheel to scroll, click a selected entry to open the detail pane.
+- **Mouse support** — click to select, scroll wheel to scroll (cursor is dragged along when it would leave the scrolloff margin, nvim-style), click a selected entry to open the detail pane.
 
 ### Detail Pane
 - **Syntax-highlighted JSON** — keys, strings, numbers, booleans, and nulls each use a distinct theme color.
-- **Scrollable** — `j`/`k` or mouse wheel.
-- **In-pane search** — `/` opens a search scoped to the pane; `n`/`N` cycle matches with a wrap indicator; `Esc` clears.
+- **Cursor-tracking viewport** — one highlighted "active line" at all times. `j`/`k` move the cursor; `g`/`G`/`Home`/`End` jump to top/bottom; `PgDn`/`PgUp`/`Ctrl-d`/`Ctrl-u`/`Space`/`b` page. Mouse wheel scrolls the viewport and drags the cursor at the edges so a configurable `scrolloff` margin (default 5) of context rows is always preserved — the same model as `nvim`.
+- **Scroll-position indicator** — an `NN%` overlay on the last content row shows position within the entry; omitted when content fits.
+- **In-pane search** — `/` opens a search scoped to the pane; `n`/`N` move the cursor to the next/prev match with scrolloff context; wrap indicator and `(current/total)` counter shown; `Esc` clears.
 - **Field visibility** — hide/show individual fields; persisted to config and survives restart.
-- **Resizable** — `+`/`-` adjust the pane height ratio; proportions survive terminal resize.
+- **Right-split or below layouts** — auto-flips based on terminal width; `|` cycles layout presets, `+`/`-` adjust the pane ratio, `=` resets; independent height/width ratios are preserved across flips. Pane is resizable by dragging the divider too.
 - **Filter from field** — click a field value to pre-fill a filter prompt.
 
 ### Filter Engine
@@ -73,25 +74,56 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 
 ### Config
 - TOML config at `~/.config/gloggy/config.toml`
-- Settings: theme, logger abbreviation depth, sub-row fields, detail pane height ratio, hidden fields
+- Settings: theme, logger abbreviation depth, sub-row fields, hidden fields, detail pane height/width ratios, orientation (`below` / `right` / `auto`) + auto-flip threshold, wrap mode, and a shared top-level **`scrolloff`** (default 5) honoured by both the entry list and the detail pane.
 - Unknown keys are preserved on write-back (no data loss on upgrade)
 
 ## Keybindings
 
+### Movement (entry list OR focused detail pane)
+
 | Key | Action |
 |-----|--------|
-| `j`/`k` | Move cursor down/up |
-| `g`/`G` | Go to top/bottom |
+| `j`/`k` (or `↓`/`↑`) | Move cursor down/up by one row; viewport follows with `scrolloff` context |
+| `g`/`G` (or `Home`/`End`) | Jump cursor to top/bottom |
+| `PgDn`/`PgUp` | Page down/up |
 | `Ctrl-d`/`Ctrl-u` | Half page down/up |
+| `Space` / `b` | Page down / up (detail pane) |
+| Mouse wheel | Scroll viewport; cursor dragged at edges to respect `scrolloff` |
+
+### Entry list only
+
+| Key | Action |
+|-----|--------|
 | `e`/`E` | Next/prev ERROR |
 | `w`/`W` | Next/prev WARN |
 | `m` | Toggle mark |
 | `u`/`U` | Next/prev mark |
-| `Enter` | Open detail pane |
-| `Esc` | Close detail pane / exit sub-level |
-| `/` | In-pane search |
-| `n`/`N` | Next/prev search match |
-| `+`/`-` | Resize detail pane |
+| `Tab` / `l` / `→` | Expand entry into per-field sub-rows |
+| `h` / `←` | Collapse sub-rows |
+| `Enter` | Open detail pane for current entry |
+
+### Detail pane + search
+
+| Key | Action |
+|-----|--------|
+| `/` | Open in-pane search (if list focused, focus transfers to detail pane with search active) |
+| `n`/`N` | Move cursor to next/prev match (viewport adjusts to keep `scrolloff` context) |
+| `Esc` | Dismiss search, then close pane (two-step) |
+
+### Layout + focus
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Cycle focus between visible panes |
+| `Esc` | Close overlay → close detail pane → clear transient state |
+| `\|` | Cycle layout ratio presets (10% / 30% / 70%) |
+| `+` / `-` | Adjust the active pane ratio by ±5% |
+| `=` | Reset ratio to 0.30 |
+
+### Global
+
+| Key | Action |
+|-----|--------|
 | `f` | Open filter panel |
 | `y` | Copy marked entries to clipboard |
 | `?` | Help overlay |
@@ -137,10 +169,10 @@ cat app.log | gloggy    # read from stdin
 
 ## How It Was Built
 
-gloggy was built entirely with **[Claude Code](https://claude.ai/code)** running **Claude Sonnet 4.6**, using the **[Cavekit](https://github.com/JuliusBrussee/cavekit)** methodology in quality mode:
+gloggy was built entirely with **[Claude Code](https://claude.ai/code)** driving **[Claude](https://anthropic.com/claude)** (multiple models across phases — reasoning, execution, and exploration), using the **[Cavekit](https://github.com/JuliusBrussee/cavekit)** methodology in quality mode:
 
-1. **Design phase** — product requirements were translated into implementation-agnostic *kits* covering 6 domains: log source, entry list, detail pane, filter engine, config, and app shell. 49 requirements, 210 acceptance criteria.
-2. **Architecture phase** — Cavekit generated a concrete implementation plan from the kits: a 68-task dependency graph, tier-ordered for safe parallel execution.
+1. **Design phase** — product requirements were translated into implementation-agnostic *kits* covering 6 domains: log source, entry list, detail pane, filter engine, config, and app shell. Currently 58 requirements across ~330 acceptance criteria.
+2. **Architecture phase** — Cavekit generated a concrete implementation plan from the kits: a tiered dependency graph (currently 137 tasks across 15 tiers) for safe parallel execution.
 3. **Build phase** — Claude Code worked through the build plan autonomously in waves, implementing each task, running tests, validating against acceptance criteria, and committing — without human intervention between tasks.
 
-The full context (kits, build site, impl tracking, loop log) lives in [`context/`](context/) and serves as the living spec for future development. When new features are needed, the cycle repeats: update the kits, regenerate the plan, build.
+The full context (kits, build site, impl tracking, loop log) lives in [`context/`](context/) and serves as the living spec for future development. When new features are needed or bugs surface, the cycle repeats: `/ck:check` surfaces gaps, kits and DESIGN.md are revised, the site gets new tasks, and `/ck:make` builds them.

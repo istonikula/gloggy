@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T11:45:46+03:00"
+last_edited: "2026-04-18T13:10:00+03:00"
 ---
 
 # Cavekit: Detail Pane
@@ -136,6 +136,24 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - [ ] [auto] Rendering a line containing ANSI escape sequences does not produce column drift or pane overflow
 **Dependencies:** cavekit-app-shell (allocates pane width)
 
+### R11: Cursor-Tracking Viewport + Scrolloff + Search Integration
+**Description:** The detail pane is a **cursor-tracking viewport** — there is always exactly one "active content line" inside the (soft-wrapped) content, marked with `CursorHighlight` bg per DESIGN.md §4 matrix (reduced intensity when the pane is unfocused-but-visible). Navigation and search operate on cursor position, not raw viewport offset. The cursor exists whenever the pane is open, regardless of focus. Mouse wheel scrolling implements nvim-style `scrolloff` drag: when the cursor would cross the `scrolloff` margin, it is dragged along with the viewport so it stays in the margin. Search `n`/`N` moves the cursor onto the match line and scrolls the viewport to honour scrolloff.
+**Acceptance Criteria:**
+- [ ] [auto] When the pane is open with content > viewport, exactly one visible line has `CursorHighlight` bg applied across the full content width
+- [ ] [auto] When the pane is focused, the cursor-row bg renders at full intensity + Bold; when unfocused-but-visible, it renders at reduced intensity + non-Bold (per DESIGN.md §4 matrix)
+- [ ] [auto] Pressing `j` (or `Down`) moves the cursor down exactly one line; pressing `k` (or `Up`) moves it up exactly one line; both are clamped at document boundaries
+- [ ] [auto] Pressing `g` or `Home` moves the cursor to line 0 and sets the viewport offset to 0
+- [ ] [auto] Pressing `G` or `End` moves the cursor to the last content line and scrolls the viewport so the cursor is visible at the bottom, respecting `scrolloff` from the bottom edge where the document is large enough
+- [ ] [auto] Pressing `PgDn`/`Ctrl+d`/`Space` moves the cursor + viewport by `max(1, ContentHeight−1)` lines down, clamped; `PgUp`/`Ctrl+u`/`b` symmetric upward
+- [ ] [auto] Mouse wheel down scrolls the viewport; while the cursor is more than `scrolloff` rows from both edges, the cursor's document line is unchanged (viewport moves under it); when the cursor would leave the `scrolloff` margin, the cursor is dragged along so it stays exactly on the `scrolloff`-th row from the nearest edge
+- [ ] [auto] `scrolloff` is sourced from the top-level config key `scrolloff` (default 5) — NOT from a detail-pane-specific key — and is clamped to `[0, floor(ContentHeight / 2)]` at use time
+- [ ] [auto] Opening a different entry or re-opening the pane resets the cursor to line 0 and the viewport offset to 0
+- [ ] [auto] Search `n` moves the cursor to the next match line; `N` to the previous; the viewport adjusts so the cursor lands with `scrolloff` rows of context above and below where the document permits
+- [ ] [auto] On the cursor row, the `CursorHighlight` bg takes visual priority over the `SearchHighlight` bg on that row; other matching rows keep their `SearchHighlight` styling normally
+- [ ] [auto] The `NN%` scroll-position indicator (R4) continues to render independently of the cursor row — the cursor does not replace or displace it
+- [ ] [human] On `logs/tiny.log` line 34 across all three bundled themes at `80x24` + `140x35` in both orientations: the cursor row is clearly visible; `j`/`k` moves the cursor visibly; mouse-wheel scrolling in the middle of the document keeps the cursor stable on its document line while the viewport moves under it; wheel scrolling near an edge drags the cursor to stay inside the scrolloff margin; `/` + typing + `n`/`N` lands the cursor on each match with context rows preserved
+**Dependencies:** cavekit-config (shared top-level `scrolloff`, `CursorHighlight` + `SearchHighlight` theme tokens), R4 (offset-clamp primitives), R7 (search match lines)
+
 ## Out of Scope
 
 - Filter logic and filter panel (handled by filter-engine)
@@ -178,3 +196,8 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - **Affected:** R7
 - **Summary:** Added 6 automated ACs + 1 human sign-off to R7. Before this revision R7 was under-specified — it described state semantics (activate / cycle / dismiss) but never required the search input, query text, match counter, or wrap indicator to be **rendered**. The implementation shipped a complete `SearchModel` with passing unit tests, but `detailpane/model.go` `View()` never consumed it; pressing `/` toggled state invisibly. User reported "pressing / does not do anything". New ACs lock down: visible prompt + `(cur/total)`, unstyled-content match source (prevents off-by-one when splitting bordered View), viewport-scroll on `n`/`N`, state reset on pane close, two-step Esc, UTF-8-safe backspace.
 - **Driven by:** `/ck:check` finding F-002 (search dead code path). Related findings F-001, F-003..F-011 in `context/impl/impl-review-findings.md`.
+
+### 2026-04-18 — Revision (R11 cursor-tracking viewport + scrolloff + search integration)
+- **Affected:** new R11
+- **Summary:** Detail pane redefined from offset-only viewport to a **cursor-tracking viewport**. Exactly one active content line is marked with `CursorHighlight` bg per DESIGN.md §4 matrix (reduced intensity when unfocused-but-visible). `j`/`k`/`g`/`G`/PgDn/PgUp/Ctrl+d/Ctrl+u/Space/`b` now move the cursor; the viewport follows with a shared top-level `scrolloff` margin (default 5). Mouse wheel implements nvim-style drag: viewport slides under the cursor until the cursor would enter the scrolloff margin, at which point the cursor is pulled along to stay exactly on the `scrolloff`-th row from the nearest edge. Search `n`/`N` lands the cursor on the match line with scrolloff-respected context. Cursor row bg takes visual priority over search-row bg. Indicator NN% (R4) continues to render independently.
+- **Driven by:** `/ck:check` run on 2026-04-18 after user report "I still see no row highlight where cursor is when focused on details pane" + follow-up describing nvim-style scrolloff drag. Addresses finding F-026. Design-level amendment — also required DESIGN.md §4 matrix to drop the "(list only)" scope on cursor row, §4.3 to document list scrolloff, §4.4 to add "Cursor and scrolloff" subsection, §6 focus cue #4 to cover both panes, §9 keymap to rewrite `j`/`k` as cursor move + scrolloff follow.

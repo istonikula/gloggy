@@ -164,7 +164,7 @@ Divider (NEW) · Status/Key-Hint Bar · Filter Panel (overlay) · Help Overlay
 This governs every focusable pane — entry list, detail pane, filter overlay.
 Any divergence is a bug.
 
-| State | Left border | Top/bottom border | Background | Foreground | Cursor row (list only) |
+| State | Left border | Top/bottom border | Background | Foreground | Cursor row |
 |---|---|---|---|---|---|
 | **Focused** | `FocusBorder`, bold | `FocusBorder` | base | full contrast | `CursorHighlight` bg, bold |
 | **Unfocused (visible)** | `DividerColor` | `DividerColor` | `UnfocusedBg` | `Dim` blend | `CursorHighlight` bg at reduced intensity, non-bold |
@@ -175,7 +175,8 @@ Any divergence is a bug.
 
 - The cursor row is **always rendered**, even when its pane is unfocused — so
   the user can predict where the cursor will be on re-focus. Only intensity
-  and bold change.
+  and bold change. Applies to **entry list AND detail pane**; see §4.4 for
+  detail-pane cursor semantics (scrolloff + search integration).
 - Panes use `lipgloss.NormalBorder()`. Overlays use `RoundedBorder()` or
   `DoubleBorder()` so they are visually distinct from panes.
 - Closing a pane (e.g., details on `Esc`) is an atomic redraw — no fade.
@@ -218,8 +219,28 @@ Container for rows. All styling follows the pane visual-state matrix.
 `lipgloss.NormalBorder()`. Focused border = `FocusBorder`; unfocused =
 `DividerColor`; bg swaps to `UnfocusedBg` when unfocused.
 
+**Cursor and scrolloff:** the list is a cursor-tracking viewport.
+Navigation (`j`/`k`/`g`/`G`/PgDn/PgUp/Ctrl+d/Ctrl+u + level jumps `e`/`w`
+and mark jumps) move the cursor; the viewport scrolls when the cursor
+would approach the top or bottom edge, keeping a **shared `scrolloff`
+margin** (see below) of context rows around the cursor. Mouse wheel
+scrolls the viewport; if the cursor's row would leave the visible window
+minus `scrolloff` rows from the nearest edge, the cursor is dragged
+along to stay in the scrolloff margin. This mirrors nvim `scrolloff`.
+
 **Minimum:** ~30 cells × 5 rows. Below that the "terminal too small"
 fallback (§8) kicks in.
+
+### Shared scrolloff
+
+Both the entry list and the detail pane honour a single top-level config
+key `scrolloff` (TOML int, default `5`). It sets the minimum number of
+context rows between the cursor and the top/bottom edge of its pane
+during vertical navigation. At use time it is clamped to
+`[0, floor(PaneContentHeight / 2)]` so it can never reach the midpoint.
+Keep one config for both panes — users expect a single "context rows"
+setting, not two. The filter panel and overlays do not honour scrolloff
+(they are not scrolling viewports).
 
 ### 4.4 Detail Pane
 
@@ -256,6 +277,43 @@ the top show `0%`; at the bottom show `100%`; intermediate positions are
 `round(offset / (total - viewport) * 100)`. The indicator reflects the
 current scroll state only — it does not replace the search-prompt row,
 which always wins the last reserved row when search is active.
+
+**Cursor and scrolloff (focused pane):**
+
+The detail pane is a **cursor-tracking viewport** — there is always exactly
+one "active content line" inside the wrapped content, marked with
+`CursorHighlight` bg per the §4 matrix (reduced intensity when the pane is
+unfocused-but-visible; restored when re-focused). Navigation semantics:
+
+- `j`/`k`/`Down`/`Up`: move **cursor** by one line. Viewport follows with a
+  `scrolloff` margin (cursor never closer than `scrolloff` rows to top or
+  bottom edge, unless the document itself is shorter).
+- `g`/`Home`: cursor → first line; viewport offset = 0.
+- `G`/`End`: cursor → last line; viewport scrolled so cursor is visible at
+  bottom, respecting scrolloff from the bottom edge.
+- `PgDn` / `Ctrl+d` / `Space`: cursor + viewport move `max(1, viewport−1)`
+  lines down, clamped.
+- `PgUp` / `Ctrl+u` / `b`: symmetric upward move.
+- **Mouse wheel scroll:** scrolls the viewport. If the cursor's document line
+  would leave the visible window minus `scrolloff` rows from the nearest
+  edge, the cursor is **dragged along** so it stays exactly on the
+  `scrolloff`-th row from that edge. While the cursor is more than
+  `scrolloff` rows from both edges, wheel scrolling moves the viewport
+  **under** the cursor without changing the cursor's document position.
+  This mirrors nvim `scrolloff` behaviour.
+- **Search `n`/`N`:** move cursor to the match line; viewport adjusts so the
+  cursor lands with `scrolloff` rows of context above/below where possible.
+  The search highlight (`SearchHighlight` bg/fg) composes with the cursor
+  row — cursor takes priority on the active line, search highlight on
+  other matching lines.
+- **Entry change / pane re-open:** cursor resets to line 0; viewport offset
+  resets to 0.
+
+`scrolloff` is the **shared top-level** config key defined in §4.3 — the
+same value governs both the entry list and the detail pane so users can
+tune one "context rows" setting. Clamped to
+`[0, floor(ContentHeight / 2)]` at use time so it can never reach or
+exceed the midpoint.
 
 **Minimum:** ~30 cells × 3 rows. Below this the pane auto-closes and the
 status bar emits a notice (§8).
@@ -418,8 +476,10 @@ intensity + background tint + content contrast**.
 2. **Secondary — pane background.** Focused: base. Unfocused: `UnfocusedBg`.
 3. **Tertiary — status bar label.** `focus: list | details | filter`.
    Rendered **only when >1 pane is visible.** Bold, fg `FocusBorder`.
-4. **List-specific — cursor row.** Focused: `CursorHighlight` bg + Bold.
-   Unfocused: `CursorHighlight` bg reduced + non-Bold.
+4. **Cursor row (list AND detail pane).** Focused: `CursorHighlight` bg +
+   Bold. Unfocused (but visible): `CursorHighlight` bg reduced + non-Bold.
+   In the detail pane, cursor semantics include `scrolloff` and search
+   integration — see §4.4 "Cursor and scrolloff".
 
 ### Border conventions
 
@@ -609,13 +669,14 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
 | `/` | Search in focused pane | Entry list or detail pane |
 | `?` | Toggle help overlay | Any |
 | `q` | Quit | Any |
-| `j` / `k` | Scroll down / up | Focused pane |
-| `g` | Jump to top | Detail pane |
-| `G` | Jump to bottom | Detail pane |
-| `Home` | Jump to top | Detail pane |
-| `End` | Jump to bottom | Detail pane |
-| `PgDn` / `Ctrl+d` / `Space` | Page down (viewport − 1) | Detail pane |
-| `PgUp` / `Ctrl+u` / `b` | Page up (viewport − 1) | Detail pane |
+| `j` / `k` | Move **cursor** down / up; viewport follows with `scrolloff` margin | Focused pane (list or detail — §4.3, §4.4) |
+| `g` | Cursor → top | Detail pane (list: `gg` optional — see entry-list kit) |
+| `G` | Cursor → bottom; viewport respects `scrolloff` from bottom | Detail pane (list: same) |
+| `Home` | Cursor → top | Detail pane |
+| `End` | Cursor → bottom | Detail pane |
+| `PgDn` / `Ctrl+d` / `Space` | Cursor + viewport down (viewport − 1), clamped | Detail pane |
+| `PgUp` / `Ctrl+u` / `b` | Cursor + viewport up (viewport − 1), clamped | Detail pane |
+| Mouse wheel | Scroll viewport; cursor dragged when it would enter the `scrolloff` margin | List + detail pane |
 | `m` | Mark row | Entry list |
 | `y` | Copy marked rows as JSONL | Any |
 | `f` | Open filter panel (in progress) | Any |
