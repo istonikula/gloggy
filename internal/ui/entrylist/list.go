@@ -89,10 +89,21 @@ func (m ListModel) SetEntries(entries []logsource.Entry) ListModel {
 	return m
 }
 
-// AppendEntries adds entries (used during background loading).
+// AppendEntries adds entries (used during background loading). T-148
+// (cavekit-entry-list R13 streaming AC): when a list search is active with
+// a non-empty query and no filter is applied, the newly appended entries
+// are scanned against the query and their visible-set indices appended to
+// the search match set so streaming arrivals are matched in real time.
+// When a filter is active, appended entries are not visible until the
+// filter index is rebuilt — SetFilter deactivates search on its own path,
+// so no extension is needed here.
 func (m ListModel) AppendEntries(entries []logsource.Entry) ListModel {
+	oldLen := len(m.entries)
 	m.entries = append(m.entries, entries...)
 	m.scroll.TotalEntries = len(m.entries)
+	if m.filtered == nil && m.search.IsActive() && m.search.Query() != "" {
+		m.search = m.search.ExtendMatches(entries, oldLen, m.width, m.cfg)
+	}
 	return m
 }
 

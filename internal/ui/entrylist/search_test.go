@@ -375,6 +375,84 @@ func TestListModel_SearchNext_HonoursScrolloff(t *testing.T) {
 	}
 }
 
+// T-148 (cavekit-entry-list R13 streaming AC): entries appended while
+// search is active with a non-empty query must be scanned against the
+// query and their visible-set indices appended to the match set.
+func TestListModel_AppendEntries_ExtendsActiveSearchMatches(t *testing.T) {
+	cfg := config.DefaultConfig()
+	th := theme.GetTheme("tokyo-night")
+	initial := entriesWithMessages("error a", "info b")
+
+	m := NewListModel(th, cfg, 80, 10).SetEntries(initial)
+	m = m.ActivateSearch()
+	for _, r := range []rune("error") {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if m.Search().MatchCount() != 1 {
+		t.Fatalf("precondition: want 1 match, got %d", m.Search().MatchCount())
+	}
+
+	// Stream 3 new entries; two of them match "error".
+	streamed := entriesWithMessages("info c", "error d", "error e")
+	m = m.AppendEntries(streamed)
+
+	got := m.Search().MatchLines()
+	want := []int{0, 3, 4} // "error a", "error d", "error e"
+	if len(got) != len(want) {
+		t.Fatalf("matches after streaming: got %v, want %v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("match[%d]: got %d, want %d", i, got[i], want[i])
+		}
+	}
+}
+
+// T-148: streamed matches clear NotFound when the first match arrives
+// after the query was typed but before any matching entry was loaded.
+func TestListModel_AppendEntries_ClearsNotFound_WhenFirstStreamedMatchArrives(t *testing.T) {
+	cfg := config.DefaultConfig()
+	th := theme.GetTheme("tokyo-night")
+	initial := entriesWithMessages("alpha", "beta")
+
+	m := NewListModel(th, cfg, 80, 10).SetEntries(initial)
+	m = m.ActivateSearch()
+	for _, r := range []rune("target") {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if !m.Search().NotFound() {
+		t.Fatal("precondition: want NotFound before any match streamed")
+	}
+
+	m = m.AppendEntries(entriesWithMessages("target hit"))
+
+	if m.Search().NotFound() {
+		t.Error("NotFound should clear after first match arrives via stream")
+	}
+	if m.Search().MatchCount() != 1 {
+		t.Errorf("want 1 match after stream, got %d", m.Search().MatchCount())
+	}
+}
+
+// T-148: AppendEntries with no active search is a no-op on search state.
+func TestListModel_AppendEntries_InactiveSearch_NoOp(t *testing.T) {
+	cfg := config.DefaultConfig()
+	th := theme.GetTheme("tokyo-night")
+	m := NewListModel(th, cfg, 80, 10).SetEntries(entriesWithMessages("alpha"))
+	if m.HasActiveSearch() {
+		t.Fatal("precondition: search should be inactive")
+	}
+
+	m = m.AppendEntries(entriesWithMessages("error b", "error c"))
+
+	if m.HasActiveSearch() {
+		t.Error("AppendEntries should not activate search")
+	}
+	if m.Search().MatchCount() != 0 {
+		t.Errorf("inactive search match count should stay 0, got %d", m.Search().MatchCount())
+	}
+}
+
 // T-143 (cavekit-entry-list R13 AC 8): list search must NOT modify the
 // filter engine — entries that do not match remain visible (unhighlighted).
 func TestListModel_Search_DoesNotChangeVisibleSet(t *testing.T) {

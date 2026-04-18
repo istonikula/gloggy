@@ -1342,3 +1342,138 @@ func itoa(n int) string {
 	}
 	return string(buf[pos:])
 }
+
+// ---------- T-146 (cavekit-app-shell R14): q-quit exemption during list-search input ----------
+
+// TestModel_Q_ListSearchInputMode_DoesNotQuit verifies that `q` typed while
+// the list-search input is capturing text extends the query rather than
+// quitting the app (F-106 regression fix).
+func TestModel_Q_ListSearchInputMode_DoesNotQuit(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(5))
+	m = key(m, "/") // activate list search — input mode
+	if !m.list.HasActiveSearch() {
+		t.Fatal("precondition: list search should be active")
+	}
+	if !m.list.Search().InputMode() {
+		t.Fatal("precondition: list search should be in input mode")
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	m = updated.(Model)
+
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			if _, isQuit := msg.(tea.QuitMsg); isQuit {
+				t.Fatal("q in list-search input mode must NOT quit")
+			}
+		}
+	}
+	if m.list.Search().Query() != "q" {
+		t.Errorf("q in input mode should extend query to 'q', got %q", m.list.Search().Query())
+	}
+	if !m.list.HasActiveSearch() {
+		t.Error("list search should still be active after typed q")
+	}
+}
+
+// TestModel_Q_ListSearchNavigateMode_StillQuits verifies that after Enter
+// commits the search (navigate mode), `q` resumes its normal quit
+// behaviour. Users who want `q` to extend a query must dismiss with Esc
+// first — navigate mode is for n/N cycling, not typing.
+func TestModel_Q_ListSearchNavigateMode_StillQuits(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(5))
+	m = key(m, "/")
+	m = key(m, "t") // query "t" matches "test message"
+	m = key(m, "enter") // commit → navigate mode
+	if m.list.Search().InputMode() {
+		t.Fatal("precondition: search should be in navigate mode after Enter")
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd == nil {
+		t.Fatal("q in navigate mode should still emit quit cmd")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("q in navigate mode should emit tea.QuitMsg")
+	}
+}
+
+// TestModel_Q_NoListSearch_StillQuits verifies the baseline quit behaviour
+// is preserved when no list search is active.
+func TestModel_Q_NoListSearch_StillQuits(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd == nil {
+		t.Fatal("q without active search should quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("expected tea.QuitMsg")
+	}
+}
+
+// TestModel_Q_DetailPaneFocus_StillQuits verifies `q` on a non-list focus
+// is unchanged by the T-146 exemption (global quit only gates on list
+// focus anyway).
+func TestModel_Q_DetailPaneFocus_StillQuits(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	m = key(m, "tab")
+	if m.focus != appshell.FocusDetailPane {
+		t.Fatalf("precondition: want detail pane focus, got %v", m.focus)
+	}
+
+	// `q` on detail pane focus is NOT a quit (global quit only triggers on
+	// list focus — this is unchanged by T-146). Just confirms no regression.
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			if _, isQuit := msg.(tea.QuitMsg); isQuit {
+				t.Error("q on detail pane focus should NOT quit (global quit requires list focus)")
+			}
+		}
+	}
+}
+
+// ---------- T-147 (cavekit-entry-list R13 AC 7): f-focus-transfer clears list search ----------
+
+// TestModel_F_FocusTransfer_ClearsActiveListSearch verifies that pressing
+// `f` to open the filter panel while a list search is in navigate mode
+// deactivates the search so a stale query + highlights do not linger
+// after the user switches contexts (F-108 regression fix). Input-mode
+// `f` is a literal query character and is covered by the input-mode path.
+func TestModel_F_FocusTransfer_ClearsActiveListSearch(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(5))
+	m = key(m, "/")
+	m = key(m, "t")
+	m = key(m, "enter") // commit to navigate mode so `f` is not captured as query
+	if !m.list.HasActiveSearch() {
+		t.Fatal("precondition: list search should be active")
+	}
+	if m.list.Search().InputMode() {
+		t.Fatal("precondition: search should be in navigate mode after Enter")
+	}
+
+	m = key(m, "f")
+
+	if m.focus != appshell.FocusFilterPanel {
+		t.Errorf("focus after f: got %v, want FocusFilterPanel", m.focus)
+	}
+	if m.list.HasActiveSearch() {
+		t.Error("f focus-transfer should deactivate list search")
+	}
+	if m.list.Search().Query() != "" {
+		t.Errorf("list search query should be cleared, got %q", m.list.Search().Query())
+	}
+}

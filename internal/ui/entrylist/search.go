@@ -4,8 +4,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
@@ -141,6 +139,31 @@ func (m SearchModel) Prev() SearchModel {
 	return m
 }
 
+// ExtendMatches scans `newEntries` against the current query and appends
+// matching visible-set indices to the existing match list (T-148, cavekit-
+// entry-list R13 streaming AC). `baseIdx` is the visible-set index of the
+// first entry in `newEntries` (i.e. the length of the visible slice before
+// the append). Called by ListModel.AppendEntries when streaming arrivals
+// land while search is active with a non-empty query. Clears `notFound`
+// when the new entries produce the first match(es). No-op when search is
+// inactive or the query is empty.
+func (m SearchModel) ExtendMatches(newEntries []logsource.Entry, baseIdx int, width int, cfg config.Config) SearchModel {
+	if !m.active || m.query == "" {
+		return m
+	}
+	needle := strings.ToLower(m.query)
+	for i, e := range newEntries {
+		hay := strings.ToLower(composeSearchRow(e, width, cfg))
+		if strings.Contains(hay, needle) {
+			m.matches = append(m.matches, baseIdx+i)
+		}
+	}
+	if len(m.matches) > 0 {
+		m.notFound = false
+	}
+	return m
+}
+
 // computeMatches rebuilds the `matches` slice from `entries` using the
 // compact-row composition that the user actually sees. Match is case-
 // insensitive substring against the composed row text. Also resets
@@ -203,11 +226,4 @@ func composeSearchRow(entry logsource.Entry, width int, cfg config.Config) strin
 	b.WriteByte(' ')
 	b.WriteString(msg)
 	return b.String()
-}
-
-// searchHighlightStyle returns the lipgloss style used for match bg on the
-// list (T-143). Cursor row keeps CursorHighlight — that takes priority in
-// `ListModel.View()` — so this style is applied only to non-cursor matches.
-func (m SearchModel) searchHighlightStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Background(m.th.SearchHighlight)
 }

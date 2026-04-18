@@ -288,12 +288,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Global quit.
+	// Global quit. T-146 (cavekit-app-shell R14): exempted while the list
+	// search is capturing input so `q` typed into the query string is not
+	// swallowed as a quit. Navigate mode (post-Enter) still quits — users
+	// can dismiss with Esc first if they want `q` to extend the query.
 	if msg.String() == "q" && m.focus == appshell.FocusEntryList {
-		if m.tailCancel != nil {
-			m.tailCancel()
+		if !(m.list.HasActiveSearch() && m.list.Search().InputMode()) {
+			if m.tailCancel != nil {
+				m.tailCancel()
+			}
+			return m, tea.Quit
 		}
-		return m, tea.Quit
 	}
 
 	// T-096: Tab cycles focus between visible panes. Tab never closes a
@@ -425,6 +430,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Open filter panel.
 		if msg.String() == "f" {
+			// T-147 (cavekit-entry-list R13 AC 7): clear list-search state
+			// when focus transfers to the filter panel so a stale query +
+			// highlights do not linger after the user switches contexts.
+			if m.list.HasActiveSearch() {
+				m.list = m.list.DeactivateSearch()
+			}
 			m.focus = appshell.FocusFilterPanel
 			m.keyhints = m.keyhints.WithFocus(appshell.FocusFilterPanel)
 			return m, nil
