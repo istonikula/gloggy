@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T16:17:51+03:00"
+last_edited: "2026-04-18T20:24:39+03:00"
 ---
 
 # Cavekit: Entry List
@@ -147,7 +147,8 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] Pressing `n` moves the cursor to the next matching entry (wrapping with an indicator at the end); `N` moves to the previous (wrapping at the start)
 - [ ] [auto] Cursor movement via `n`/`N` honours R12 scrolloff — the cursor lands with `scrolloff` rows of context above and below where the filtered-entry set permits
 - [ ] [auto] Pressing Esc dismisses the search input, clears the `SearchHighlight` bg on all rows, and leaves the cursor at its current position
-- [ ] [auto] Search state is cleared automatically when the list loses focus via Tab cycle OR when filters change (a filter change invalidates the match set)
+- [ ] [auto] Search state is cleared automatically on every focus-loss trigger from the list — Tab cycle, `f` (transfer to filter panel), mouse click in any non-list zone — AND when filters change (a filter change invalidates the match set)
+- [ ] [auto] When entries arrive during active search (via `AppendEntries` on batch load or tail), newly arriving entries that match the query join the match set and render with `SearchHighlight` bg; `(current/total)` reflects the live total without requiring the user to re-type the query
 - [ ] [auto] List search does NOT modify the filter engine — entries that do not match the query remain visible (non-highlighted) in the list
 - [ ] [auto] Backspace on a query containing multi-byte runes (emoji / CJK) removes exactly one rune without corrupting UTF-8
 - [ ] [auto] The cursor-row bg (R1, R12) takes visual priority over the `SearchHighlight` bg on the same row — other matching rows keep their `SearchHighlight` styling normally
@@ -180,6 +181,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - **Affected:** new R12
 - **Summary:** Added R12 to legislate nvim-style `scrolloff` on the entry list — the viewport keeps a configurable number of context rows (default 5, shared top-level `scrolloff` config) between cursor and edges. All cursor-moving navigation (j/k, g/G, PgDn/PgUp, level-jump, mark-jump) adjusts the viewport to honour the margin; mouse wheel drags the cursor along when the cursor would leave the margin. Same config key used by cavekit-detail-pane.md R11 — users tune one number for both panes. Companion to DESIGN.md §4.3 "Shared scrolloff" subsection.
 - **Driven by:** `/ck:check` run 2026-04-18 after user report "I still see no row highlight where cursor is when focused on details pane" + follow-up "scrolloff should be implemented on the list as well". Addresses finding F-026 (list portion).
+
+### 2026-04-18 — Revision (R13 focus-loss triggers + streaming matches)
+- **Affected:** R13 (AC expansion)
+- **Summary:** R13 AC 7 broadened from "Tab cycle OR filter change" to enumerate every focus-loss trigger that must clear search: Tab cycle, `f` (transfer to filter panel), mouse click in non-list zone. New AC added for streaming entries: when `AppendEntries` delivers new entries while search is active, matching new entries join the match set and `(current/total)` updates live. Discovered during `/ck:check` after Tier 15/16 — `f` transfer left search rendered while filter panel focused (F-108); tail/batch entries silently skipped by `n`/`N` (F-109).
+- **Driven by:** `/ck:check` 2026-04-18 (post-Tier 15/16), findings F-108 (P2) + F-109 (P2). Paired tasks T-147 + T-148.
 
 ### 2026-04-18 — Revision (R13 free-text list search)
 - **Affected:** new R13

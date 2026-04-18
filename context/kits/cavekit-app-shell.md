@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T16:17:51+03:00"
+last_edited: "2026-04-18T20:24:39+03:00"
 ---
 
 # Cavekit: App Shell
@@ -170,6 +170,16 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [human] On `logs/small.log` with list focused (no pane open), pressing `/` opens list search (not a "open an entry first" notice); pressing Tab to focus the pane (with pane open) then `/` opens pane search
 **Dependencies:** cavekit-detail-pane R7 (detail-pane search activation target), cavekit-entry-list R13 (list search activation target), cavekit-config (theme for keyhint styling)
 
+### R14: Global Key-Intercept Ordering under Active In-Pane Search
+**Description:** Global single-key reservations at the top of the app-shell key handler (currently `q` for quit, `Tab` for focus cycle, `?` for help, `Esc` priority chain) MUST NOT pre-empt a pane's active in-pane search input handler. When any pane's search is in **input mode**, every printable rune — including reserved letters like `q` — MUST reach the search model before global reservations apply. `Tab` is exempt: it remains a valid search-dismissal trigger (R11 focus cycle clears search per entry-list R13 AC 7). `Esc` is exempt: it remains the canonical dismissal key and is routed through the pane's search handler first (entry-list R13, detail-pane R7), only falling through to the Esc priority chain (R11) when search is already dismissed. `?` opens the help overlay regardless — search state is preserved while the overlay is up and restored on Esc. The reservation split exists so a user typing a query containing any reserved letter never loses the query or the session.
+**Acceptance Criteria:**
+- [ ] [auto] With list-search active in input mode, pressing `q` extends the query by `q` — the app does NOT emit `tea.Quit`
+- [ ] [auto] With detail-pane-search active in input mode, pressing `q` extends the query by `q`
+- [ ] [auto] After list-search is dismissed (Esc / commit-to-navigate), `q` with list focus emits `tea.Quit` as usual
+- [ ] [auto] With search active in input mode, `Tab` exits input mode via the focus-cycle branch (dismisses search per entry-list R13 AC 7) instead of being typed into the query
+- [ ] [auto] With search active in input mode, `?` opens the help overlay; after `?`-Esc the search model still has its prior query and mode
+**Dependencies:** cavekit-entry-list R13 (list search target), cavekit-detail-pane R7 (pane search target), R11 (focus cycle via Tab), R13 (`/` activation)
+
 ## Out of Scope
 
 - Domain-specific logic (parsing, filtering, rendering details -- all delegated)
@@ -185,6 +195,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-18 — Revision (new R14 global key-intercept ordering under active search)
+- **Affected:** new R14
+- **Summary:** Added R14 to legislate that global single-key reservations (`q`, `Tab`, `?`, `Esc`) must not pre-empt an active in-pane search in input mode. Discovered during `/ck:check` after Tier 15/16 build: T-144-fix rewired Enter/Esc into the search router but left `q` on the pre-intercept side — a user typing `query`/`queue`/`quit` into list-search would quit the app and lose their session. R14 codifies the required ordering so the fix has a kit anchor.
+- **Driven by:** `/ck:check` 2026-04-18 (post-Tier 15/16), finding F-106 (P1 data-loss regression). Paired task T-146.
 
 ### 2026-04-18 — Revision (R9 clipboard feedback + R13 focus-based `/` routing)
 - **Affected:** R9, R13

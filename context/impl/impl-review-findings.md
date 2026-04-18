@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-18T16:17:51+03:00"
+last_edited: "2026-04-18T20:24:39+03:00"
 ---
 
 # Review Findings
@@ -108,3 +108,37 @@ Verdict: REVISE — two P1 findings (F-102 silent clipboard failure, F-105 non-c
 - Secondary observation during repro: the `|` ratio-preset cycle in right-orientation does not visibly change the pane widths in the rendered output even though the internal ratio state updates (both 0.10 and 0.70 presets render at the same visible widths). Likely adjacent to F-103 — once width accounting is single-owner, the ratio math should also take effect. If not, surface as F-106 in a follow-up check.
 - Kit revisions in this run: cavekit-app-shell.md R9 (expanded to 10 ACs), cavekit-app-shell.md R13 (rewritten to focus-based routing), cavekit-entry-list.md R13 (NEW), cavekit-detail-pane.md R9 (SGR-across-wrap AC added), cavekit-detail-pane.md R10 (single-owner border AC added), cavekit-detail-pane.md R11 (contiguous cursor bg AC added + human sign-off on `tiny.log:45`).
 - DESIGN.md §4 matrix + §9 keymap must be amended to mention the cursor-row contiguity clause and list-search keymap row respectively.
+
+---
+
+## /ck:check run 2026-04-18 (post-Tier 15/16 — intercept ordering, focus-loss, streaming matches)
+
+Source: automated `/ck:check` after Tier 15 + Tier 16 HUMAN sign-off. Goal-backward verifier confirmed 52/55 Tier-15/16 ACs MET, 0 STUB, 0 falsely_complete tasks, 485/485 tests P. Surveyor reported 50/56 reqs COMPLETE; 5 PARTIAL + 1 MISSING + 1 DESIGN VIOLATION are **pre-existing** filter-subsystem latency (not introduced this loop) and the help-overlay chrome. Inspector flagged 10 review findings below.
+
+Verdict: **REVISE** — P1 F-106 is a user-visible data-loss regression introduced by T-144-fix (global `q`-quit intercept pre-empts active list-search input). Kit gaps codified as cavekit-app-shell R14 (NEW) + cavekit-entry-list R13 AC 7 broadening + R13 streaming AC.
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-106: Global `q`-quit intercept pre-empts list-search input mode — user typing query containing `q` quits app with data loss | P1 | `internal/ui/app/model.go:292-297` (fires before FocusEntryList search redirect at `:400`) | NEW | T-146 |
+| F-107: Dead function `SearchModel.searchHighlightStyle()` + unused `lipgloss` import | P2 | `internal/ui/entrylist/search.go:208-213` | NEW | T-149 |
+| F-108: `f` focus-transfer to filter panel does NOT clear list-search state; keyhint suppresses but View() still injects search prompt | P2 | `internal/ui/app/model.go:427-431`; kit AC 7 only enumerated Tab + filter-change | NEW | T-147 |
+| F-109: Streaming entries arriving during active list search don't update match set or `(cur/total)` counter | P2 | `internal/ui/entrylist/list.go:92-97` (`AppendEntries`); `internal/ui/app/model.go:199-237` (EntryBatchMsg/TailMsg) | NEW | T-148 |
+| F-110: Clipboard notice hides list-search prompt for 2-3s when both coincide — contradicts R13 AC 3 literal reading | P2 | `internal/ui/app/model.go:573-575` gates on `!HasNotice()` | NEW | deferred (kit amendment proposal or UX compose) |
+| F-111: `composeSearchRow` byte-indexed msg truncation can split multi-byte runes (mirrored pre-existing bug from `row.go:76`) | P3 | `internal/ui/entrylist/search.go:192-194` + `internal/ui/entrylist/row.go:76-78` | NEW | deferred — scope beyond T-143 |
+| F-112: `SearchModel` shape diverges between entrylist (`Deactivate`/`InputMode()`) and detailpane (`Dismiss`/`Mode()`) | P3 | `internal/ui/entrylist/search.go` vs `internal/ui/detailpane/search.go` | NEW | deferred — quality only |
+| F-113: `preserveSGRAcrossBreaks` accumulates unbounded SGR opens without dedup | P3 | `internal/ui/detailpane/wrap.go:62-91` | NEW | NOTED — not observable at current scale |
+| F-114: `computeMatches` O(rows × query-composition) per keystroke, no benchmark / debounce | P3 | `internal/ui/entrylist/search.go:149-165` | NEW | NOTED — defer until large-log lag reported |
+| F-115: No test pins behavior for "list-search active → `f` → ???" | P3 | `internal/ui/app/model_test.go` | NEW | bundled with T-147 |
+
+### Kit revisions in this run
+
+- **cavekit-app-shell.md R14 (NEW)** — "Global Key-Intercept Ordering under Active In-Pane Search". Codifies that `q`/`Tab`/`?`/`Esc` global reservations must not pre-empt pane search in input mode. Adds 5 ACs covering the `q`-quit exemption (both list + pane search), `Tab` dismissal-via-focus-cycle, `?` help preserving + restoring search state, and `q` reverting to Quit after search dismissed. Driven by F-106 (P1).
+- **cavekit-entry-list.md R13 (AC expansion)** — AC 7 broadened from "Tab cycle OR filter change" to enumerate ALL focus-loss triggers (Tab, `f` transfer, mouse click off list). New AC added for streaming entries: `AppendEntries` with active search recomputes match set for appended slice and keeps `(current/total)` live. Driven by F-108 + F-109 (both P2).
+
+### Context carried forward for the next `/ck:make`
+
+- Tier 17 (T-146..T-150) addresses F-106, F-107, F-108, F-109, F-115. Execute T-146 first — P1 data-loss blocker. T-147/T-148/T-149 are disjoint-file and parallelizable. T-150 HUMAN gate last.
+- F-110 (clipboard notice hides search prompt) — pick up later; likely a UX compose fix + an AC 3 kit carve-out. Not a build blocker.
+- F-111 (byte-indexed truncation) mirrors pre-existing `row.go:76` bug — fix both sites or adopt `ansi.Truncate` uniformly in a future quality tier.
+- F-112/F-113/F-114 are quality/perf polish items; defer unless user reports lag or inconsistency.
+- Surveyor-flagged pre-existing gaps (filter subsystem invisibility: filter-engine R4/R5/R6, detail-pane R5/R8, entry-list R4 two-level cursor, app-shell R5 help-overlay chrome) are NOT included in Tier 17 — they predate this loop. Candidates for a future "filter UX" tier if/when user surfaces them.
