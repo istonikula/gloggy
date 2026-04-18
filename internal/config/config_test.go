@@ -194,6 +194,61 @@ wrap_mode = "telepathic"
 	}
 }
 
+// T-130: shared top-level scrolloff config.
+func TestDefaultConfig_ScrolloffIs5(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Scrolloff != 5 {
+		t.Errorf("default scrolloff: want 5, got %d", cfg.Scrolloff)
+	}
+}
+
+func TestScrolloff_OverrideRoundTrips(t *testing.T) {
+	input := `scrolloff = 12
+`
+	result := LoadFromBytes([]byte(input))
+	if len(result.Warnings) != 0 {
+		t.Fatalf("unexpected warnings on valid scrolloff: %v", result.Warnings)
+	}
+	if result.Config.Scrolloff != 12 {
+		t.Errorf("override scrolloff: want 12, got %d", result.Config.Scrolloff)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := Save(path, result); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded := Load(path)
+	if reloaded.Config.Scrolloff != 12 {
+		t.Errorf("reloaded scrolloff: want 12, got %d", reloaded.Config.Scrolloff)
+	}
+}
+
+func TestScrolloff_NegativeClampedToZero(t *testing.T) {
+	result := LoadFromBytes([]byte(`scrolloff = -3
+`))
+	if result.Config.Scrolloff != 0 {
+		t.Errorf("negative scrolloff should clamp to 0, got %d", result.Config.Scrolloff)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "scrolloff") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about scrolloff, got %v", result.Warnings)
+	}
+}
+
+func TestScrolloff_MissingKeyUsesDefault(t *testing.T) {
+	result := LoadFromBytes([]byte(`theme = "tokyo-night"
+`))
+	if result.Config.Scrolloff != 5 {
+		t.Errorf("missing scrolloff should default to 5, got %d", result.Config.Scrolloff)
+	}
+}
+
 func TestSave_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "config.toml")

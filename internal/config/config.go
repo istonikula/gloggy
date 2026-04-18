@@ -17,6 +17,10 @@ type Config struct {
 	HiddenFields []string   `toml:"hidden_fields"`
 	LoggerDepth  int        `toml:"logger_depth"`
 	DetailPane   DetailPane `toml:"detail_pane"`
+	// Scrolloff is the shared top-level cursor margin honoured by both the
+	// entry list (R12) and the detail pane (R11). Single key so users tune
+	// one "context rows" value for both panes (cavekit-config R5, T-130).
+	Scrolloff int `toml:"scrolloff"`
 }
 
 // CompactRow holds settings for the compact table row display.
@@ -51,6 +55,7 @@ func DefaultConfig() Config {
 			OrientationThresholdCols: 100,
 			WrapMode:                 "soft",
 		},
+		Scrolloff: 5,
 	}
 }
 
@@ -129,6 +134,9 @@ func mergeWithDefaults(cfg Config, raw map[string]any, defaults Config) Config {
 	if _, ok := raw["hidden_fields"]; !ok {
 		cfg.HiddenFields = defaults.HiddenFields
 	}
+	if _, ok := raw["scrolloff"]; !ok {
+		cfg.Scrolloff = defaults.Scrolloff
+	}
 
 	if cr, ok := raw["compact_row"]; ok {
 		if cm, ok := cr.(map[string]any); ok {
@@ -206,6 +214,10 @@ func validateConfig(cfg Config, defaults Config) (Config, []string) {
 		warnings = append(warnings, fmt.Sprintf("invalid detail_pane.orientation_threshold_cols %d, using default %d", cfg.DetailPane.OrientationThresholdCols, defaults.DetailPane.OrientationThresholdCols))
 		cfg.DetailPane.OrientationThresholdCols = defaults.DetailPane.OrientationThresholdCols
 	}
+	if cfg.Scrolloff < 0 {
+		warnings = append(warnings, fmt.Sprintf("invalid scrolloff %d, clamping to 0", cfg.Scrolloff))
+		cfg.Scrolloff = 0
+	}
 	switch cfg.DetailPane.WrapMode {
 	case "soft", "scroll", "modal":
 		// valid (only "soft" is shipping; others reserved per kit)
@@ -229,6 +241,7 @@ func Save(path string, result LoadResult) error {
 	output["theme"] = result.Config.Theme
 	output["logger_depth"] = result.Config.LoggerDepth
 	output["hidden_fields"] = result.Config.HiddenFields
+	output["scrolloff"] = result.Config.Scrolloff
 
 	compact := make(map[string]any)
 	if existing, ok := output["compact_row"].(map[string]any); ok {
