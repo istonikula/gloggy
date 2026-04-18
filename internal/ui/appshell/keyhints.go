@@ -88,6 +88,23 @@ func (m KeyHintBarModel) View() string {
 
 	var parts []string
 	for _, kb := range bindings {
+		// T-121 (app-shell R13): replace the static `/` description
+		// when focused on the entry list so the keyhint reflects the
+		// actual pane-state scope. Hide `/` entirely when the filter
+		// panel is focused — `/` is a literal input there.
+		if kb.Key == "/" {
+			if m.focus == FocusFilterPanel {
+				continue
+			}
+			if m.focus == FocusEntryList {
+				if m.paneOpen {
+					parts = append(parts, "/: search pane")
+				} else {
+					parts = append(parts, "/: search (open entry first)")
+				}
+				continue
+			}
+		}
 		parts = append(parts, kb.Key+": "+kb.Desc)
 	}
 

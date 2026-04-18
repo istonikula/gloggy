@@ -31,6 +31,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "Ctrl+d", Desc: "Half page down"},
 			{Key: "Ctrl+u", Desc: "Half page up"},
 			{Key: "Enter", Desc: "Open entry in detail pane"},
+			{Key: "/", Desc: "Search inside detail pane (opens pane if open, notice if closed)"},
 			{Key: "m", Desc: "Toggle mark on current entry"},
 			{Key: "u", Desc: "Jump to next mark"},
 			{Key: "U", Desc: "Jump to previous mark"},
@@ -39,7 +40,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "j/↓", Desc: "Scroll down"},
 			{Key: "k/↑", Desc: "Scroll up"},
 			{Key: "q/Esc", Desc: "Close detail pane"},
-			{Key: "/", Desc: "Open in-pane search"},
+			{Key: "/", Desc: "Search inside this pane (Enter commits to navigate mode)"},
 			{Key: "n/N", Desc: "Next/prev search match"},
 		},
 		DomainFilterPanel: {

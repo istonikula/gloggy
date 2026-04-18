@@ -27,5 +27,5 @@ Build site: context/plans/build-site.md
 | T-117 | DONE | `app.Update` dismisses `paneSearch` on `BlurredMsg`; `openPane` dismisses on each new entry. 2 tests verifying query/active cleared across open/close and across entries. Closes F-006. |
 | T-118 | DONE | `SearchModel.mode` (Input|Navigate) with `Mode()` accessor; Enter commits input→navigate; `/` re-enters input preserving query; n/N literal-append in input, navigate in navigate; app forwards non-search keys to `pane.Update` when navigate. 8 tests. Closes F-008. |
 | T-119 | DONE | Backspace rune-slices `m.query` via `[]rune(m.query)[:len-1]`. Unit test covers ascii / café / 日本語 / 🚀x. Closes F-009. |
-| T-120 | NEW | Integration test for two-step Esc (dismiss search → close pane). Closes F-007. |
+| T-120 | DONE | `TestModel_TwoStepEsc_DismissesSearchThenClosesPane` in app/model_test.go — open pane → `/` → type → first Esc (search dismissed, pane stays open); second Esc (pane closes + BlurredMsg + focus returns to list). Closes F-007. |
 | T-122 | NEW | [HUMAN] `/` search end-to-end sign-off via tui-mcp per overview Verification Conventions. |

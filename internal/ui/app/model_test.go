@@ -812,6 +812,57 @@ func TestModel_PaneSearch_DismissedOnReopen(t *testing.T) {
 	}
 }
 
+// ---------- T-120: two-step Esc integration (cavekit-detail-pane R7 / F-007) ----------
+
+// TestModel_TwoStepEsc_DismissesSearchThenClosesPane verifies the
+// cavekit R7 "two-step Esc" contract: first Esc with search active
+// dismisses search and leaves the pane open; second Esc closes the pane.
+func TestModel_TwoStepEsc_DismissesSearchThenClosesPane(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "enter") // open pane
+	m = key(m, "/")     // activate search
+	m = key(m, "h")     // type something to exercise the query path
+	if !m.paneSearch.IsActive() {
+		t.Fatal("precondition: search should be active before first Esc")
+	}
+	if !m.pane.IsOpen() {
+		t.Fatal("precondition: pane should be open before first Esc")
+	}
+
+	// First Esc — dismisses search, pane stays open.
+	m = key(m, "esc")
+	if m.paneSearch.IsActive() {
+		t.Error("first Esc should dismiss search")
+	}
+	if !m.pane.IsOpen() {
+		t.Error("first Esc should NOT close the pane")
+	}
+	if m.focus != appshell.FocusDetailPane {
+		t.Errorf("after first Esc focus should remain FocusDetailPane, got %v", m.focus)
+	}
+
+	// Second Esc — closes the pane. Pane emits BlurredMsg which we
+	// deliver to the model to complete the focus handoff.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.pane.IsOpen() {
+		t.Error("second Esc should close the pane")
+	}
+	if cmd == nil {
+		t.Fatal("second Esc should return BlurredMsg cmd")
+	}
+	blurMsg := cmd()
+	if _, ok := blurMsg.(detailpane.BlurredMsg); !ok {
+		t.Fatalf("second Esc should emit BlurredMsg, got %T", blurMsg)
+	}
+	m = send(m, blurMsg)
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("focus after second Esc: got %v, want FocusEntryList", m.focus)
+	}
+}
+
 // ---------- T-116: cross-pane `/` activation (app-shell R13 / F-001, F-011) ----------
 
 // TestModel_Slash_ListFocus_PaneOpen_TransfersAndActivates verifies that
