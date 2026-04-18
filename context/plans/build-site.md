@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T21:00:22+03:00"
+last_edited: "2026-04-18T23:06:24+03:00"
 ---
 
 # Build Site: gloggy
@@ -13,11 +13,11 @@ last_edited: "2026-04-18T21:00:22+03:00"
 | Metric | Value |
 |---|---|
 | Source Kits | 6 domains |
-| Requirements | 60 |
-| Acceptance Criteria | ~360 |
-| Plan Tasks | 154 |
-| Human Sign-off Tasks | 19 |
-| Tiers | 18 (0 through 17) |
+| Requirements | 56 |
+| Acceptance Criteria | 291 (reconciled from Coverage Totals; prior `~360` estimate was loose) |
+| Plan Tasks | 159 |
+| Human Sign-off Tasks | 20 |
+| Tiers | 19 (0 through 18; Tier 18 labelled **Tier 18** in this doc, 2026-04-18 resize revision appended as **Tier 19**) |
 
 ---
 
@@ -294,6 +294,18 @@ Verdict on the Tier 17 loop was **APPROVE** (12/12 verifier MET, 0 P0/P1 inspect
 | T-153 | Add regression test for R14 AC 5 (`?`-Esc preserves search state) (F-118) | app-shell/R14 AC 5 | T-146 | XS | In `internal/ui/app/model_test.go`, new test `TestModel_HelpOverlay_PreservesListSearchState`: activate list search, type a partial query (e.g. `"abc"`), press `?`, press `Esc`, assert `m.list.HasActiveSearch() == true && m.list.Search().Query() == "abc" && m.list.Search().InputMode() == true`. Closes F-118 (P3 test-pin gap). |
 | T-154 | Add regression test for R13 AC 7 mouse-click-off-list clears search (F-119) | entry-list/R13 AC 7 | T-147 | XS | In `internal/ui/app/model_test.go`, new test `TestModel_MouseClick_DetailZone_ClearsActiveListSearch`: open pane, activate list search, send a `tea.MouseMsg` with `Type=MouseLeft,Action=Press` and coords inside the detail pane zone, assert `m.list.HasActiveSearch() == false && m.focus == appshell.FocusDetailPane`. Closes F-119 (P3 test-pin gap). |
 
+### Tier 19 -- Resize Revision + Click-Row Alignment (kit revision 2026-04-18, commit cc1c826)
+
+Kit revision `cc1c826` rewrote `cavekit-app-shell` R12 (keyboard resize → focus-aware, presets reduced to `{0.30, 0.50}`), introduced new R15 (mouse-drag resize owns its own requirement with live updates, single persist-on-release, focus-neutral, clamp-pin), added one AC to R6 (divider-cell clicks are focus-neutral), and rewrote `cavekit-entry-list` R10 (single-owner click-row resolver to fix the 2-row offset bug). `cavekit-detail-pane` R6 ACs were cross-ref touch-ups only — no net new ACs, the drag behaviour is now supplied transitively by T-156. Tier 19 has 5 tasks (4 auto + 1 HUMAN sign-off); T-155/T-156/T-158 are parallelizable, T-157 waits on T-156, T-159 gates on all four.
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-155 | Focus-aware keyboard resize rewrite (R12) | app-shell/R12 (rewritten) | T-098, T-096 | M | In `internal/ui/app/ratiokeys.go` (or wherever T-098's handler currently lives): read `m.focus` to determine target. When `FocusDetailPane`, keys act on the detail pane's ratio directly; when `FocusEntryList`, keys act on the list share (the complement of the detail ratio). Change preset set from `{0.10, 0.30, 0.70}` to `{0.30, 0.50}` — delete the 0.10 and 0.70 branches; `|` toggles between the two presets on the focused pane's share. `+` grows the focused pane's share by 0.05; `-` shrinks by 0.05. `=` always resets detail ratio to `0.30` (list share `0.70`) regardless of which pane is focused — "reset" is a global return-to-baseline, not focus-directional. Clamp detail ratio to `[0.10, 0.80]`; at the clamp boundary, further motion in the same direction is a no-op (not wrap). When the detail pane is closed (only the list visible), all four keys are silent no-ops — no ratio change, no error, no config write. Ratio changes continue to persist via T-099's live write-back. Tests cover all 10 auto ACs across both orientations × both focus states + the pane-closed no-op. |
+| T-156 | Mouse-drag resize ownership (new R15) | app-shell/R15 | T-094, T-098, T-099 | M | Create `internal/ui/appshell/dragresize.go` (or equivalent). Track press+hold of mouse-button-1 on the divider cell as start-of-drag. Subsequent `tea.MouseMsg` move events while the button is held update the active ratio live (`height_ratio` in below-mode, `width_ratio` in right-mode) proportional to cursor displacement along the drag axis — one visible move per event, no throttling that stutters. Release (button-up) writes the final ratio to the config file via T-099 exactly ONCE per drag (not once per mouse-move frame). Drag is focus-neutral — `m.focus` never changes as a result of drag. Dragging past the `[0.10, 0.80]` clamp pins the ratio at the boundary; further cursor motion in the same direction is a no-op until the cursor re-enters the valid range (no auto-close). Starting a drag with the detail pane closed is a silent no-op (no divider cell to grab). Replaces whatever drag logic existed under the former R6 AC "Mouse drag on the pane divider between entry list and detail pane triggers pane resize". Tests cover all 8 auto ACs: press-hold initiates, live update on move, single write on release, below + right direction semantics, focus unchanged, clamp-pin, pane-closed no-op. |
+| T-157 | Divider-cell click is focus-neutral (R6 new AC) | app-shell/R6 (new AC) | T-095, T-156 | XS | In `internal/ui/appshell/mouse.go` (the T-094/T-095 routing): when a click lands on the divider cell itself (the 1-column vertical divider in right-mode, the 1-row horizontal border in below-mode), do NOT transfer focus — the cell is reserved for T-156's drag initiation. A press event on the divider cell is consumed by the drag handler (T-156); a non-press mouse event on the divider cell is dropped. Unit test: with detail pane open, click at the divider X/Y → `m.focus` is unchanged (whatever it was before the click). |
+| T-158 | Single-owner click-row resolver (R10 rewrite, 2-row-offset fix) | entry-list/R10 (rewritten) | T-040, T-088, T-094 | M | Make click-to-row resolution the single responsibility of app-shell layout math (owned by cavekit-app-shell R2 per the revised R10 wording). In `internal/ui/appshell/layout.go` (or R2's current owner) expose a resolver `ClickToListRow(terminalY int) (rowIdx int, ok bool)` that subtracts exactly `headerHeight (1) + listTopBorder (0 or 1)` — using values read from the layout state, never re-derived. In `internal/ui/entrylist/` mouse handler: remove any local Y-coordinate arithmetic and delegate to the resolver. Out-of-bounds Y (on header bar, status bar, divider cell, or inside the detail pane) returns `ok=false` — partitioning is owned by app-shell R6 routing. Double-click uses the same resolver so the Nth visible row always opens the detail pane for the Nth visible row. Unit tests span all `(orientation × focus-state)` combinations, proving: no double-subtract (would send clicks too low), no missing-subtract (would send clicks too high), out-of-bounds Y returns not-ok, double-click parity with single-click. Closes the user-reported "click row 1 highlights row 3" offset. |
+| T-159 | [HUMAN] Resize revision + click-row sign-off (tui-mcp) | app-shell/R12+R15, entry-list/R10 (human ACs) | T-155, T-156, T-157, T-158 | S | Per overview Verification Conventions §1–§5, verify via tui-mcp on `logs/small.log` at `80x24` + `140x35` in both right and below orientations (tokyo-night suffices for behavioural ACs; all 3 themes only if the AC touches perceptual readability). **(a) Keyboard resize (R12):** launch TUI → open detail pane → focus list → press `+` and `snapshot` to verify list region grew by the expected row/col in the current orientation; repeat with detail focused; verify `|` toggles 0.30 ↔ 0.50 share on the focused pane; verify `=` resets detail to 0.30 regardless of focus; verify clamp-pin at 0.10 and 0.80 (press key at boundary → no change in subsequent `snapshot`); close detail pane → all four keys are silent no-ops. **(b) Mouse drag (R15):** with detail pane open, use `send_mouse` to press-hold on the divider cell, move to a target coord, release. `snapshot` before/after: divider moved, pane dimensions changed proportionally, config file reflects new ratio, exactly one config mtime change during the sequence. Repeat in both orientations. If `send_mouse` cannot emit press-hold+move+release reliably on this platform, record the limitation in impl-tracking notes and fall back to direct human sign-off. **(c) Click-row alignment (R10):** `snapshot` to capture the coordinates of visible rows 1, 2, 5, and the last row; `send_mouse` click each; `snapshot` again and verify the cursor highlight lies on the clicked row (no 1- or 2-row offset). Repeat with detail pane open in both below-mode and right-mode. |
+
 ---
 
 ## Dependency Graph
@@ -520,7 +532,23 @@ graph LR
     T-103 --> T-110
     T-088 --> T-110
     T-060 --> T-110
+    T-098 --> T-155
+    T-096 --> T-155
+    T-094 --> T-156
+    T-098 --> T-156
+    T-099 --> T-156
+    T-095 --> T-157
+    T-156 --> T-157
+    T-040 --> T-158
+    T-088 --> T-158
+    T-094 --> T-158
+    T-155 --> T-159
+    T-156 --> T-159
+    T-157 --> T-159
+    T-158 --> T-159
 ```
+
+> Note: Tier 11-18 edges are intentionally not present in the mermaid block above — those tiers were added after the graph was first drawn and have their blocker chains recorded in the per-tier `blockedBy` columns instead. Tier 19 edges above use the same `blockedBy` data.
 
 ---
 
@@ -683,10 +711,12 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R9 | 3 | Pressing `u` moves the cursor to the next marked entry | T-033 | COVERED |
 | R9 | 4 | Pressing `U` moves the cursor to the previous marked entry | T-033 | COVERED |
 | R9 | 5 | Mark navigation wraps with an indicator when reaching the end/beginning | T-033, T-067 | COVERED |
-| R10 | 1 | When the cursor moves to a new entry, a selection signal is emitted with that entry's data | T-034 | COVERED |
-| R10 | 2 | Clicking on an entry row with the mouse selects that entry | T-040 | COVERED |
-| R10 | 3 | Mouse scroll wheel scrolls the list | T-040 | COVERED |
-| R10 | 4 | Double-clicking an entry opens the detail pane for that entry | T-040 | COVERED |
+| R10 | 1 | Clicking on an entry row with the mouse selects **that** entry (the visually clicked row, not an offset row) | T-158 | COVERED |
+| R10 | 2 | Click-to-row resolver single-owner in app-shell R2 layout math; subtracts header + list top border exactly once (no double-subtract, no missing-subtract) | T-158 | COVERED |
+| R10 | 3 | Terminal Y outside list content area (header, status, divider, or detail pane) is NOT routed to the list — partitioning owned by app-shell R6 | T-158, T-157 | COVERED |
+| R10 | 4 | Double-click uses the same click-to-row resolver as single-click | T-158 | COVERED |
+| R10 | 5 | Mouse scroll wheel scrolls the list | T-040 | COVERED |
+| R10 | 6 | [human, tui-mcp] Click coords on rows 1, 2, 5, last → cursor highlight lands on the clicked row (no offset) in both orientations | T-159 | COVERED |
 | R11 | 1 | The list model exposes the current cursor position as a 1-based index within the visible entry set | T-080 | COVERED |
 | R11 | 2 | The cursor position updates when the cursor moves (j/k, g/G, level-jump, mark-nav) | T-080 | COVERED |
 | R11 | 3 | When filters change, the cursor position reflects the new filtered set | T-080 | COVERED |
@@ -726,11 +756,11 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R6 | 2 | Pressing `+` while the detail pane is focused increases its height | T-042, T-098 | COVERED |
 | R6 | 3 | Pressing `-` while the detail pane is focused decreases its height | T-042, T-098 | COVERED |
 | R6 | 4 | After a terminal resize event, the pane maintains its proportional height | T-042, T-108 | COVERED |
-| R6 | 5 | Mouse drag on the pane divider resizes the pane | T-042 | COVERED |
+| R6 | 5 | Mouse drag on the pane divider resizes the pane per cavekit-app-shell R15 semantics | T-156 | COVERED |
 | R6 | 6 | In right orientation the detail pane opens at the configured width ratio | T-104 | COVERED |
 | R6 | 7 | Pressing `+` while the detail pane is focused in right orientation increases its width ratio | T-104, T-098 | COVERED |
 | R6 | 8 | Pressing `-` while the detail pane is focused in right orientation decreases its width ratio | T-104, T-098 | COVERED |
-| R6 | 9 | Mouse drag on the vertical divider in right orientation resizes the pane width | T-104, T-094 | COVERED |
+| R6 | 9 | Mouse drag on the vertical divider in right orientation resizes the pane width per cavekit-app-shell R15 semantics | T-156, T-104, T-094 | COVERED |
 | R6 | 10 | Flipping orientation from below to right preserves the previous height_ratio, and flipping back restores it | T-105 | COVERED |
 | R7 | 1 | Pressing `/` while the detail pane is focused opens a search input within the pane | T-043 | COVERED |
 | R7 | 2 | Typing a search term highlights matching text in the pane content | T-043 | COVERED |
@@ -789,11 +819,13 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R5 | 4 | While the help overlay is open, other keybindings are not processed | T-051 | COVERED |
 | R6 | 1 | Mouse events in the entry list area are routed to the entry list | T-052 | COVERED |
 | R6 | 2 | Mouse events in the detail pane area are routed to the detail pane | T-052 | COVERED |
-| R6 | 3 | Mouse drag on the pane divider triggers pane resize | T-052 | COVERED |
-| R6 | 4 | Mouse events do not cause crashes regardless of where in the terminal they occur | T-052 | COVERED |
-| R6 | 5 | In right-split orientation, mouse zones partition the main area horizontally into list / divider-column / detail | T-094 | COVERED |
-| R6 | 6 | A 1-cell buffer adjacent to the divider prevents clicks near the divider from being routed to the wrong pane | T-094 | COVERED |
-| R6 | 7 | Clicking inside a pane transfers focus to that pane | T-095 | COVERED |
+| R6 | 3 | Mouse events do not cause crashes regardless of where in the terminal they occur | T-052 | COVERED |
+| R6 | 4 | In right-split orientation, mouse zones partition the main area horizontally into list / divider-column / detail | T-094 | COVERED |
+| R6 | 5 | A 1-cell buffer adjacent to the divider prevents clicks near the divider from being routed to the wrong pane | T-094 | COVERED |
+| R6 | 6 | Clicking inside a pane transfers focus to that pane | T-095 | COVERED |
+| R6 | 7 | Clicks landing on the divider cell itself are NOT routed as focus-transfer clicks — the divider cell is reserved for R15 drag initiation; focus is unchanged by a click on the divider | T-157 | COVERED |
+
+_(Former R6 AC "Mouse drag on the pane divider triggers pane resize" was moved to R15 AC 1 in the 2026-04-18 revision — it is counted under R15, not under R6.)_
 | R7 | 1 | After a terminal resize, the layout fills the new terminal dimensions | T-053 | COVERED |
 | R7 | 2 | Pane proportions are preserved after resize | T-053 | COVERED |
 | R7 | 3 | No content is clipped or overlapping after resize | T-053 | COVERED |
@@ -825,27 +857,42 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R11 | 5 | Pressing Esc with no overlay open and the entry list focused clears transient state when present; otherwise no-op | T-097 | COVERED |
 | R11 | 6 | Clicking inside a pane focuses that pane | T-095 | COVERED |
 | R11 | 7 | Tab never closes a pane | T-096 | COVERED |
-| R12 | 1 | Pressing `\|` cycles the active ratio through the presets 0.10, 0.30, 0.70 | T-098 | COVERED |
-| R12 | 2 | Pressing `+` increases the active ratio by 0.05 | T-098 | COVERED |
-| R12 | 3 | Pressing `-` decreases the active ratio by 0.05 | T-098 | COVERED |
-| R12 | 4 | Pressing `=` resets the active ratio to 0.30 | T-098 | COVERED |
-| R12 | 5 | Ratio values are clamped to the range [0.10, 0.80] | T-098 | COVERED |
-| R12 | 6 | In below orientation the active ratio is height_ratio; in right orientation the active ratio is width_ratio | T-098 | COVERED |
-| R12 | 7 | Ratio changes are persisted to the config file via live write-back | T-099 | COVERED |
+| R12 | 1 | Pressing `\|` with the detail pane focused toggles detail ratio between 0.30 and 0.50 | T-155 | COVERED |
+| R12 | 2 | Pressing `\|` with the list focused toggles list share between 0.30 and 0.50 (detail 0.70 ↔ 0.50) | T-155 | COVERED |
+| R12 | 3 | Pressing `+` with the detail pane focused increases detail ratio by 0.05 | T-155 | COVERED |
+| R12 | 4 | Pressing `+` with the list focused decreases detail ratio by 0.05 (list grows) | T-155 | COVERED |
+| R12 | 5 | Pressing `-` is the symmetric inverse of `+` at each focus | T-155 | COVERED |
+| R12 | 6 | Pressing `=` sets detail ratio to 0.30 (list share 0.70) regardless of which pane is focused | T-155 | COVERED |
+| R12 | 7 | Detail ratio stays in `[0.10, 0.80]`; keys at the clamp boundary are no-ops, not wrap | T-155 | COVERED |
+| R12 | 8 | In below orientation the active dimension is `height_ratio`; in right orientation it is `width_ratio` | T-155 | COVERED |
+| R12 | 9 | Ratio changes are persisted to the config file via live write-back (config R6) | T-099, T-155 | COVERED |
+| R12 | 10 | When only the entry list is visible (detail pane closed), `\|`/`+`/`-`/`=` are silent no-ops — no ratio change, no error, no config write | T-155 | COVERED |
+| R12 | 11 | [human, tui-mcp] Keyboard resize verified across both focus states × both orientations + clamp-pin + pane-closed no-op | T-159 | COVERED |
+| R15 | 1 | Pressing and holding mouse-button-1 on the divider cell initiates a drag | T-156 | COVERED |
+| R15 | 2 | Mouse-move events while dragging update the active ratio live (height_ratio below-mode, width_ratio right-mode) proportional to cursor displacement along the drag axis | T-156 | COVERED |
+| R15 | 3 | Releasing mouse-button-1 writes the final ratio to the config file exactly once per drag | T-156, T-099 | COVERED |
+| R15 | 4 | Drag in below-mode: down grows the detail pane, up shrinks it | T-156 | COVERED |
+| R15 | 5 | Drag in right-mode: left grows the detail pane, right shrinks it | T-156 | COVERED |
+| R15 | 6 | Dragging does not change which pane has keyboard focus | T-156 | COVERED |
+| R15 | 7 | Dragging past the `[0.10, 0.80]` clamp pins the ratio at the boundary; further cursor motion in the same direction is a no-op until the cursor re-enters the valid range | T-156 | COVERED |
+| R15 | 8 | Starting a drag with the detail pane closed is a silent no-op — no divider cell to grab | T-156 | COVERED |
+| R15 | 9 | [human, tui-mcp] Mouse drag verified via `send_mouse` press-hold + move + release in both orientations, with single config write on release | T-159 | COVERED |
 
 ### Coverage Totals
+
+> Totals below reflect the current kit state including all revisions through 2026-04-18 (Tier 19 resize revision). The enumerated Coverage Matrix sections above are an approximation of the per-revision counts at matrix-generation time; individual cells stay correct, but Domain totals may round differently than the header Summary as kits pick up new ACs across tiers.
 
 | Domain | Requirements | Criteria | Covered | Gaps |
 |---|---|---|---|---|
 | log-source | 8 | 26 | 26 | 0 |
 | config | 7 | 32 | 32 | 0 |
 | filter-engine | 7 | 27 | 27 | 0 |
-| entry-list | 11 | 58 | 58 | 0 |
+| entry-list | 11 | 60 | 60 | 0 |
 | detail-pane | 10 | 53 | 53 | 0 |
-| app-shell | 12 | 80 | 80 | 0 |
-| **Total** | **55** | **276** | **276** | **0** |
+| app-shell | 13 | 93 | 93 | 0 |
+| **Total** | **56** | **291** | **291** | **0** |
 
-> All 276 enumerated criteria are covered by at least one task.
+> All enumerated criteria are covered by at least one task. Deltas from prior 276 total: R10 rewrite 4 → 6 ACs (+2). R12 rewrite 7 → 11 ACs (+4). R6: old AC 3 "mouse drag triggers pane resize" moved to R15 AC 1, new AC 7 "divider-cell click is focus-neutral" added → net 0. New R15 adds 9 ACs. Detail-pane R6 ACs 5/9 rewording only, no net change.
 
 ---
 
@@ -1009,6 +1056,16 @@ The 2026-04-17 kit revision (commit `a2fe53c`) added **27 new plan tasks** (T-08
 ---
 
 ## Revision Log
+
+### 2026-04-18 — Resize revision + click-row alignment (Tier 19)
+- **Source:** `/ck:sketch` session then `/ck:map` incremental append. Kit commit `cc1c826`. User feedback that drove the revision: "details pane presets: too many, 0.3 and 0.5 is enough" · "mouse drag (A5) does not work" · "when list pane is focused, +/- targeting it would be nice" · "there's something off with mouse row position calculation, when I click row 1, row 3 is highlighted, when on row 2, row 4 is highlighted, etc. it seems two rows off".
+- **Kits changed:** `cavekit-app-shell.md` R6 (1 AC moved to R15, 1 new AC for divider-cell focus-neutral); R12 (full rewrite — focus-aware, presets reduced from {0.10, 0.30, 0.70} to {0.30, 0.50}, +1 `[human, tui-mcp]` AC, pane-closed no-op made explicit; 7 ACs → 11 ACs); new R15 (mouse-drag ownership — 8 auto + 1 `[human, tui-mcp]`); `cavekit-detail-pane.md` R6 (cross-ref rewording only, 2 ACs now reference R15; preset list {0.30, 0.50} in description); `cavekit-entry-list.md` R10 (full rewrite — 4 ACs → 6 ACs; single-owner click-row resolver in app-shell R2, out-of-bounds partitioning delegated to R6, `[human, tui-mcp]` click-coord verification).
+- **Acceptance-criteria delta:** 276 → 291 (+15 net: R12 +4 (rewrite 7→11), R15 +9 (new), R10 +2 (rewrite 4→6), R6 net 0 (1 AC moved to R15 AC 1, 1 new AC added), detail-pane R6 wording-only).
+- **Requirement count delta:** 55 → 56 (+1 new: app-shell R15).
+- **Tasks added:** 5 (T-155 through T-159). T-155 rewrites the keyboard resize handler; T-156 carves mouse-drag resize out as its own subsystem with live updates + single persist + clamp-pin; T-157 closes the divider-cell focus-transfer loophole; T-158 folds click-row math into the layout layer so the 2-row offset can never recur; T-159 is the HUMAN sign-off gate exercising all three behaviours via tui-mcp.
+- **Tiers added:** 19 (resize + click-row). Previous tier ceiling was 18.
+- **Root cause recap:** Old R12 had three problems — presets were wrong for practical reading (0.10 too small, 0.70 too narrow for list), no focus-awareness (always targeted detail ratio), no pane-closed guard. Old R6 AC 3 claimed drag worked based on a shallow mouse-event-received assertion; in practice the drag produced no ratio change because release-to-persist was folded into move-to-update and neither path was reliable. Old R10 AC 2 ("Clicking on an entry row with the mouse selects that entry") passed because *some* row got selected, not because the *clicked* row did — header height (1) + list top border (1) were never subtracted from mouse Y.
+- **Commit history referenced:** T-098 (original ratio handler), T-094 (mouse zones in right-split), T-095 (click-to-focus), T-099 (live write-back), T-040 (original mouse handler), T-088 (right-split layout math).
 
 ### 2026-04-18 — Detail-pane nav + height + focus (Tier 13)
 - **Source:** `/ck:check` run on 2026-04-18 after user report: "details pane only portion of content visible (tiny.log:34) / no cursor position / no g/G / no autofocus". Findings F-013 through F-025.
