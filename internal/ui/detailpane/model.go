@@ -76,6 +76,16 @@ func (m PaneModel) contentWidth() int {
 // IsOpen returns true when the pane is visible.
 func (m PaneModel) IsOpen() bool { return m.open }
 
+// WithScrolloff sets the scrolloff margin (context rows kept around the
+// cursor during keyboard nav and mouse-wheel drag) on the inner ScrollModel.
+// Wired from the app layer by reading `cfg.Scrolloff` (T-130). Shared key
+// means both the list and this pane honour the same value (cavekit-config R5).
+// T-132 (F-026).
+func (m PaneModel) WithScrolloff(n int) PaneModel {
+	m.scroll = m.scroll.WithScrolloff(n)
+	return m
+}
+
 // WithHiddenFields stores the set of field names that should be suppressed
 // from JSON rendering. Pass the caller's current visibility list (typically
 // `VisibilityModel.HiddenFields()`) before calling Open so the set reaches
@@ -109,7 +119,9 @@ func (m PaneModel) Open(entry logsource.Entry) PaneModel {
 	m.entry = entry
 	m.open = true
 	m.rawContent = content
-	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.ContentHeight())
+	prevScrolloff := m.scroll.Scrolloff()
+	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.ContentHeight()).
+		WithScrolloff(prevScrolloff)
 	return m
 }
 
@@ -129,7 +141,9 @@ func (m PaneModel) Rerender() PaneModel {
 		content = RenderRaw(m.entry)
 	}
 	m.rawContent = content
-	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.ContentHeight())
+	prevScrolloff := m.scroll.Scrolloff()
+	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.ContentHeight()).
+		WithScrolloff(prevScrolloff)
 	m.scroll.offset = prevOffset
 	m.scroll = m.scroll.Clamp()
 	return m
@@ -194,12 +208,12 @@ func (m PaneModel) ContentHeight() int {
 	return h
 }
 
-// ScrollToLine adjusts the scroll offset so line index `idx` is visible
-// in the current viewport (T-115, cavekit R7). If idx is already inside
-// the window, the offset is unchanged; otherwise it scrolls the minimum
-// amount needed — aligning to the top when idx is above, to the bottom
-// when idx is below. Negative indices and out-of-range values are
-// clamped by the underlying scroll model.
+// ScrollToLine moves the cursor to `idx` and scrolls the viewport so the
+// cursor has scrolloff context around it (T-115 / T-134 / F-026, cavekit
+// R7 extended + R11). Search n/N calls this after every match update so
+// the active match lands on the cursor row — paintCursorRow then renders
+// it with CursorHighlight bg over the SearchHighlight fg. Negative indices
+// and out-of-range values are clamped by the underlying scroll model.
 func (m PaneModel) ScrollToLine(idx int) PaneModel {
 	if len(m.scroll.lines) == 0 {
 		return m
@@ -211,12 +225,15 @@ func (m PaneModel) ScrollToLine(idx int) PaneModel {
 	if viewport < 1 {
 		viewport = 1
 	}
-	if idx < m.scroll.offset {
-		m.scroll.offset = idx
-	} else if idx >= m.scroll.offset+viewport {
-		m.scroll.offset = idx - viewport + 1
-	}
-	m.scroll.clamp()
+	// Use a local model whose height reflects the search-adjusted viewport
+	// so followCursor computes margins against the visible content area,
+	// not the full ContentHeight (which would include the prompt row).
+	s := m.scroll
+	s.height = viewport
+	s = s.SetCursor(idx)
+	m.scroll = s
+	m.scroll.height = m.ContentHeight()
+	m.scroll = m.scroll.Clamp()
 	return m
 }
 

@@ -331,6 +331,58 @@ func TestPaneModel_ScrollToLine_BringsMatchIntoView(t *testing.T) {
 	}
 }
 
+// T-134 (F-026, cavekit R11): ScrollToLine moves the cursor AND scrolls so
+// the cursor has scrolloff context. 100-line doc, viewport=10, scrolloff=5,
+// target line 40 → cursor=40; offset slides to put cursor in viewport with
+// 5 rows of margin. Since followCursor uses offset = cursor - viewport + 1
+// + scrolloff when jumping down, expect offset = 40 - 10 + 1 + 5 = 36. The
+// visible cursor-row is then 40 - 36 = row 4 (0-indexed) — that is
+// (height - 1 - scrolloff) = 10 - 1 - 5 = 4, exactly at the bottom-margin
+// boundary so subsequent `j` presses would shift the viewport.
+func TestPaneModel_ScrollToLine_MovesCursorWithScrolloffContext(t *testing.T) {
+	m := defaultPane(12).SetWidth(40) // ContentHeight = 10
+	m = m.WithScrolloff(5)
+	m.open = true
+	lines := make([]string, 100)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight()).WithScrolloff(5)
+
+	m = m.ScrollToLine(40)
+	if m.scroll.Cursor() != 40 {
+		t.Errorf("cursor = %d, want 40", m.scroll.Cursor())
+	}
+	if m.scroll.Offset() != 36 {
+		t.Errorf("offset = %d, want 36 (cursor at bottom-margin)", m.scroll.Offset())
+	}
+}
+
+// T-134: cursor-row render still has CursorHighlight bg when search is
+// active — the bg is the last paint in View() so it composes on top of
+// SearchHighlight fg.
+func TestPaneModel_View_CursorBgOverSearchActive(t *testing.T) {
+	th := theme.GetTheme("tokyo-night")
+	m := defaultPane(12).SetWidth(40)
+	m = m.WithScrolloff(5)
+	m.open = true
+	lines := make([]string, 100)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight()).WithScrolloff(5)
+	m.Focused = true
+
+	m = m.ScrollToLine(40)
+	view := m.View()
+	bgSGR := bgSGRFor(th.CursorHighlight)
+	if !strings.Contains(view, bgSGR) {
+		t.Errorf("cursor-row bg missing after ScrollToLine; view=%q", view)
+	}
+}
+
 // T-125 (F-016): scroll indicator reports a percentage when content
 // exceeds the viewport.
 func TestPaneModel_ScrollPercent_ExceedingViewport(t *testing.T) {
