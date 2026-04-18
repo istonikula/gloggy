@@ -1,8 +1,26 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T20:44:59+03:00"
+last_edited: "2026-04-18T21:45:07+03:00"
 ---
 # Loop Log
+
+### Iteration 36 — 2026-04-18 (Tier 18 polish: T-151 + T-152 + T-153 + T-154)
+- T-151: shared `matchRow(lowerNeedle, entry, width, cfg)` helper extracted in `entrylist/search.go`, called from both `ExtendMatches` + `computeMatches`. Needle pre-lowered by callers. Streaming/full-scan case-fold+substring semantics now single-sourced — no more drift risk. Build P, Tests P (94 entrylist). Closes F-116.
+- T-152: extended `TestModel_Q_ListSearchInputMode_DoesNotQuit` with chained `u`/`i`/`t` after the initial `q`. Per-step no-QuitMsg assertion; final assertions Query="quit" + HasActiveSearch + InputMode. Closes F-117 (P3).
+- T-153: new `TestModel_HelpOverlay_PreservesListSearchState`. Activate search → type `abc` → `?` opens overlay → `Esc` dismisses → search still active, Query="abc", InputMode=true. Pins R14 AC 5 (MET-by-construction). Closes F-118 (P3).
+- T-154: new `TestModel_MouseClick_DetailZone_ClearsActiveListSearch`. Open pane + activate list search → MouseLeft Press at `ListContentWidth()+4` → focus=FocusDetailPane AND !HasActiveSearch AND Query="". Pins paired search-clear half of R13 AC 7 mouse branch. Closes F-119 (P3).
+- Wave 1 inline (parent opus = EXECUTION_MODEL). 2 commits — (a) T-151 search.go refactor, (b) T-152+T-153+T-154 bundled test pins (same file, disjoint functions).
+- Build P, Tests P (495/495 across 11 pkgs — +2 new test functions; +1 extended test). Files: internal/ui/entrylist/search.go, internal/ui/app/model_test.go, impl-entry-list.md, impl-app-shell.md, loop-log.md.
+- Tier 18 complete. All build-site tasks across 18 tiers DONE.
+
+### Iteration 35 — 2026-04-18 (Tier 17 HUMAN sign-off: T-150)
+- T-150: HUMAN sign-off via tui-mcp — DONE (scenarios 1 + 2); scenario 3 deferred to unit-test evidence.
+- Scenario 1 (R14 `q`-in-query): at 140x35 right + 80x24 right + 80x24 below on `logs/small.log`, `/query` typed into list-search input mode did NOT quit; `/: query` prompt persisted, `j` moved cursor proving app alive. Esc dismissed search; subsequent navigate-mode `q` quit as expected.
+- Scenario 2 (R13 AC 7 `f`-clears-search): across same three geometries, `/` + `Appender` + Enter (navigate mode with orange highlights) + `f` → focus transferred to filter panel AND orange SearchHighlight bg cleared from list rows. Bottom keyhint row showed `Enter: Commit filter  Esc: Cancel filter input  Tab: Cycle betwee  focus: filter` confirming filter-panel focus.
+- Scenario 3 (R13 streaming `AppendEntries`): deferred visual verification — `./gloggy -f /tmp/gloggy-t150-tail.log` rendered empty list panel (separate tail-mode layout bug; list width collapsed to ~2 cells; no entries visible despite file contents). Unit-test coverage accepted as proof: `TestListModel_AppendEntries_ExtendsActiveSearchMatches`, `TestListModel_AppendEntries_ClearsNotFound_WhenFirstStreamedMatchArrives`, `TestListModel_AppendEntries_InactiveSearch_NoOp` all green. Contract (streaming match extend + notFound clear + inactive no-op) is pinned at the model boundary.
+- Tail-mode rendering bug flagged as a separate finding candidate (out of Tier 17 scope — not a regression from T-146..T-149; pre-existing tail-mode layout issue exposed by sign-off scenario).
+- HUMAN convention codified: `[HUMAN]` tasks run by assistant via tui-mcp (memory `feedback_human_signoff_via_tuimcp.md`) — no deferral to user.
+- Tier 17 complete. Closes F-106 + F-107 + F-108 + F-109 (+ F-110..F-115 addressed in earlier iterations). Frontier: Tier 18 polish (T-151..T-154 from /ck:check post-Tier 17) when ready.
 
 ### Iteration 34 — 2026-04-18 (Tier 17 code tasks: T-146 + T-147 + T-148 + T-149)
 - T-146: `q`-quit gate behind active list-search input mode — DONE. `app/model.go` handleKey global quit branch now checks `!(m.list.HasActiveSearch() && m.list.Search().InputMode())` before firing `tea.Quit`. Navigate-mode `q` still quits (user Escapes first if they want `q` as a query char). 4 new tests in `app/model_test.go`: Q_ListSearchInputMode_DoesNotQuit (query ends with "q", no QuitMsg), Q_ListSearchNavigateMode_StillQuits, Q_NoListSearch_StillQuits, Q_DetailPaneFocus_StillQuits. Closes F-106 (P1 data-loss regression from T-144-fix). Implements cavekit-app-shell R14.

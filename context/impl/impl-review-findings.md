@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-18T20:24:39+03:00"
+last_edited: "2026-04-18T21:00:22+03:00"
 ---
 
 # Review Findings
@@ -142,3 +142,29 @@ Verdict: **REVISE** — P1 F-106 is a user-visible data-loss regression introduc
 - F-111 (byte-indexed truncation) mirrors pre-existing `row.go:76` bug — fix both sites or adopt `ansi.Truncate` uniformly in a future quality tier.
 - F-112/F-113/F-114 are quality/perf polish items; defer unless user reports lag or inconsistency.
 - Surveyor-flagged pre-existing gaps (filter subsystem invisibility: filter-engine R4/R5/R6, detail-pane R5/R8, entry-list R4 two-level cursor, app-shell R5 help-overlay chrome) are NOT included in Tier 17 — they predate this loop. Candidates for a future "filter UX" tier if/when user surfaces them.
+
+---
+
+## /ck:check run 2026-04-18 (post-Tier 17 — test-polish + DRY helper)
+
+Source: automated `/ck:check` after Tier 17 code landed (T-146 + T-147 + T-148 + T-149). Frontier is T-150 HUMAN sign-off via tui-mcp.
+
+Verdict: **APPROVE**. Goal-backward verifier reports 12/12 ACs MET (R14 five ACs + R13 AC 7 four focus-loss branches + R13 streaming three ACs). Surveyor 10/12 COMPLETE, 2 PARTIAL (test-pin only, not implementation). Inspector flags 2 quality findings. Build P, tests P (493/493 across 11 packages). No regressions, no kit-semantic gaps, no DESIGN violations.
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-116: `ExtendMatches` duplicates case-fold + substring logic from `computeMatches` — must stay in lock-step forever | P2 | `internal/ui/entrylist/search.go:154, ~179` | FIXED | T-151 — shared `matchRow(lowerNeedle, entry, width, cfg)` helper in `internal/ui/entrylist/search.go`; both paths call it |
+| F-117: `TestModel_Q_ListSearchInputMode_DoesNotQuit` asserts only one keystroke (`q`) — no chained-keystroke coverage | P3 | `internal/ui/app/model_test.go:1351-1378` | FIXED | T-152 — extended test with chained `u`/`i`/`t`, asserts `Query()=="quit"` and no QuitMsg across sequence |
+| F-118: R14 AC 5 (`?`-Esc preserves search state) has no regression test — preservation is correct by construction but silent-drift risk | P3 | `internal/ui/app/model_test.go` (no such test) | FIXED | T-153 — new `TestModel_HelpOverlay_PreservesListSearchState` pins Active+Query+InputMode survival |
+| F-119: R13 AC 7 mouse-click-off-list branch (`ZoneDetailPane` press clears search) has no test — only focus-change is pinned | P3 | `internal/ui/app/model_test.go:591` pins focus but not search-clear | FIXED | T-154 — new `TestModel_MouseClick_DetailZone_ClearsActiveListSearch` pins paired focus-transfer + search-deactivate |
+| F-120: R13 AC 7 wording "mouse click in any non-list zone" is broader than implementation — Header/StatusBar/Divider clicks do NOT clear search (pre-existing, not Tier 17 regression). True semantic likely "focus-loss" | P3 (kit-wording) | `internal/ui/app/model.go` handleMouse (only `ZoneDetailPane` handled) | NEW | deferred — kit tightening, no code change |
+
+### Kit revisions in this run
+None. R14 and R13 expansions are MET in code; the test-pin gaps do not require new ACs. F-120 is a wording-tightening opportunity but deferred until user surfaces concrete confusion.
+
+### Context carried forward for the next `/ck:make`
+
+- T-150 HUMAN sign-off via tui-mcp still outstanding — the frontier per `context/impl/loop-log.md` iteration 34. Sign-off gates Tier 17 Codex tier review.
+- Tier 18 (T-151..T-154) is polish-only — NOT a build blocker. Can proceed in any order, all disjoint files. No kit amendments required.
+- F-120 kit-wording tightening is deferred; pick up with a broader "focus-loss semantics" pass if a user reports a surprising behavior on Header/StatusBar click.
+- Pre-existing deferred items (F-110..F-114 from previous check) still apply.
