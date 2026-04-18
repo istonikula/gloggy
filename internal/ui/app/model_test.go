@@ -812,6 +812,84 @@ func TestModel_PaneSearch_DismissedOnReopen(t *testing.T) {
 	}
 }
 
+// ---------- T-116: cross-pane `/` activation (app-shell R13 / F-001, F-011) ----------
+
+// TestModel_Slash_ListFocus_PaneOpen_TransfersAndActivates verifies that
+// `/` with list focused and pane open transfers focus to the pane AND
+// activates search in a single keypress.
+func TestModel_Slash_ListFocus_PaneOpen_TransfersAndActivates(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	// Move focus back to list so we're testing the cross-pane activation.
+	m.focus = appshell.FocusEntryList
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+
+	m = key(m, "/")
+
+	if m.focus != appshell.FocusDetailPane {
+		t.Errorf("/ with pane open should transfer focus to detail pane, got %v", m.focus)
+	}
+	if !m.paneSearch.IsActive() {
+		t.Error("/ with pane open should activate paneSearch")
+	}
+	if m.paneSearch.Mode() != detailpane.SearchModeInput {
+		t.Errorf("activated search should be in input mode, got %v", m.paneSearch.Mode())
+	}
+}
+
+// TestModel_Slash_ListFocus_PaneClosed_ShowsNotice verifies that `/` with
+// list focused and pane closed emits a transient notice and never acts
+// as a silent no-op.
+func TestModel_Slash_ListFocus_PaneClosed_ShowsNotice(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	if m.pane.IsOpen() {
+		t.Fatal("precondition: pane should be closed")
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+
+	if !m.keyhints.HasNotice() {
+		t.Error("/ with pane closed should set a transient keyhint notice")
+	}
+	if cmd == nil {
+		t.Error("expected auto-dismiss cmd from notice")
+	}
+	if m.paneSearch.IsActive() {
+		t.Error("/ with pane closed must NOT activate search")
+	}
+	if m.focus != appshell.FocusEntryList {
+		t.Errorf("/ with pane closed should not steal focus, got %v", m.focus)
+	}
+}
+
+// TestModel_Slash_FilterPanelFocus_RoutedToFilter verifies that `/` with
+// the filter panel focused is routed to the filter input as a literal
+// character (not intercepted as a global search activation).
+func TestModel_Slash_FilterPanelFocus_RoutedToFilter(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "f") // focus = FocusFilterPanel
+	if m.focus != appshell.FocusFilterPanel {
+		t.Fatalf("precondition: want filter panel focused, got %v", m.focus)
+	}
+
+	m = key(m, "/")
+
+	if m.paneSearch.IsActive() {
+		t.Error("/ in filter panel should NOT activate pane search")
+	}
+	if m.focus != appshell.FocusFilterPanel {
+		t.Errorf("/ in filter panel should stay in filter panel, got %v", m.focus)
+	}
+}
+
 // ---------- T-118: input vs navigation mode (F-008) ----------
 
 // TestModel_Search_NavigateMode_JPassesThroughToPane verifies that once

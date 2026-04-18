@@ -30,6 +30,10 @@ const autoCloseNoticeDuration = 3 * time.Second
 
 const autoCloseNoticeText = "detail pane auto-closed — terminal too small"
 
+// searchNoPaneNotice is shown when `/` is pressed with the detail pane
+// closed (T-116, app-shell R13). Auto-dismisses via noticeClearAfter.
+const searchNoPaneNotice = "open an entry first (Enter) to search"
+
 // Model is the root Bubble Tea model.
 type Model struct {
 	// config
@@ -361,6 +365,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m = m.openPane(entry)
 				return m, nil
 			}
+		}
+		// T-116 (app-shell R13 / F-001, F-011): cross-pane `/`.
+		// - Pane open: transfer focus to the pane AND activate search in
+		//   a single keystroke so the user does not have to Tab first.
+		// - Pane closed: emit a transient notice and auto-dismiss it so
+		//   `/` is never a silent no-op.
+		if msg.String() == "/" {
+			if m.pane.IsOpen() {
+				m.focus = appshell.FocusDetailPane
+				m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+				lines := m.pane.ContentLines()
+				m.paneSearch, _ = m.paneSearch.Update(msg, lines)
+				return m, nil
+			}
+			m.keyhints = m.keyhints.WithNotice(searchNoPaneNotice)
+			return m, noticeClearAfter(autoCloseNoticeDuration)
 		}
 		// Clipboard copy of marked entries.
 		if msg.String() == "y" {
