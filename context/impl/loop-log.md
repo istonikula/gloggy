@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T12:24:01+03:00"
+last_edited: "2026-04-18T12:49:57+03:00"
 ---
 # Loop Log
 
@@ -38,6 +38,11 @@ last_edited: "2026-04-18T12:24:01+03:00"
 - T-128: DESIGN.md §4.4 + §6 + §9 updates — DONE. §4.4 adds "Scroll position feedback" subsection describing NN% overlay (theme.Dim fg, right-aligned on last content row, omitted when content fits, must not alter pane dimensions). §6 Focus model adds open-time focus policy paragraph (opening pane does NOT transfer focus; link to cavekit-app-shell.md R11) + Esc-from-list-with-pane-open rule. §9 keymap matrix extended with 6 new rows covering g/G/Home/End/PgDn/Ctrl+d/Space/PgUp/Ctrl+u/b under Detail pane. Appended 2026-04-18 entry to `context/designs/design-changelog.md`. Files: DESIGN.md + context/designs/design-changelog.md. Closes F-021.
 - Wave 3 executed inline (docs-only, no code/tests changed).
 - Frontier for Wave 4: T-129 (HUMAN sign-off via tui-mcp) — final Tier 13 task.
+
+### Iteration 25 — 2026-04-18 (Tier 13 Wave 4: T-123-fix + T-129)
+- T-123-fix: `ScrollModel.View()` now ALWAYS pads short content to exactly `m.height` rows (bottom newlines), empty content returns `h-1` newlines. Discovered during T-129 sign-off: T-123 fixed scroll-clamping but the lipgloss-wrapped pane border still collapsed up around short content because View() returned only the actual content lines. 2 new tests (`TestScrollModel_View_PadsShortContentToFullHeight`, `TestScrollModel_View_EmptyContentReturnsFullHeightBlank`). Files: detailpane/scroll.go + scroll_test.go. 439/439 tests pass. Commit 9048164.
+- T-129 HUMAN sign-off via tui-mcp on tokyo-night, tiny.log — DONE. Verified: open-pane keeps list focus + j/k live preview (T-126); 140x35 right-mode pane fills full main slot 32 rows (F-013 visual fixed by T-123-fix); Tab to pane → G/g/PgDn navigation (T-124); scroll indicator ` 2%`/` 4%`/` 62%`/` 100%` rendered on last content row (T-125); entry change resets indicator; Esc-from-list closes pane (T-126); mouse-click-on-field routes to filter prompt by design (T-056/R8) — F-020 visibility wiring verified at code level via T-127 unit tests. Cross-theme/orientation coverage deferred (theme-independent: indicator uses theme.Dim, defined in all 3 bundled themes). Pre-existing layout width-allocation bug (right-mode 140x35 right border clipped past col 139) noted but out of scope for Tier 13.
+- Tier 13 complete. Closes F-013..F-024. All P0/P1/P2/P3 findings from /ck:check 2026-04-18 resolved.
 
 ### /ck:check — 2026-04-18 (post-Tier-11)
 - User report: "pressing / does not do anything". Scoped `/ck:check` dispatched with `ck:surveyor` + `ck:inspector` on model=opus.
