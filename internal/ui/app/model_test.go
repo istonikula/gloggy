@@ -762,6 +762,56 @@ func TestModel_OrientationFlip_PreservesBothRatios(t *testing.T) {
 	assertRatios("after flip back to right")
 }
 
+// ---------- T-117: dismiss paneSearch on pane close / reopen (F-006) ----------
+
+// TestModel_PaneSearch_DismissedOnBlurred verifies that when the pane
+// closes, any active search state is cleared so a subsequent open starts
+// with a clean query.
+func TestModel_PaneSearch_DismissedOnBlurred(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "enter") // open pane, focus → detail
+	m = key(m, "/")     // start search
+	m = key(m, "t")     // type a char
+	if !m.paneSearch.IsActive() {
+		t.Fatal("precondition: search should be active after '/'")
+	}
+	if m.paneSearch.Query() == "" {
+		t.Fatal("precondition: query should be non-empty after typing")
+	}
+
+	m = send(m, detailpane.BlurredMsg{})
+
+	if m.paneSearch.IsActive() {
+		t.Error("search should be dismissed after pane closes")
+	}
+	if m.paneSearch.Query() != "" {
+		t.Errorf("search query should be cleared after pane closes, got %q", m.paneSearch.Query())
+	}
+}
+
+// TestModel_PaneSearch_DismissedOnReopen verifies that opening a new
+// entry does not carry stale search state from a previous open/close.
+func TestModel_PaneSearch_DismissedOnReopen(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	// Simulate prior search state lingering from an earlier pane session.
+	m.paneSearch = m.paneSearch.Activate().SetQuery("stale", m.pane.ContentLines())
+
+	m = m.openPane(entries[1])
+
+	if m.paneSearch.IsActive() {
+		t.Error("search should be dismissed when a new entry opens the pane")
+	}
+	if m.paneSearch.Query() != "" {
+		t.Errorf("search query should be cleared on reopen, got %q", m.paneSearch.Query())
+	}
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

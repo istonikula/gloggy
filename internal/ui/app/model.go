@@ -227,6 +227,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case detailpane.BlurredMsg:
 		m.focus = appshell.FocusEntryList
 		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+		// T-117 (F-006): dismiss any lingering search state so the
+		// next time the pane opens there is no stale query or match
+		// set carried over from a previous entry.
+		m.paneSearch = m.paneSearch.Dismiss()
 		m = m.relayout()
 		return m, nil
 
@@ -475,6 +479,9 @@ func (m Model) openPane(entry logsource.Entry) Model {
 	m.pane = m.pane.Open(entry)
 	m.focus = appshell.FocusDetailPane
 	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane).WithPaneOpen(true)
+	// T-117 (F-006): a fresh entry must start with clean search state so
+	// matches and the query do not leak across open/close cycles.
+	m.paneSearch = m.paneSearch.Dismiss()
 	m = m.relayout()
 	return m
 }
