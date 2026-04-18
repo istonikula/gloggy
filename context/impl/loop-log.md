@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T12:07:49+03:00"
+last_edited: "2026-04-18T12:19:37+03:00"
 ---
 # Loop Log
 
@@ -25,6 +25,14 @@ last_edited: "2026-04-18T12:07:49+03:00"
 - Wave 1 executed inline (parent = opus = EXECUTION_MODEL); worktree isolation avoided per user memory (prior run lost commits).
 - Build P, Tests P (422/422 across 11 pkgs). 2 commits: fbcaa61 (T-123), 243675c (T-124).
 - Frontier for Wave 2: T-125 (blocked by T-123+T-124 → ready), T-126 (ready), T-127 (ready). T-128 waits on T-125; T-129 HUMAN gate last.
+
+### Iteration 23 — 2026-04-18 (Tier 13 Wave 2: T-125 + T-126 + T-127)
+- T-125: scroll-position indicator — DONE. `PaneModel.ScrollPercent()` returns 0..100 or -1 sentinel (omit); `overlayScrollIndicator()` right-aligns " NN%" (theme Dim fg) on body's last line via lipgloss.Width + ansi.Truncate; no extra rows/columns added. Respects search-prompt row reservation. 6 tests. Files: detailpane/model.go + model_test.go. Closes F-016.
+- T-126: remove auto-focus on pane open + Esc-from-list closes pane — DONE. `openPane` drops FocusDetailPane; `handleKey` FocusEntryList Esc branch closes pane + dismisses paneSearch + relayouts before falling through to transient clear. 4 new tests + 7 existing tests updated. Files: app/model.go + model_test.go. Closes F-017, F-024.
+- T-127: wire visibility.HiddenFields into PaneModel.Open — DONE. Added `hiddenFields []string` + `WithHiddenFields()` (deep-copies) to PaneModel; Open passes stored set to RenderJSON; new `Rerender()` re-renders current entry preserving scroll offset. `app.openPane` + `SelectionMsg` handler both wire `visibility.HiddenFields()` via `WithHiddenFields` before Open. 5 tests. Files: detailpane/model.go + model_test.go, app/model.go + model_test.go. Closes F-020.
+- Wave 2 executed inline sequentially (parent opus = EXECUTION_MODEL). T-125 and T-127 both touch detailpane/model.go; T-126 and T-127 both touch app/model.go — inline serialization avoids file conflicts.
+- Build P, Tests P (437/437 across 11 pkgs). 3 commits: 4db9865 (T-125), 30330a8 (T-126), 69dd7dd (T-127).
+- Frontier for Wave 3: T-128 (design-system update, blocked by T-124+T-125 → ready). T-129 HUMAN gate after T-128.
 
 ### /ck:check — 2026-04-18 (post-Tier-11)
 - User report: "pressing / does not do anything". Scoped `/ck:check` dispatched with `ck:surveyor` + `ck:inspector` on model=opus.
