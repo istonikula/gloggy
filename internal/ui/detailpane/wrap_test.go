@@ -100,8 +100,10 @@ func TestSoftWrap_CJKEmojiByCells(t *testing.T) {
 	}
 }
 
-// T-106: PaneModel's View wraps content to the allocated width so no output
-// line exceeds the pane's content width.
+// T-106 / T-139 (F-103): PaneModel's View wraps content to `contentWidth()`
+// cells so no output line exceeds the pane's outer budget (= content + 2
+// border cells). `SetWidth(n)` takes CONTENT width under single-owner
+// border accounting (the layout publishes post-border DetailContentWidth).
 func TestPaneModel_View_WrapsWithinAllocation(t *testing.T) {
 	m := defaultPane(10)
 	// A single very long field renders into a JSON line wider than any
@@ -110,7 +112,7 @@ func TestPaneModel_View_WrapsWithinAllocation(t *testing.T) {
 	raw := []byte(`{"msg":"` + long + `"}`)
 
 	m = m.Open(longEntry(raw))
-	m = m.SetWidth(50) // outer 50 → inner 48
+	m = m.SetWidth(48) // content 48 → outer 50
 
 	out := m.View()
 	for i, line := range strings.Split(out, "\n") {
@@ -136,6 +138,49 @@ func TestPaneModel_SetWidth_Rewraps(t *testing.T) {
 
 	if narrowLines <= wideLines {
 		t.Errorf("expected narrower pane to produce MORE wrapped scroll lines: wide=%d narrow=%d", wideLines, narrowLines)
+	}
+}
+
+// T-140 (F-104): SoftWrap must re-emit the active SGR at the start of each
+// continuation line so a wrapped colored value keeps its color across the
+// wrap boundary. Regression: `ansi.HardwrapWc` preserved escape bytes but
+// did NOT re-emit the active style after a break, so a long string value
+// ended up partially uncolored on wrap (observed on tiny.log:45).
+func TestSoftWrap_T140_SGRRestoredOnContinuation(t *testing.T) {
+	// Key in green, value in cyan, one long run that forces wrap inside
+	// the value. Width 12 forces the value (`longstringvalue`) to break.
+	line := "\x1b[32mkey\x1b[0m: \x1b[36mlongstringvalue\x1b[0m"
+	got := SoftWrap(line, 12)
+	parts := strings.Split(got, "\n")
+	if len(parts) < 2 {
+		t.Fatalf("expected wrap to produce >=2 lines, got 1: %q", got)
+	}
+	// Continuation lines (everything after the first) must contain a
+	// cyan-SGR opener so the value keeps its color; they must NOT leave
+	// the terminal in the previous (key) style.
+	for i, p := range parts[1:] {
+		if !strings.Contains(p, "\x1b[36m") {
+			t.Errorf("continuation line %d missing cyan SGR reopen: %q", i+1, p)
+		}
+	}
+}
+
+// T-139 (F-103): after the single-owner border fix, a line of exactly
+// `contentWidth` cells fits the pane without wrapping; one cell wider wraps.
+func TestPaneModel_T139_ExactContentWidthFits(t *testing.T) {
+	m := defaultPane(10)
+	line40 := strings.Repeat("x", 40)
+	m = m.Open(logsource.Entry{IsJSON: false, LineNumber: 1, Raw: []byte(line40)})
+	m = m.SetWidth(40)
+	// Raw rendering yields the body with the 40-char line; the scroll
+	// model's `lines` must still be 1 entry (no wrap).
+	if got := len(m.scroll.lines); got != 1 {
+		t.Errorf("content width 40 + line 40: expected 1 scroll line (no wrap), got %d", got)
+	}
+	// Same with 41 must wrap to 2.
+	m2 := defaultPane(10).Open(logsource.Entry{IsJSON: false, LineNumber: 1, Raw: []byte(strings.Repeat("x", 41))}).SetWidth(40)
+	if got := len(m2.scroll.lines); got != 2 {
+		t.Errorf("content width 40 + line 41: expected 2 scroll lines (wrap), got %d", got)
 	}
 }
 

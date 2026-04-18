@@ -1,6 +1,7 @@
 package detailpane
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -159,10 +160,13 @@ func TestPaneModel_LipglossWidth_HandlesEmojiCJKAnsi(t *testing.T) {
 	}
 }
 
-// T-107: pane outer width equals the allocated width — emoji/CJK content
-// must not push the pane past its budget.
+// T-107 / T-139 (F-103): pane outer width equals CONTENT width + 2 border
+// cells — emoji/CJK content must not push the pane past its budget. With
+// single-owner border accounting, `SetWidth(n)` receives CONTENT width and
+// the outer rendered block is exactly n + 2 cells wide.
 func TestPaneModel_View_OuterWidth_MatchesAllocation(t *testing.T) {
-	const allocated = 24
+	const contentW = 24
+	const outerW = contentW + 2
 	entry := logsource.Entry{
 		IsJSON: true,
 		Time:   time.Now(),
@@ -170,15 +174,15 @@ func TestPaneModel_View_OuterWidth_MatchesAllocation(t *testing.T) {
 		Msg:    "🔥 fire — 日本語 — long enough to overflow naive budgets",
 		Raw:    []byte(`{"msg":"🔥 fire 日本語"}`),
 	}
-	m := defaultPane(8).Open(entry).SetWidth(allocated)
+	m := defaultPane(8).Open(entry).SetWidth(contentW)
 	v := m.View()
 	if v == "" {
 		t.Fatal("expected non-empty view")
 	}
 	for i, line := range strings.Split(v, "\n") {
 		w := lipglossWidth(line)
-		if w > allocated {
-			t.Errorf("line %d width=%d exceeds allocated=%d: %q", i, w, allocated, line)
+		if w > outerW {
+			t.Errorf("line %d width=%d exceeds outer=%d (content=%d + 2 borders): %q", i, w, outerW, contentW, line)
 		}
 	}
 }
@@ -663,7 +667,59 @@ func TestScrollModel_SetContent_ResetsCursor(t *testing.T) {
 	}
 }
 
-// T-125: Overlay preserves overall pane width — indicator does NOT add columns.
+// T-141 (F-105): paintCursorRow strips inner `\x1b[0m` resets from the
+// cursor row before applying the outer CursorHighlight bg. The input here
+// mimics the per-token-reset pattern emitted by `render.go` (each styled
+// token emits `\x1b[0m` after itself). Without the strip, the outer bg SGR
+// fails to re-inject across those resets and the bg visually terminates at
+// the first reset — the F-105 "coloring ends before `:`" observation.
+//
+// Invariant: after paintCursorRow, any `\x1b[0m` in the output must be
+// either (1) immediately followed by another SGR that reopens the
+// CursorHighlight bg (lipgloss emits this at the text→padding boundary to
+// drop Bold from the padding cells, without visually breaking the bg), or
+// (2) the final terminator. Nothing else — no bare reset in the middle of
+// the text run.
+func TestPaneModel_PaintCursorRow_T141_StripsInnerResets(t *testing.T) {
+	m := defaultPane(10).SetWidth(40)
+	m.open = true
+	m.Focused = true
+	m.scroll = NewScrollModel("", 4)
+	m.scroll.cursor = 0
+	m.scroll.offset = 0
+
+	body := "\x1b[32m\"key\"\x1b[0m: \x1b[36m\"value\"\x1b[0m,"
+	got := m.paintCursorRow(body, 4)
+
+	if !strings.Contains(got, "\x1b[") {
+		t.Fatalf("painted row missing any SGR: %q", got)
+	}
+	// Drop trailing terminator.
+	trimmed := strings.TrimSuffix(got, "\x1b[0m")
+	// Remove legitimate "reset + bg-reopen" transitions from inside the
+	// output; any leftover `\x1b[0m` is a bare reset that would visually
+	// break the bg run (F-105).
+	scrubbed := innerResetAfterBgReopen.ReplaceAllString(trimmed, "")
+	if strings.Contains(scrubbed, "\x1b[0m") {
+		t.Errorf("painted cursor row contains a bare inner `\\x1b[0m` (F-105): %q", got)
+	}
+	// Also assert the outer bold+bg opens exactly once — regression guard
+	// for the strip logic. lipgloss's bold-bg opener starts with `\x1b[1;`.
+	openers := strings.Count(got, "\x1b[1;")
+	if openers != 1 {
+		t.Errorf("expected 1 outer bold+bg opener, got %d: %q", openers, got)
+	}
+}
+
+// innerResetAfterBgReopen matches `\x1b[0m` IMMEDIATELY followed by a bg-
+// opening SGR (`\x1b[48…m`) — the legitimate lipgloss text→padding boundary
+// that does NOT visually break the bg. Used by the T-141 test to scrub out
+// these benign transitions before checking for bare resets.
+var innerResetAfterBgReopen = regexp.MustCompile(`\x1b\[0m\x1b\[48[;\d]*m`)
+
+// T-125 / T-139 (F-103): Overlay preserves overall pane width — indicator
+// does NOT add columns. Under single-owner border accounting, `SetWidth(n)`
+// is content width; outer rendered width = n + 2 border cells.
 func TestPaneModel_View_IndicatorDoesNotExpandWidth(t *testing.T) {
 	m := defaultPane(22).SetWidth(30)
 	lines := make([]string, 200)
@@ -674,10 +730,11 @@ func TestPaneModel_View_IndicatorDoesNotExpandWidth(t *testing.T) {
 	m.rawContent = strings.Join(lines, "\n")
 	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
 	view := m.View()
-	// Inspect each row's cell width; all should equal outer pane width.
+	// Inspect each row's cell width; all should equal outer pane width
+	// (content 30 + 2 border cells = 32).
 	for i, row := range strings.Split(view, "\n") {
-		if w := lipgloss.Width(row); w != 30 {
-			t.Errorf("row %d cell width: got %d, want 30; row=%q", i, w, row)
+		if w := lipgloss.Width(row); w != 32 {
+			t.Errorf("row %d cell width: got %d, want 32; row=%q", i, w, row)
 		}
 	}
 }

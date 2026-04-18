@@ -2,6 +2,7 @@ package detailpane
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,6 +13,12 @@ import (
 	"github.com/istonikula/gloggy/internal/theme"
 	"github.com/istonikula/gloggy/internal/ui/appshell"
 )
+
+// cursorRowReset matches embedded SGR reset sequences (`\x1b[0m`) emitted by
+// per-token syntax highlighting in `render.go`. `paintCursorRow` strips these
+// on the cursor row before applying the outer CursorHighlight bg so the bg
+// renders contiguously across the row. T-141 (F-105).
+var cursorRowReset = regexp.MustCompile("\x1b\\[0m")
 
 // FocusedMsg is emitted when the detail pane gains focus.
 type FocusedMsg struct{}
@@ -60,17 +67,18 @@ func (m PaneModel) SetWidth(w int) PaneModel {
 	return m
 }
 
-// contentWidth returns the inner width available for content after the
-// border has been subtracted. Returns 0 when no width allocation is set.
+// contentWidth returns the inner width available for content (T-139, F-103:
+// single-owner border accounting). The layout publishes post-border
+// DetailContentWidth — `appshell/layout.go` already subtracts 2*paneBorders +
+// dividerWidth from the usable split budget before the ratio. `SetWidth(w)`
+// therefore receives CONTENT width, not outer-rendered width, and the pane
+// must NOT subtract borders a second time. Returns 0 when no width
+// allocation is set.
 func (m PaneModel) contentWidth() int {
 	if m.width <= 0 {
 		return 0
 	}
-	w := m.width - 2 // left + right border
-	if w < 1 {
-		return 0
-	}
-	return w
+	return m.width
 }
 
 // IsOpen returns true when the pane is visible.
@@ -351,6 +359,16 @@ func (m PaneModel) paintCursorRow(body string, contentH int) string {
 	if visible >= len(lines) {
 		return body
 	}
+	// T-141 (F-105): strip inner `\x1b[0m` resets on the cursor row before
+	// applying the outer CursorHighlight bg. Syntax-highlight token styles
+	// in `render.go` emit a full reset after each token — lipgloss's outer
+	// Background style does not re-inject its SGR across those inner
+	// resets, so the bg visually terminates at the first embedded `\x1b[0m`
+	// (seen between a JSON key and its `:` separator, before a `,`, etc.).
+	// Dropping the inner resets keeps per-token fg colors intact (each
+	// token's opening `\x1b[…m` is preserved) and lets the outer bg run
+	// contiguously to `Width(cellW)` so the cursor row is fully painted.
+	rowText := cursorRowReset.ReplaceAllString(lines[visible], "")
 	style := lipgloss.NewStyle().Background(m.th.CursorHighlight)
 	if m.Focused {
 		style = style.Bold(true)
@@ -360,7 +378,7 @@ func (m PaneModel) paintCursorRow(body string, contentH int) string {
 	if cellW := m.contentWidth(); cellW > 0 {
 		style = style.Inline(true).Width(cellW).MaxWidth(cellW)
 	}
-	lines[visible] = style.Render(lines[visible])
+	lines[visible] = style.Render(rowText)
 	return strings.Join(lines, "\n")
 }
 
@@ -457,14 +475,13 @@ func (m PaneModel) View() string {
 	}
 	style := appshell.PaneStyle(m.th, state)
 	if m.width > 0 {
-		// Reserve 2 cells for left/right borders so the OUTER width
-		// equals the allocation. lipgloss measures content in cells
-		// (emoji/CJK = 2 cells, ANSI = 0) so this is width-safe.
-		inner := m.width - 2
-		if inner < 0 {
-			inner = 0
-		}
-		style = style.Width(inner).MaxWidth(m.width)
+		// T-139 (F-103): single-owner border accounting. `m.width` is the
+		// CONTENT width from the layout (already post-border). lipgloss
+		// adds the 2-cell pane border outside `Width(...)`, so the outer
+		// rendered block is `m.width + 2` cells wide — exactly matching
+		// the (DetailContentWidth + 2) slot reserved for this pane in
+		// `appshell/layout.go:DetailContentWidth`.
+		style = style.Width(m.width).MaxWidth(m.width + 2)
 	}
 	return style.Render(body)
 }

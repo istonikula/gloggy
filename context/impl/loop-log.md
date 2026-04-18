@@ -1,8 +1,16 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T13:40:00+03:00"
+last_edited: "2026-04-18T18:08:01+03:00"
 ---
 # Loop Log
+
+### Iteration 31 — 2026-04-18 (Tier 15 Wave 2: T-139 + T-140 + T-141)
+- T-139: single-owner border width — DONE. `PaneModel.contentWidth() = m.width` (not m.width-2); `View()` applies `Width(m.width).MaxWidth(m.width+2)`. Layout's `DetailContentWidth` was already post-border. 3 existing tests updated to reflect new semantic (outer = content+2); new `TestPaneModel_T139_ExactContentWidthFits`. Closes F-103 (P1).
+- T-140: SGR-preserving soft wrap — DONE. Kept `ansi.HardwrapWc` (width-aware grapheme wrap) + new `preserveSGRAcrossBreaks` post-process: walks wrapped output, tracks active SGR, at each `\n` emits `\x1b[0m` + reopens active SGR on continuation. `ansi.Wrap` was insufficient — it preserves escape bytes but doesn't re-emit state across newlines (verified by reading charmbracelet/x/ansi@v0.10.1/wrap.go). New `TestSoftWrap_T140_SGRRestoredOnContinuation` asserts cyan reopened on every continuation of a wrapped styled value. Closes F-104 (P1).
+- T-141: cursor-row SGR reset strip — DONE. `paintCursorRow` now strips embedded `\x1b[0m` from the cursor-row string before applying the outer Bold+Background. Compiled regex `cursorRowReset`. Per-token fg colors stay intact (each token's opener is preserved); outer bg runs contiguously to `Width(cellW)`. New `TestPaneModel_PaintCursorRow_T141_StripsInnerResets` with scrubbing pass for the benign lipgloss text→padding `\x1b[0m\x1b[48…m` transition (bg reopens immediately, no visual break). Closes F-105 (P1).
+- Wave 2 inline (parent opus = EXECUTION_MODEL); all three tasks touch `internal/ui/detailpane/` one-packet-owner. Test-update surface kept in same package (`model_test.go`, `wrap_test.go`).
+- Build P, Tests P (472/472 across 11 pkgs). Files: detailpane/model.go, detailpane/wrap.go, detailpane/model_test.go, detailpane/wrap_test.go. Commit: one bundled commit covering the three fixes + test updates.
+- Frontier for Wave 3: T-142 HUMAN sign-off (tui-mcp across 3 themes × 2 geometries × 2 orientations, with `small.log` clipboard flow + `tiny.log:1` border fit + `tiny.log:45` wrap color + any-JSON cursor-row contiguous bg). Gates Tier 15 Codex review.
 
 ### Iteration 30 — 2026-04-18 (Tier 15 Wave 1: T-138)
 - T-138: clipboard feedback notice + error surfacing — DONE. `appshell/clipboard.go` adds `clipboardWriteFn` test seam + `CopyMarkedEntriesCmd(entries, marked) tea.Cmd` wrapper emitting `ClipboardCopiedMsg{Count}` / `ClipboardErrorMsg{Err}`. `app/model.go` y-handler: zero marks → "no marked entries" notice (2s auto-dismiss); otherwise dispatch `CopyMarkedEntriesCmd`; new Update cases route `ClipboardCopiedMsg` → "copied N entry/entries" (2s) and `ClipboardErrorMsg` → "clipboard error: <err>" (3s) via `keyhints.WithNotice` + existing `noticeClearAfter` helper. Removed forbidden `//nolint:errcheck`. 5 tests in `clipboard_feedback_test.go` via `withStubClipboard` helper swapping `clipboardWriteFn` (Success→CopiedMsg, WriteError→ErrorMsg, Single→Count=1, ZeroMarks→no-write, NoNolintErrcheck regression). Closes F-102 (P1, silent clipboard failure).
