@@ -79,6 +79,24 @@ func (m ScrollModel) Update(msg tea.Msg) (ScrollModel, tea.Cmd) {
 			m = m.ScrollDown(1)
 		case "k", "up":
 			m = m.ScrollUp(1)
+		case "g", "home":
+			m.offset = 0
+			m.clamp()
+		case "G", "end":
+			m.offset = len(m.lines) - m.height
+			m.clamp()
+		case "pgdown", "ctrl+d", " ":
+			step := m.height - 1
+			if step < 1 {
+				step = 1
+			}
+			m = m.ScrollDown(step)
+		case "pgup", "ctrl+u", "b":
+			step := m.height - 1
+			if step < 1 {
+				step = 1
+			}
+			m = m.ScrollUp(step)
 		}
 	case tea.MouseMsg:
 		switch msg.Button {
