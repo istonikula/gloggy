@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T09:40:17+03:00"
+last_edited: "2026-04-18T11:45:46+03:00"
 ---
 
 # Cavekit: Detail Pane
@@ -12,17 +12,20 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 ## Requirements
 
 ### R1: Activation and Dismissal
-**Description:** The detail pane opens when the user presses Enter or double-clicks an entry in the list. It closes and returns focus to the entry list on Esc or Enter. When open, the detail pane has a visible top border or separator line so the boundary between the entry list and detail pane is clear. The border row must be subtracted from the allocated pane height before rendering content, so the total rendered output (border + content) fits exactly within the layout slot.
+**Description:** The detail pane opens when the user presses Enter or double-clicks an entry in the list. Opening the pane does NOT transfer keyboard focus — focus stays on the entry list so `j`/`k` continue to move the list cursor with the pane acting as a live preview. Focus transfers to the pane only via an explicit action: Tab (app-shell R11), mouse click on the pane (app-shell R6), or the cross-pane `/` activation (app-shell R13). The pane closes and returns focus to the entry list on Esc or Enter while the pane is focused. Esc from the entry list with the pane open also closes the pane. When open, the detail pane has a visible top border or separator line so the boundary between the entry list and detail pane is clear. The border row must be subtracted from the allocated pane height before rendering content, so the total rendered output (border + content) fits exactly within the layout slot.
 **Acceptance Criteria:**
 - [ ] [auto] Pressing Enter while an entry is selected in the list opens the detail pane showing that entry
 - [ ] [auto] Double-clicking an entry in the list opens the detail pane showing that entry
+- [ ] [auto] Opening the detail pane (via Enter or double-click) does NOT move keyboard focus — focus remains on the entry list
+- [ ] [auto] With the pane open and the list focused, pressing `j`/`k` moves the list cursor and the detail pane re-renders with the new selection
+- [ ] [auto] Pressing Esc while the entry list is focused and the detail pane is open closes the detail pane (list retains focus)
 - [ ] [auto] Pressing Esc while the detail pane is focused closes it and returns focus to the entry list
 - [ ] [auto] Pressing Enter while the detail pane is focused closes it and returns focus to the entry list
 - [ ] [auto] When open, the detail pane is rendered with a visible top border or separator line distinguishing it from the entry list above
 - [ ] [auto] The total rendered height of the detail pane (border + content) equals the allocated pane height — border rows are subtracted from content height before rendering
 - [ ] [human] The boundary between entry list and detail pane is clearly visible
 - [ ] [auto] The detail pane's top border is visible in both below and right orientations (per DESIGN.md §4.4)
-**Dependencies:** cavekit-entry-list (selection signal), cavekit-app-shell (focus indicator)
+**Dependencies:** cavekit-entry-list (selection signal), cavekit-app-shell (R6 mouse focus, R11 focus cycle, R13 cross-pane `/`)
 
 ### R2: JSON Pretty-Print with Syntax Highlighting
 **Description:** JSONL entries are rendered as formatted JSON with syntax highlighting. Keys, strings, numbers, booleans, and null each use distinct colors from the active theme. All fields are rendered, including arbitrary extra fields not known at compile time. No color values are hardcoded — all resolved from the active theme's tokens.
@@ -46,13 +49,22 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 **Dependencies:** none
 
 ### R4: Pane Scrolling
-**Description:** When the detail pane content exceeds the pane height, the content is scrollable using `j`/`k` while the pane is focused.
+**Description:** When the detail pane content exceeds the pane height, the content is scrollable using vim-style navigation while the pane is focused. Line-by-line with `j`/`k`, by page with PgDn/PgUp (or Ctrl+d/Ctrl+u), and jump-to-extremes with `g` (top) and `G` (bottom). Space is an alias for PgDn and `b` for PgUp. The mouse wheel also scrolls line-by-line. When content exceeds the viewport, a scroll-position indicator is rendered so the user can tell at a glance that more content exists below (or above) and where the viewport is within the total. The indicator updates live on every scroll and on content change.
 **Acceptance Criteria:**
-- [ ] [auto] Pressing `j` while the detail pane is focused scrolls the content down
-- [ ] [auto] Pressing `k` while the detail pane is focused scrolls the content up
-- [ ] [auto] Mouse scroll wheel over the detail pane scrolls the content
-- [ ] [auto] Scrolling stops at the top and bottom of the content
-**Dependencies:** none
+- [ ] [auto] Pressing `j` or Down while the detail pane is focused scrolls the content down one line
+- [ ] [auto] Pressing `k` or Up while the detail pane is focused scrolls the content up one line
+- [ ] [auto] Pressing PgDn or Ctrl+d or Space while the detail pane is focused scrolls down by one viewport minus one line
+- [ ] [auto] Pressing PgUp or Ctrl+u or `b` while the detail pane is focused scrolls up by one viewport minus one line
+- [ ] [auto] Pressing `g` or Home while the detail pane is focused scrolls to the first content line (offset = 0)
+- [ ] [auto] Pressing `G` or End while the detail pane is focused scrolls to the last content line (offset = max, last line visible at bottom)
+- [ ] [auto] Mouse scroll wheel over the detail pane scrolls the content line-by-line
+- [ ] [auto] Scrolling stops at the top and bottom of the content (no underflow, no overflow past the last line)
+- [ ] [auto] When content height exceeds the pane's content height, a visible scroll-position indicator is rendered within the pane (percentage, N-of-M line counter, or a 1-column scrollbar glyph — see DESIGN.md §4.4)
+- [ ] [auto] When content fits entirely within the viewport, the scroll-position indicator is omitted (no `100%` noise on short content)
+- [ ] [auto] The scroll-position indicator updates on every scroll action and on content change (new entry opened, visibility toggled, wrap re-applied)
+- [ ] [auto] The scroll-position indicator is styled from a theme token (not hardcoded) and is readable against both focused and unfocused pane backgrounds
+- [ ] [human] On `logs/tiny.log` line 34 (large JSON config entry), navigating with `G` jumps to the last line in one keystroke and the indicator shows `100%` / end position
+**Dependencies:** cavekit-config (theme token for indicator)
 
 ### R5: Per-Field Visibility
 **Description:** Individual fields can be hidden in the detail pane. Hidden fields are not rendered at all (not collapsed). Toggling a field's visibility immediately writes the change to config. The set of hidden fields is persisted across sessions.
@@ -64,19 +76,22 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 **Dependencies:** cavekit-config (detail pane field visibility, write-back)
 
 ### R6: Pane Size and Resize
-**Description:** In below-mode the pane's height is a ratio of terminal height (`height_ratio`, default 0.30). In right-mode the pane's width is a ratio of terminal width (`width_ratio`, default 0.30). Both ratios are preserved independently across orientation flips. The resize keymap itself (preset cycling, ±0.05 nudges, reset, clamping, live write-back) is defined in cavekit-app-shell R12 and is not duplicated here. Mouse drag on the visible divider resizes the appropriate dimension — height in below-mode, width in right-mode.
+**Description:** In below-mode the pane's height is a ratio of terminal height (`height_ratio`, default 0.30). In right-mode the pane's width is a ratio of terminal width (`width_ratio`, default 0.30) AND its rendered vertical height equals the full main-area slot (terminal height minus header minus status bar, minus border accounting). The `height_ratio` is NOT applied vertically in right-mode — it is the below-mode vertical ratio only. Applying `height_ratio` in right-mode clips content to ~30% of the visual slot even when the pane has the full slot available, which is a content-loss bug. Both ratios are preserved independently across orientation flips. The resize keymap itself (preset cycling, ±0.05 nudges, reset, clamping, live write-back) is defined in cavekit-app-shell R12 and is not duplicated here. Mouse drag on the visible divider resizes the appropriate dimension — height in below-mode, width in right-mode.
 **Acceptance Criteria:**
-- [ ] [auto] The detail pane opens at the configured height ratio
-- [ ] [auto] Pressing `+` while the detail pane is focused increases its height
-- [ ] [auto] Pressing `-` while the detail pane is focused decreases its height
+- [ ] [auto] The detail pane opens at the configured height ratio in below orientation
+- [ ] [auto] Pressing `+` while the detail pane is focused in below orientation increases its height
+- [ ] [auto] Pressing `-` while the detail pane is focused in below orientation decreases its height
 - [ ] [auto] After a terminal resize event, the pane maintains its proportional height
 - [ ] [auto] Mouse drag on the pane divider resizes the pane
 - [ ] [auto] In right orientation the detail pane opens at the configured width ratio
+- [ ] [auto] In right orientation the detail pane's rendered vertical height equals `terminal_height - header_height - status_bar_height` (before subtracting border rows) — `height_ratio` is NOT applied to the vertical dimension
+- [ ] [auto] The pane's internal content height is recomputed from the layout slot on every WindowSizeMsg AND on every `relayout()` call (open, ratio change, orientation flip) — not just on initial size
 - [ ] [auto] Pressing `+` while the detail pane is focused in right orientation increases its width ratio
 - [ ] [auto] Pressing `-` while the detail pane is focused in right orientation decreases its width ratio
 - [ ] [auto] Mouse drag on the vertical divider in right orientation resizes the pane width
 - [ ] [auto] Flipping orientation from below to right preserves the previous height_ratio, and flipping back restores it
-**Dependencies:** cavekit-config (detail pane height ratio, width ratio), cavekit-app-shell (R12 resize keymap, resize events, mouse routing)
+- [ ] [auto] Opening a large-content entry (e.g. `logs/tiny.log` line 34, JSON with 200+ fields) in right orientation on an 80x24 terminal renders the pane content area filling the full main slot (≥ 20 content rows) — not clipped to `height_ratio × terminal_height`
+**Dependencies:** cavekit-config (detail pane height ratio, width ratio), cavekit-app-shell (R2 layout math, R7 resize events, R12 resize keymap, mouse routing)
 
 ### R7: In-Pane Search
 **Description:** `/` opens a search input scoped to the detail pane content (does not trigger the list filter). `n`/`N` cycle through matches with a wrap indicator. Matches are highlighted using the theme's highlight color. Esc dismisses the search. The search input, query, and current/total match counter must be **visibly rendered** in the pane while active — search state mutation alone is not sufficient; the user must see that search is running.
@@ -153,6 +168,11 @@ The bottom pane that displays a pretty-printed view of the currently selected lo
 - **Affected:** R1, R6 (renamed), new R9, new R10
 - **Summary:** R1 gained an AC that the detail pane's top border is visible in both below and right orientations. R6 renamed from "Pane Height and Resize" to "Pane Size and Resize" and extended with width-ratio semantics for right orientation, mouse-drag on the vertical divider, and independent ratio preservation across orientation flips; the resize keymap itself is delegated to cavekit-app-shell R12. New R9 introduces `wrap_mode` with `soft` as the shipping default (preventing silent truncation). New R10 requires width awareness and safe width measurement for emoji, CJK, and ANSI content. Out of Scope extended with v1.5/v2 wrap modes and non-planned tree-fold.
 - **Driven by:** DESIGN.md + research-brief-details-pane-redesign.md
+
+### 2026-04-18 — Revision (detail-pane navigation + open-focus + right-orientation height)
+- **Affected:** R1, R4, R6
+- **Summary:** R1 now explicitly states opening the pane does NOT transfer focus — focus remains on the entry list so list navigation (`j`/`k`) keeps working with the pane as a live preview. Added ACs for "Esc from list closes pane" and "list `j`/`k` re-renders pane". R4 extended from the bare `j`/`k`+wheel spec to a full vim-style navigation set: `g`/`G`/Home/End for jump, PgDn/PgUp/Ctrl+d/Ctrl+u/Space/`b` for paging. Also mandates a scroll-position indicator (percentage / N-of-M / scrollbar glyph) that is visibly rendered when content exceeds the viewport — users were stranded inside 200-line JSON entries with no feedback about position. R6 now explicitly legislates that `height_ratio` is a below-mode-only vertical ratio: in right orientation the pane's vertical height is the full main slot (terminal − header − status), NOT `height_ratio × terminal_height`. The latter was the root cause of content being clipped in right orientation even when the pane had plenty of visual space. Added AC that pane content height is recomputed on every `relayout()` call, not just initial WindowSizeMsg.
+- **Driven by:** `/ck:check` run on 2026-04-18 after user report: "details pane only portion of content is visible even if space below (tiny.log:34)", "no cursor position shown", "cannot navigate to beginning/end with g/G", "no need to autofocus on details when opening". Addresses findings F-013 (P0, right-orientation clipping), F-015 (P1, missing navigation keys), F-016 (P1, no indicator), F-017 (P1, auto-focus on open). Related F-014/F-018/F-019/F-022/F-024 folded into the same fix.
 
 ### 2026-04-18 — Revision (R7 search rendering + integration)
 - **Affected:** R7

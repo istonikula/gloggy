@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T11:12:30+03:00"
+last_edited: "2026-04-18T12:07:49+03:00"
 ---
 # Implementation Tracking: detail-pane
 
@@ -29,3 +29,5 @@ Build site: context/plans/build-site.md
 | T-119 | DONE | Backspace rune-slices `m.query` via `[]rune(m.query)[:len-1]`. Unit test covers ascii / café / 日本語 / 🚀x. Closes F-009. |
 | T-120 | DONE | `TestModel_TwoStepEsc_DismissesSearchThenClosesPane` in app/model_test.go — open pane → `/` → type → first Esc (search dismissed, pane stays open); second Esc (pane closes + BlurredMsg + focus returns to list). Closes F-007. |
 | T-122 | DONE | HUMAN sign-off via tui-mcp (tokyo-night @ 140x35 right-split, small.log): `/INFO` in detail pane renders `/INFO  (1/1)` prompt row, Enter commits to navigate mode, two-step Esc chain dismisses search then closes pane, cross-pane `/` from list focus transfers to detail pane + activates search in one keystroke, help overlay + keyhint bar show correct scope text. Notice-padding bug (T-121-fix) discovered and fixed during this sign-off. |
+| T-123 | DONE | `appshell.DetailPaneVerticalRows(l)` returns full main slot (height-header-status) in right-mode, `l.DetailPaneHeight` in below. Wired into `app.Update` WindowSizeMsg branch + `relayout()` via `m.pane.SetHeight(appshell.DetailPaneVerticalRows(l))`. Fixed `PaneModel.Open/SetWidth` to seed scroll with `ContentHeight()` (not outer `m.height`), `SetHeight` re-clamps via new public `ScrollModel.Clamp()`, `View()` clamps after its local height shrink. 4 layout tests (right-full-slot / below-ratio / closed-zero / floor-one) + 4 app tests (right→≥20 content rows / below→PaneHeight=7 / `+` still adjusts below / orientation flip preserves ratio). Closes F-013 (P0), F-014 (P1), F-018 (P2), F-019 (P2), F-022 (P3). |
+| T-124 | DONE | `ScrollModel.Update()` extended: `g`/Home → offset 0; `G`/End → last-line anchored at bottom; PgDn/Ctrl+d/Space → height-1 down; PgUp/Ctrl+u/`b` → height-1 up. 8 tests (g jumps top, G caps bottom, G on short content, PgDn table, PgUp at top no-op, PgUp after End, PgDn clamp at bottom, page-keys on short content). Search-input routing already prevents binding leak (T-118 split). Closes F-015 (P1). |

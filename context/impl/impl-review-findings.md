@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-18T09:40:17+03:00"
+last_edited: "2026-04-18T11:45:46+03:00"
 ---
 
 # Review Findings
@@ -32,3 +32,33 @@ Scope: in-pane search flow (`internal/ui/detailpane/search.go`, `internal/ui/app
 ## Unrelated UX issue noted (not acted on)
 
 - Iteration 20 loop-log recorded "help overlay (`?`) shows text bleed-through from underlying view (overlay does not opaquely cover content cells)". Out of search scope — does not have a task in Tier 12. File under a future UX-polish tier if/when addressed.
+
+---
+
+## /ck:check run 2026-04-18 (Tier 13 — detail-pane nav + height + focus)
+
+Source: user report — "details pane only portion of content visible even if space below (tiny.log:34)", "no cursor position shown", "cannot navigate to beginning/end with g/G", "no need to autofocus on details when opening". Scope: detail-pane scroll + height + open-focus flow (`internal/ui/detailpane/{model,scroll,height,wrap}.go`, `internal/ui/app/model.go` relayout + openPane + handleKey, `internal/ui/appshell/layout.go`).
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-013: Detail pane vertical height uses below-mode `height_ratio` in right-split → content clipped | P0 | `internal/ui/app/model.go:162, 523-536`; `internal/ui/appshell/layout.go:43-86`; `internal/ui/detailpane/height.go:29-35` | NEW | T-123 |
+| F-014: `relayout()` never calls `SetHeight` on the pane | P1 | `internal/ui/app/model.go:523-536` | NEW | T-123 |
+| F-015: No g/G/PgUp/PgDn/Home/End/Ctrl+d/Ctrl+u bindings in detail pane scroll | P1 | `internal/ui/detailpane/scroll.go:74-92` | NEW | T-124 |
+| F-016: No scroll-position indicator rendered in detail pane | P1 | `internal/ui/detailpane/model.go:235-283`; `internal/ui/detailpane/scroll.go:95-104` | NEW | T-125 |
+| F-017: Opening the pane unconditionally steals focus from the list | P1 | `internal/ui/app/model.go:512-521` | NEW | T-126 |
+| F-018: `SoftWrap` re-wrap passes outer pane height (not content height) to `scroll.SetContent` | P2 | `internal/ui/detailpane/model.go:53, 87` | NEW | T-123 |
+| F-019: `PaneModel.View()` mutates `scroll.height` without re-clamping offset | P2 | `internal/ui/detailpane/model.go:256-261` | NEW | T-123 |
+| F-020: `PaneModel.Open()` hardcodes `hiddenFields=nil` — R5 compliance gap | P2 | `internal/ui/detailpane/model.go:77-89`; `internal/ui/app/model.go:56, 102, 512-521` | NEW | T-127 |
+| F-021: DESIGN.md §4.4 + §9 keymap missing nav keys + scroll-position indicator spec | P2 | `DESIGN.md:224-244, 573-588` | NEW | T-128 |
+| F-022: `ScrollToLine` scroll math assumes `viewport == scroll.height` (self-resolves with F-013) | P3 | `internal/ui/detailpane/model.go:152-170` | NEW | T-123 (secondary) |
+| F-023: `paneHeight.PaneHeight()` can return 1 on tiny terminals (auto-close catches — noted only) | P3 | `internal/ui/detailpane/height.go:29-35` | NOTED | — |
+| F-024: After F-017 fix, Esc from list-focus with pane open must close pane | P3 | `internal/ui/app/model.go` handleKey FocusEntryList branch | NEW | T-126 |
+| F-025: Clamp must run after every height/content change on scroll model | P3 | `internal/ui/detailpane/scroll.go` + `model.go:256-261` | NEW | T-123 |
+
+### Context carried forward for the next `/ck:make`
+
+- Tier 13 tasks T-123..T-129 address F-013..F-022, F-024, F-025. Execute T-123 first — it is the P0 content-loss fix and provides the Layout-derived height helper the other tasks assume works.
+- T-127 closes an unrelated R5 compliance gap discovered during review (VisibilityModel never wired into `PaneModel.Open`). Not user-reported, but same codepath — pick up in the same cycle.
+- T-128 updates DESIGN.md §4.4 + §9; run it AFTER T-124/T-125 so the doc matches the implementation rather than leading it.
+- T-129 is the HUMAN sign-off gate — must use tui-mcp per cavekit-overview.md "Verification Conventions" with `logs/tiny.log` line 34 as the primary reproducer across all three themes and both orientations at 80x24 + 140x35.
+- All of Tier 12 is complete per loop-log iteration 20; Tier 13 starts from a clean base at commit `75cd5d3`.

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T11:11:46+03:00"
+last_edited: "2026-04-18T12:07:49+03:00"
 ---
 # Implementation Tracking: app-shell
 
@@ -49,3 +49,4 @@ Build site: context/plans/build-site.md
 | T-121 | DONE | `help.go` registry lists `/` under both entry-list and detail-pane domains with scope-accurate descriptions. `keyhints.go` View renders `/` with state-aware text: "search pane" (list+open), "search (open entry first)" (list+closed), hidden on filter panel, registry text on detail pane. 4 tests. Closes F-011. |
 | T-121-fix | DONE | `keyhints.go` notice branch now `.Width(m.width).MaxWidth(m.width)` — pads the transient notice to full width so it overwrites the previously-rendered keyhint remnants. Before the fix, `hintsStyle.MaxWidth(...)` only truncated and did not pad, leaving ~103 chars of the old bar visible to the right of the notice. Unit test `TestKeyHintBar_NoticeRenderWidth` (added then removed as a debug probe) confirmed `lipgloss.Width(view) == m.width` after the fix. |
 | T-122 | DONE | HUMAN sign-off via tui-mcp (tokyo-night @ 140x35, right-split): detail-pane `/` search flow verified — `/INFO` renders prompt row `/INFO  (1/1)`, Enter commits to navigate mode, two-step Esc chain (1st Esc dismisses search; 2nd Esc closes pane), focus transfer from list → pane, keyhint bar shows `/: Search inside this pane (Enter commits to navigate mode)` + `focus: details`, help overlay scopes `/` correctly under entry-list and detail-pane domains. Cross-pane notice padding bug discovered and fixed in T-121-fix. Remaining cross-theme / below-orientation checks deferred — behavior is theme-independent (notice uses Dim color which is defined in all themes). |
+| T-123 | DONE | Tracked primary in impl-detail-pane.md. Layout side: added `DetailPaneVerticalRows(Layout)` helper in `internal/ui/appshell/layout.go` returning full main slot in right-mode, `DetailPaneHeight` in below. App-side wiring: `app.Update` WindowSizeMsg + `relayout()` now call `m.pane.SetHeight(appshell.DetailPaneVerticalRows(l))`. 4 layout tests covering right/below/closed/floor. |

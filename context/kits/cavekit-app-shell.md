@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T09:40:17+03:00"
+last_edited: "2026-04-18T11:45:46+03:00"
 ---
 
 # Cavekit: App Shell
@@ -127,13 +127,16 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-config (DividerColor, UnfocusedBg, FocusBorder tokens)
 
 ### R11: Focus Cycle and Dismissal
-**Description:** `Tab` cycles focus among the visible panes. When the filter panel or help overlay is open, cycling is paused and the overlay holds focus. `Esc` is context-sensitive: first close any open overlay; otherwise if the detail pane is open, close it and return focus to the entry list; otherwise clear transient state on the focused pane (e.g. an active search). A mouse click on a pane focuses that pane. Tab never closes a pane — closing is always explicit via Esc or a domain-specific dismissal key.
+**Description:** `Tab` cycles focus among the visible panes. Opening a pane does NOT itself transfer focus — focus transfers occur only on explicit actions: Tab (this requirement), mouse click on a pane (R6), or the cross-pane `/` activation (R13). This keeps the detail pane usable as a live preview while the user keeps navigating the entry list. When the filter panel or help overlay is open, Tab-cycling is paused and the overlay holds focus. `Esc` is context-sensitive: first close any open overlay; otherwise if the detail pane is open, close it and return focus to the entry list; otherwise clear transient state on the focused pane (e.g. an active search). Esc on entry-list focus with the detail pane open also closes the pane (the list doesn't need to be Tab'd to the pane first to dismiss it). A mouse click on a pane focuses that pane. Tab never closes a pane — closing is always explicit via Esc or a domain-specific dismissal key.
 **Acceptance Criteria:**
 - [ ] [auto] Pressing Tab with the entry list and detail pane both visible cycles focus between them
 - [ ] [auto] Tab is inert (does not cycle focus) while the filter panel or help overlay is open
+- [ ] [auto] Opening the detail pane (Enter, double-click) does NOT transfer focus to the pane — focus remains on the entry list
+- [ ] [auto] Focus transfers to a newly opened pane only when the user takes an explicit action: Tab, mouse click on the pane, or `/` (R13)
 - [ ] [auto] Pressing Esc with an overlay open closes the overlay only
 - [ ] [auto] Pressing Esc with no overlay open and the detail pane focused closes the detail pane and returns focus to the entry list
-- [ ] [auto] Pressing Esc with no overlay open and the entry list focused clears transient state (e.g. active search) when present; otherwise it is a no-op
+- [ ] [auto] Pressing Esc with no overlay open, the entry list focused, and the detail pane open, closes the detail pane (focus stays on the list)
+- [ ] [auto] Pressing Esc with no overlay open, the entry list focused, and no detail pane open, clears transient state (e.g. active level-jump wrap indicator) when present; otherwise it is a no-op
 - [ ] [auto] Clicking inside a pane focuses that pane
 - [ ] [auto] Tab never closes a pane
 **Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-filter-engine
@@ -177,6 +180,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-18 — Revision (R11 open-time focus policy)
+- **Affected:** R11
+- **Summary:** R11 now explicitly codifies that opening a pane does NOT transfer focus — focus stays wherever the user put it. Focus transfers happen only on Tab, mouse click (R6), or `/` (R13). Added ACs "opening detail pane does not transfer focus" and "Esc from list-focus with pane open closes the pane". Before this revision R11 described Tab/Esc/click flows but was silent on what happens when a pane opens, so the implementation grabbed focus on Enter — breaking the preview flow where `j`/`k` on the list should update the pane live without needing a Tab-round-trip each time.
+- **Driven by:** `/ck:check` run on 2026-04-18, finding F-017 (auto-focus on open breaks preview flow). Paired with cavekit-detail-pane R1 revision.
 
 ### 2026-04-18 — Revision (R13 cross-pane search activation)
 - **Affected:** new R13

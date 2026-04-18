@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T11:12:00+03:00"
+last_edited: "2026-04-18T12:07:49+03:00"
 ---
 # Loop Log
 
@@ -18,6 +18,13 @@ last_edited: "2026-04-18T11:12:00+03:00"
 - T-122: HUMAN sign-off via tui-mcp — DONE. Verified: detail-pane `/INFO` renders `/INFO  (1/1)` prompt row, Enter commits to navigate mode, two-step Esc chain, cross-pane focus transfer from list to pane with search activated in one keystroke, help overlay scopes `/` correctly. Notice padding bug caught and fixed mid-session.
 - Build P, Tests P (398/398 — 16 new tests across T-113..T-121).
 - Tier 12 complete. Closes F-001..F-011. All critical regressions from the 2026-04-18 `/ck:check` resolved.
+
+### Iteration 22 — 2026-04-18 (Tier 13 Wave 1: T-123 + T-124)
+- T-123: fix right-orientation pane vertical height — DONE. `appshell.DetailPaneVerticalRows(l)` returns full main slot in right, `DetailPaneHeight` in below. `app.Update` WindowSizeMsg + `relayout()` both call `pane.SetHeight(DetailPaneVerticalRows(l))`. `PaneModel.Open`/`SetWidth` seed scroll with `ContentHeight()` (not outer). `SetHeight` re-clamps via new public `ScrollModel.Clamp()`. `View()` clamps after local height shrink. Files: appshell/layout.go + layout_test.go (+4 tests); detailpane/model.go + scroll.go; app/model.go + model_test.go (+4 tests). Closes F-013 (P0), F-014, F-018, F-019, F-022.
+- T-124: vim nav extension — DONE. `ScrollModel.Update()` adds g/Home (top), G/End (bottom anchored), PgDn/Ctrl+d/Space (height-1 down), PgUp/Ctrl+u/b (height-1 up); all clamped. 8 tests. Input-mode routing already blocked by T-118 split. Files: detailpane/scroll.go + scroll_test.go. Closes F-015.
+- Wave 1 executed inline (parent = opus = EXECUTION_MODEL); worktree isolation avoided per user memory (prior run lost commits).
+- Build P, Tests P (422/422 across 11 pkgs). 2 commits: fbcaa61 (T-123), 243675c (T-124).
+- Frontier for Wave 2: T-125 (blocked by T-123+T-124 → ready), T-126 (ready), T-127 (ready). T-128 waits on T-125; T-129 HUMAN gate last.
 
 ### /ck:check — 2026-04-18 (post-Tier-11)
 - User report: "pressing / does not do anything". Scoped `/ck:check` dispatched with `ck:surveyor` + `ck:inspector` on model=opus.
