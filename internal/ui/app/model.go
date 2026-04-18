@@ -299,6 +299,20 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// (soft-wrapped, unstyled) — splitting View() would include
 		// border glyphs and syntax-highlight ANSI and mis-index matches.
 		if m.paneSearch.IsActive() || msg.String() == "/" {
+			// T-118 (F-008): in navigation mode, forward non-search keys
+			// (j/k/scrolling/etc.) to the pane so the user can move the
+			// viewport while search stays visibly open. The search-owned
+			// keys below stay with paneSearch.
+			if m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeNavigate {
+				switch msg.String() {
+				case "/", "n", "N", "esc", "enter", "backspace", "ctrl+h":
+					// fall through to paneSearch.Update below
+				default:
+					var cmd tea.Cmd
+					m.pane, cmd = m.pane.Update(msg)
+					return m, cmd
+				}
+			}
 			lines := m.pane.ContentLines()
 			m.paneSearch, _ = m.paneSearch.Update(msg, lines)
 			// T-115: after any search update that has a current match,

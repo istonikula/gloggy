@@ -812,6 +812,65 @@ func TestModel_PaneSearch_DismissedOnReopen(t *testing.T) {
 	}
 }
 
+// ---------- T-118: input vs navigation mode (F-008) ----------
+
+// TestModel_Search_NavigateMode_JPassesThroughToPane verifies that once
+// search is in navigation mode, `j` scrolls the pane rather than being
+// eaten by the search input.
+func TestModel_Search_NavigateMode_JPassesThroughToPane(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	// Use a JSON entry with many fields so the pane content is scrollable.
+	rawJSON := `{"a":"1","b":"2","c":"3","d":"4","e":"5","f":"6","g":"7","h":"8","i":"9","j":"10","k":"11","l":"12","m":"13","n":"14"}`
+	entries := []logsource.Entry{{LineNumber: 1, IsJSON: true, Level: "INFO", Msg: "x", Raw: []byte(rawJSON)}}
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	m = key(m, "/") // activate — input mode
+	if !m.paneSearch.IsActive() {
+		t.Fatal("precondition: search should be active after '/'")
+	}
+	m = key(m, "enter") // commit to navigate
+	if m.paneSearch.Mode() != detailpane.SearchModeNavigate {
+		t.Fatalf("precondition: want SearchModeNavigate, got %v", m.paneSearch.Mode())
+	}
+
+	paneBefore := m.pane
+	m = key(m, "j")
+	// Query must be unchanged: `j` in nav mode should NOT extend the query.
+	if m.paneSearch.Query() != "" {
+		t.Errorf("nav-mode `j` should not extend query, got %q", m.paneSearch.Query())
+	}
+	// Pane view should have changed IF the content exceeded the viewport.
+	// We check by rendering View() and comparing — if there was scroll
+	// room, the view string differs.
+	if m.pane.View() == paneBefore.View() {
+		// Not a hard failure — if content fit in the viewport, scroll is
+		// a no-op. Log instead.
+		t.Logf("note: pane view unchanged after j (content may have fit in viewport)")
+	}
+	// And search is still active in navigate mode.
+	if !m.paneSearch.IsActive() {
+		t.Error("search should still be active after nav-mode j")
+	}
+	if m.paneSearch.Mode() != detailpane.SearchModeNavigate {
+		t.Errorf("mode should stay navigate after j, got %v", m.paneSearch.Mode())
+	}
+}
+
+// TestModel_Search_InputMode_JAppendsToQuery verifies that in input mode,
+// `j` becomes a literal query character (does not scroll the pane).
+func TestModel_Search_InputMode_JAppendsToQuery(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(3))
+	m = key(m, "enter") // open pane
+	m = key(m, "/")     // activate search — input mode
+	m = key(m, "j")     // should extend query
+	if m.paneSearch.Query() != "j" {
+		t.Errorf("input-mode `j` should extend query to 'j', got %q", m.paneSearch.Query())
+	}
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

@@ -17,6 +17,7 @@ type SearchModel struct {
 	matches []int  // line indices of matching lines
 	current int    // index into matches
 	wrapDir WrapSearchDir
+	mode    SearchInputMode // T-118: input (typing query) vs navigate (scroll/jump)
 	th      theme.Theme
 }
 
@@ -27,6 +28,18 @@ const (
 	SearchNoWrap   WrapSearchDir = iota
 	SearchWrapFwd
 	SearchWrapBack
+)
+
+// SearchInputMode discriminates between query-typing and match-navigation
+// phases of an active search (T-118, cavekit R7 / F-008). In input mode,
+// runes extend the query and backspace edits it. In navigate mode, the
+// caller may forward non-search keys (e.g. j/k) to the underlying pane
+// for scrolling while search stays visibly open.
+type SearchInputMode int
+
+const (
+	SearchModeInput SearchInputMode = iota
+	SearchModeNavigate
 )
 
 // NewSearchModel creates a SearchModel.
@@ -66,6 +79,7 @@ func (m SearchModel) Activate() SearchModel {
 	m.matches = nil
 	m.current = 0
 	m.wrapDir = SearchNoWrap
+	m.mode = SearchModeInput
 	return m
 }
 
@@ -76,8 +90,13 @@ func (m SearchModel) Dismiss() SearchModel {
 	m.matches = nil
 	m.current = 0
 	m.wrapDir = SearchNoWrap
+	m.mode = SearchModeInput
 	return m
 }
+
+// Mode returns the current input-vs-navigate mode. When inactive, mode is
+// always SearchModeInput.
+func (m SearchModel) Mode() SearchInputMode { return m.mode }
 
 // SetQuery updates the query and recomputes matches against lines.
 func (m SearchModel) SetQuery(q string, lines []string) SearchModel {
@@ -167,8 +186,11 @@ func highlightSubstring(s, sub string, style lipgloss.Style) string {
 }
 
 // Update processes key events when the search is active.
-// '/' activates, Esc dismisses, Backspace removes last char, n/N navigate.
-// Printable runes are appended to the query.
+// '/' activates (or re-enters input mode), Esc dismisses, Backspace removes
+// last rune, Enter commits input → navigation mode, n/N navigate matches.
+// In input mode, printable runes (including n/N) are appended to the query;
+// in navigation mode, non-search keys (j/k/g/G/etc.) are NOT consumed here
+// — the caller (app) forwards them to the pane scroll.
 // lines is the current content lines, used to recompute matches on input.
 func (m SearchModel) Update(msg tea.Msg, lines []string) (SearchModel, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -177,13 +199,25 @@ func (m SearchModel) Update(msg tea.Msg, lines []string) (SearchModel, tea.Cmd) 
 		case "/":
 			if !m.active {
 				m = m.Activate()
+			} else {
+				// T-118: re-enter input mode without clearing the query
+				// so the user can refine the existing search.
+				m.mode = SearchModeInput
+			}
+		case "enter":
+			// T-118: commit input → navigation. In navigation mode,
+			// Enter is a no-op here — the app has already short-circuited
+			// all non-search keys away from pane.Update (which would
+			// otherwise close the pane), so Enter stays inside search.
+			if m.active && m.mode == SearchModeInput {
+				m.mode = SearchModeNavigate
 			}
 		case "esc":
 			if m.active {
 				m = m.Dismiss()
 			}
 		case "backspace", "ctrl+h":
-			if m.active && len(m.query) > 0 {
+			if m.active && m.mode == SearchModeInput && len(m.query) > 0 {
 				// T-119 (F-009): rune-slice, not byte-slice. The old
 				// `m.query[:len([]rune(m.query))-1]` used a rune count to
 				// index a byte slice, corrupting multi-byte queries.
@@ -192,15 +226,23 @@ func (m SearchModel) Update(msg tea.Msg, lines []string) (SearchModel, tea.Cmd) 
 				m = m.SetQuery(m.query, lines)
 			}
 		case "n":
-			if m.active {
+			// T-118: in navigation mode `n` advances; in input mode it
+			// is a literal query character.
+			if m.active && m.mode == SearchModeNavigate {
 				m = m.NextMatch()
+			} else if m.active && m.mode == SearchModeInput && len(msg.Runes) > 0 {
+				m.query += string(msg.Runes)
+				m = m.SetQuery(m.query, lines)
 			}
 		case "N":
-			if m.active {
+			if m.active && m.mode == SearchModeNavigate {
 				m = m.PrevMatch()
+			} else if m.active && m.mode == SearchModeInput && len(msg.Runes) > 0 {
+				m.query += string(msg.Runes)
+				m = m.SetQuery(m.query, lines)
 			}
 		default:
-			if m.active && len(msg.Runes) > 0 {
+			if m.active && m.mode == SearchModeInput && len(msg.Runes) > 0 {
 				m.query += string(msg.Runes)
 				m = m.SetQuery(m.query, lines)
 			}

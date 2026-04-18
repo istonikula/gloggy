@@ -102,6 +102,87 @@ func TestSearchModel_NoFilterSetReference(t *testing.T) {
 	_ = m.MatchCount()
 }
 
+// T-118 (F-008): Activate() leaves SearchModel in input mode.
+func TestSearchModel_Activate_StartsInputMode(t *testing.T) {
+	m := defaultSearch().Activate()
+	if m.Mode() != SearchModeInput {
+		t.Errorf("Activate should start in input mode, got %v", m.Mode())
+	}
+}
+
+// T-118: Enter commits input → navigate. Requires a non-empty query.
+func TestSearchModel_Enter_CommitsToNavigate(t *testing.T) {
+	m := defaultSearch().Activate().SetQuery("hello", testLines)
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
+	if m2.Mode() != SearchModeNavigate {
+		t.Errorf("Enter should switch to navigate mode, got %v", m2.Mode())
+	}
+	// Enter in navigate should be a no-op (not close the search).
+	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
+	if !m3.IsActive() {
+		t.Error("Enter in navigate mode should not dismiss search")
+	}
+	if m3.Mode() != SearchModeNavigate {
+		t.Errorf("Enter in navigate should stay navigate, got %v", m3.Mode())
+	}
+}
+
+// T-118: `/` while already active re-enters input mode without clearing
+// the existing query so users can refine their search.
+func TestSearchModel_Slash_ReentersInputMode(t *testing.T) {
+	m := defaultSearch().Activate().SetQuery("hello", testLines)
+	// Commit to navigate via Enter.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
+	if m.Mode() != SearchModeNavigate {
+		t.Fatalf("precondition: want navigate, got %v", m.Mode())
+	}
+	// `/` should flip back to input without dropping the query.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")}, testLines)
+	if m.Mode() != SearchModeInput {
+		t.Errorf("after '/' in navigate: want input mode, got %v", m.Mode())
+	}
+	if m.Query() != "hello" {
+		t.Errorf("'/' should preserve query, got %q", m.Query())
+	}
+}
+
+// T-118: in navigate mode, `n` advances to the next match rather than
+// being appended to the query.
+func TestSearchModel_N_InNavigateMode_Advances(t *testing.T) {
+	m := defaultSearch().Activate().SetQuery("hello", testLines)
+	// Commit to navigate.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}, testLines)
+	if m.CurrentMatchLine() != 3 {
+		t.Errorf("n in navigate should advance to line 3, got %d", m.CurrentMatchLine())
+	}
+	if m.Query() != "hello" {
+		t.Errorf("n in navigate should NOT mutate query, got %q", m.Query())
+	}
+}
+
+// T-118: in input mode, `n` is a literal query character — this preserves
+// the ability to search for words containing n/N.
+func TestSearchModel_N_InInputMode_AppendsToQuery(t *testing.T) {
+	m := defaultSearch().Activate()
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}, testLines)
+	if m.Query() != "n" {
+		t.Errorf("n in input mode should extend query to 'n', got %q", m.Query())
+	}
+}
+
+// T-118: backspace only edits in input mode. In navigate mode it is a
+// no-op on the query so the user does not accidentally mutate the search
+// while scrolling.
+func TestSearchModel_Backspace_OnlyInInputMode(t *testing.T) {
+	m := defaultSearch().Activate().SetQuery("hello", testLines)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines) // → navigate
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace}, testLines)
+	if m.Query() != "hello" {
+		t.Errorf("backspace in navigate should be no-op, got %q", m.Query())
+	}
+}
+
 // T-119 (F-009): backspace on a multi-byte rune query must trim exactly one
 // rune without corrupting UTF-8. The pre-fix code sliced a byte string with
 // a rune-count index, producing invalid UTF-8 for café/日本語/emoji.
