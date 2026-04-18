@@ -22,15 +22,16 @@ type BlurredMsg struct{}
 // PaneModel is the Bubble Tea model for the detail pane.
 // It manages open/close state and delegates to ScrollModel for scrolling.
 type PaneModel struct {
-	open       bool
-	entry      logsource.Entry
-	scroll     ScrollModel
-	th         theme.Theme
-	height     int
-	width      int         // outer width allocation; 0 means content-driven (T-107)
-	rawContent string      // unwrapped pre-rendered content; re-wrapped on width change (T-106)
-	search     SearchModel // T-114: attached by caller via WithSearch() to drive render
-	Focused    bool        // set by app before rendering for focus indicator
+	open         bool
+	entry        logsource.Entry
+	scroll       ScrollModel
+	th           theme.Theme
+	height       int
+	width        int         // outer width allocation; 0 means content-driven (T-107)
+	rawContent   string      // unwrapped pre-rendered content; re-wrapped on width change (T-106)
+	search       SearchModel // T-114: attached by caller via WithSearch() to drive render
+	hiddenFields []string    // T-127 (F-020): field names suppressed from JSON render
+	Focused      bool        // set by app before rendering for focus indicator
 }
 
 // NewPaneModel creates a PaneModel.
@@ -75,15 +76,33 @@ func (m PaneModel) contentWidth() int {
 // IsOpen returns true when the pane is visible.
 func (m PaneModel) IsOpen() bool { return m.open }
 
+// WithHiddenFields stores the set of field names that should be suppressed
+// from JSON rendering. Pass the caller's current visibility list (typically
+// `VisibilityModel.HiddenFields()`) before calling Open so the set reaches
+// the JSON renderer. Nil clears the suppression list. T-127 (F-020).
+func (m PaneModel) WithHiddenFields(hidden []string) PaneModel {
+	if hidden == nil {
+		m.hiddenFields = nil
+		return m
+	}
+	cp := make([]string, len(hidden))
+	copy(cp, hidden)
+	m.hiddenFields = cp
+	return m
+}
+
 // Open activates the detail pane with the given entry.
 // T-106: stores the raw rendered content so SetWidth can re-wrap it on
 // width changes.
 // T-123 (F-018): seeds the scroll viewport with ContentHeight (border-
 // subtracted), so internal offset clamping stays inside the visible window.
+// T-127 (F-020): passes the stored hiddenFields slice (set via
+// WithHiddenFields) to RenderJSON so config-driven field hiding reaches
+// the pane.
 func (m PaneModel) Open(entry logsource.Entry) PaneModel {
 	var content string
 	if entry.IsJSON {
-		content = RenderJSON(entry, m.th, nil)
+		content = RenderJSON(entry, m.th, m.hiddenFields)
 	} else {
 		content = RenderRaw(entry)
 	}
@@ -91,6 +110,28 @@ func (m PaneModel) Open(entry logsource.Entry) PaneModel {
 	m.open = true
 	m.rawContent = content
 	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.ContentHeight())
+	return m
+}
+
+// Rerender re-renders the currently open entry with the current
+// hiddenFields + width + theme, preserving the scroll offset so toggling
+// visibility does not jump the viewport. No-op when the pane is closed.
+// T-127 (F-020).
+func (m PaneModel) Rerender() PaneModel {
+	if !m.open {
+		return m
+	}
+	prevOffset := m.scroll.offset
+	var content string
+	if m.entry.IsJSON {
+		content = RenderJSON(m.entry, m.th, m.hiddenFields)
+	} else {
+		content = RenderRaw(m.entry)
+	}
+	m.rawContent = content
+	m.scroll = NewScrollModel(SoftWrap(content, m.contentWidth()), m.ContentHeight())
+	m.scroll.offset = prevOffset
+	m.scroll = m.scroll.Clamp()
 	return m
 }
 

@@ -1229,6 +1229,44 @@ func TestModel_J_FromList_WithPaneOpen_ReRendersPane(t *testing.T) {
 	}
 }
 
+// ---------- T-127 (F-020): hidden-fields wiring ----------
+
+// T-127 (F-020): openPane wires `visibility.HiddenFields()` into the pane
+// so config-driven field hiding reaches the JSON renderer.
+func TestModel_OpenPane_WiresHiddenFieldsFromVisibility(t *testing.T) {
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.HiddenFields = []string{"secret"}
+	m := New("", false, "", cfg)
+	m = resize(m, 80, 24)
+	entry := logsource.Entry{
+		LineNumber: 1,
+		IsJSON:     true,
+		Level:      "INFO",
+		Msg:        "hi",
+		Raw:        []byte(`{"level":"INFO","msg":"hi","secret":"shh"}`),
+	}
+	m = m.SetEntries([]logsource.Entry{entry})
+	m = m.openPane(entry)
+
+	view := m.pane.View()
+	if containsSubstring(view, "secret") {
+		t.Errorf("detail pane view should not include suppressed field `secret`, got: %q", view)
+	}
+	if containsSubstring(view, "shh") {
+		t.Errorf("detail pane view should not include suppressed value, got: %q", view)
+	}
+}
+
+// containsSubstring is a small helper to keep imports tight.
+func containsSubstring(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // ---------- helpers ----------
 
 // containsCount returns true if s contains the decimal representation of n.

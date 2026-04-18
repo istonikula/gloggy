@@ -221,7 +221,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Entry selection from list.
 	case entrylist.SelectionMsg:
 		if m.pane.IsOpen() {
-			m.pane = m.pane.Open(msg.Entry)
+			// T-127 (F-020): live-preview re-render must honor the current
+			// hiddenFields set — without this, cursor-driven re-renders
+			// would show suppressed fields until the user re-openPanes.
+			m.pane = m.pane.WithHiddenFields(m.visibility.HiddenFields()).Open(msg.Entry)
 		}
 		return m, nil
 
@@ -522,7 +525,10 @@ func (m Model) SetEntries(entries []logsource.Entry) Model {
 }
 
 func (m Model) openPane(entry logsource.Entry) Model {
-	m.pane = m.pane.Open(entry)
+	// T-127 (F-020): wire config-driven hidden fields into the pane BEFORE
+	// Open, so JSON rendering skips suppressed keys. Previously the pane
+	// hardcoded `nil` internally, so visibility config never reached it.
+	m.pane = m.pane.WithHiddenFields(m.visibility.HiddenFields()).Open(entry)
 	// T-126 (F-017): opening the pane does NOT transfer keyboard focus —
 	// focus stays on the entry list so `j`/`k` keep moving the cursor and
 	// the pane acts as a live preview. Focus transfers only on explicit
