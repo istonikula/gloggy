@@ -1,8 +1,15 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T12:49:57+03:00"
+last_edited: "2026-04-18T14:40:26+03:00"
 ---
 # Loop Log
+
+### Iteration 26 — 2026-04-18 (Tier 14 Wave 1: T-130 + T-131)
+- T-130: shared top-level `scrolloff` config — DONE. `Config.Scrolloff int` (default 5); missing key → default; negative → 0 with warn; round-trips via Save. 4 tests. Files: config/config.go + config_test.go. Gate for T-132/T-135 scrolloff wiring.
+- T-131: detail-pane cursor state + CursorHighlight render — DONE. `ScrollModel.cursor int` always >=0 when pane open; `Cursor()`/`Offset()`/`LineCount()` accessors. `PaneModel.paintCursorRow` paints current doc line with `theme.CursorHighlight` bg — Bold when Focused, Faint otherwise. Applied in View() AFTER `overlayScrollIndicator` → NN% indicator renders independently (R11 AC 8). 5 tests use `bgSGRFor()` helper (synthesizes expected SGR via lipgloss for termenv-profile robustness; fixed truecolor→256 rounding fragility). Files: detailpane/scroll.go + model.go + model_test.go. Closes F-026 cursor-state side.
+- Wave 1 inline (parent opus = EXECUTION_MODEL); disjoint file sets (config/ vs detailpane/) parallelizable conceptually but serialized to follow prior-iteration pattern + user memory (worktree isolation destroys commits).
+- Build P, Tests P (448/448 across 11 pkgs). 2 commits: 3f9addf (T-130), cc35c05 (T-131).
+- Frontier for Wave 2: T-132 (detailpane cursor nav + scrolloff follow, blocked by T-130+T-131+T-124 → ready), T-135 (entry-list scrolloff + mouse-wheel drag, blocked by T-130 → ready). Disjoint files.
 
 ### Iteration 21 — 2026-04-18 (Tier 12: F-001..F-011 remediation)
 - T-113: `ContentLines()` accessor — DONE. Soft-wraps raw content via `SoftWrap(m.rawContent, m.contentWidth())` BEFORE ANSI-stripping, so match indices align with the user's visual line positions. Files: detailpane/model.go. Dependency gate for T-114.

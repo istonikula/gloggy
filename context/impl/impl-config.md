@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-17T22:32:51+03:00"
+last_edited: "2026-04-18T14:40:26+03:00"
 ---
 # Implementation Tracking: config
 
@@ -19,3 +19,4 @@ Build site: context/plans/build-site.md
 | T-084 | DONE | DividerColor + UnfocusedBg theme tokens; distinct-from-Dim/FocusBorder assertion; values across 3 themes |
 | T-085 | DONE | DetailPane.WidthRatio/Position/OrientationThresholdCols/WrapMode fields; defaults 0.30/auto/100/soft; enum validation |
 | T-086 | DONE | Ratio independence: Save preserves both height/width keys; regression tests in writeback_test.go for both directions |
+| T-130 | DONE | Scrolloff int, default 5, top-level key; missing→default, negative→0 warn; round-trips via Save |
