@@ -58,9 +58,21 @@ func NewListModel(th theme.Theme, cfg config.Config, width, height int) ListMode
 		cfg:           cfg,
 		width:         width,
 		marks:         NewMarkSet(),
-		scroll:        ScrollState{ViewportHeight: height},
+		scroll:        ScrollState{ViewportHeight: height, Scrolloff: cfg.Scrolloff},
 		pinnedFullIdx: -1,
 	}
+}
+
+// WithScrolloff sets the cursor-margin rows applied after every cursor move
+// and mouse-wheel tick (T-135, F-026). Wired from `cfg.Scrolloff` by the
+// app at WindowSizeMsg and on config reload. Shared across list + detail
+// pane (one top-level key — cavekit-config R5).
+func (m ListModel) WithScrolloff(n int) ListModel {
+	if n < 0 {
+		n = 0
+	}
+	m.scroll.Scrolloff = n
+	return m
 }
 
 // SetEntries replaces the entry list and resets scroll state.
@@ -316,9 +328,11 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		vis = m.visibleEntries()
 		n = len(vis)
 		m.scroll.Cursor = clampCursor(m.scroll.Cursor, n)
-		// Keep cursor visible in viewport.
-		m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
-		m.scroll.Offset = clampOffset(m.scroll.Offset, n, m.scroll.ViewportHeight)
+		// T-135 (F-026): keep cursor scrolloff rows from viewport edges
+		// after every cursor-moving handler (j/k/g/G/Ctrl+d/Ctrl+u plus
+		// level-jump and mark nav which also mutate Cursor above).
+		m.scroll.TotalEntries = n
+		m.scroll = followCursor(m.scroll)
 
 		if m.scroll.Cursor != prev {
 			if m.scroll.Cursor < len(vis) {
@@ -349,18 +363,18 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 				// presses as double-click — use DoubleClick action if available.
 			}
 		case tea.MouseButtonWheelDown:
-			m.scroll.Cursor = clampCursor(m.scroll.Cursor+1, n)
-			m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
-			m.scroll.Offset = clampOffset(m.scroll.Offset, n, m.scroll.ViewportHeight)
-			if m.scroll.Cursor != prev {
+			// T-135 (F-026): wheel scrolls offset first; cursor drags only
+			// when it would enter the scrolloff margin.
+			m.scroll.TotalEntries = n
+			m.scroll = WheelDown(m.scroll)
+			if m.scroll.Cursor != prev && m.scroll.Cursor < len(vis) {
 				entry := vis[m.scroll.Cursor]
 				cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
 			}
 		case tea.MouseButtonWheelUp:
-			m.scroll.Cursor = clampCursor(m.scroll.Cursor-1, n)
-			m.scroll.Offset = ensureVisible(m.scroll.Cursor, m.scroll.Offset, m.scroll.ViewportHeight)
-			m.scroll.Offset = clampOffset(m.scroll.Offset, n, m.scroll.ViewportHeight)
-			if m.scroll.Cursor != prev {
+			m.scroll.TotalEntries = n
+			m.scroll = WheelUp(m.scroll)
+			if m.scroll.Cursor != prev && m.scroll.Cursor < len(vis) {
 				entry := vis[m.scroll.Cursor]
 				cmd = func() tea.Msg { return SelectionMsg{Entry: entry} }
 			}
