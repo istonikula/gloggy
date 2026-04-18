@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T01:15:09+03:00"
+last_edited: "2026-04-18T14:40:26+03:00"
 ---
 # Implementation Tracking: entry-list
 
@@ -36,4 +36,5 @@ Build site: context/plans/build-site.md
 | T-067 | DONE | HUMAN sign-off via tui-mcp on small.log: `m` toggles `*` indicator (visible on cursor row); `u`/`U` navigate marks; wrap renders `↻` on cursor row (same renderer as T-066 covers R9 #5) |
 | T-068 | DONE | Detail pane syntax highlighting per theme verified during T-061..T-063 walks: tokyo-night syntax keys/strings/numbers visible; mocha + material-dark same — JSON renders with theme-distinct colors |
 | T-111 | DONE | list.go View() renders `↻` (theme.Mark color) on cursor row when `wrapDir != NoWrap`; cleared by ClearTransient (Esc) and reset on next nav. Tests: TestListModel_View_RendersWrapIndicator, TestListModel_View_NoIndicator_AfterClearTransient. tui-mcp confirmed glyph visible after `G` then `e` |
+| T-135 | DONE | `ScrollState.Scrolloff` field; `followCursor()` helper mirrors detailpane impl — adjusts offset so cursor stays >= scrolloff rows from viewport edges (document edges yield). `WheelDown`/`WheelUp` scroll offset first and drag cursor along when margin crossed. `ListModel.WithScrolloff(int)` setter; app wires `cfg.Scrolloff` at `WindowSizeMsg` and `relayout`. Replaces old `ensureVisible`-after-cursor-move with `followCursor` for j/k/g/G/Ctrl+d/Ctrl+u/level-jump/mark-nav paths. Click selection + filter reshape keep baseline `ensureVisible` (no scrolloff). 8 new tests (top-margin trigger, edge-yield, effective-scrolloff clamp, HalfPageDown with margin, wheel drag pairs, GoBottom). Closes F-026 entry-list side. |
 | T-112 | DONE | New `pinnedFullIdx` field; visibleEntriesAndPin splices filtered-out level-jump match into visible list at sorted position; View() renders `⌀` (theme.LevelWarn) on pinned row. `applyLevelJump` helper unifies e/E/w/W. Pin cleared on j/k/g/G/Ctrl+d/Ctrl+u/u/U, SetFilter, ClearTransient. Test: TestListModel_LevelJump_LandsOnFilteredOutEntry_RendersIndicator. Standalone pincheck driver confirmed glyph + sorted-position splice visually |
