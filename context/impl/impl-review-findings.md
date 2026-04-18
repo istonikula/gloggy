@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-18T21:00:22+03:00"
+last_edited: "2026-04-19T00:26:42+03:00"
 ---
 
 # Review Findings
@@ -168,3 +168,17 @@ None. R14 and R13 expansions are MET in code; the test-pin gaps do not require n
 - Tier 18 (T-151..T-154) is polish-only — NOT a build blocker. Can proceed in any order, all disjoint files. No kit amendments required.
 - F-120 kit-wording tightening is deferred; pick up with a broader "focus-loss semantics" pass if a user reports a surprising behavior on Header/StatusBar click.
 - Pre-existing deferred items (F-110..F-114 from previous check) still apply.
+
+---
+
+## /ck:make run 2026-04-19 (Tier 19 Wave 2 — T-156 mouse-drag)
+
+Source: in-flight T-156 implementation of cavekit-app-shell R15 mouse-drag resize.
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-121: cavekit-app-shell R15 AC 4 text is directionally inverted — "below-mode: dragging down grows the detail pane" contradicts the physical layout (detail is BELOW the divider; dragging divider down SHRINKS detail). Right-mode AC is physically correct and symmetric with the intended behaviour. Implementation follows physical correctness (down=shrink, up=grow) and the right-mode symmetry, NOT the literal kit text. | P3 (kit-wording) | `context/kits/cavekit-app-shell.md` R15 AC 4 | NEW | deferred — kit-text tightening (flip "down"↔"up" in AC 4); no code change |
+
+### Context carried forward for the next `/ck:make`
+
+- F-121 is a documentation inversion in the kit; the implementation and tests are physically correct. When Tier 19 HUMAN sign-off (T-159) runs via tui-mcp, the user will observe the physically-correct behaviour. If the user is confused by the kit text, rewrite R15 AC 4 to "dragging up grows the detail pane (divider moves up, list shrinks, detail area grows); dragging down shrinks it".

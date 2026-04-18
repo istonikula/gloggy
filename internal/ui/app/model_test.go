@@ -2010,6 +2010,54 @@ func TestModel_T156_PaneClosed_PressIsNoOp(t *testing.T) {
 	}
 }
 
+// ---------- T-157: divider-cell click is focus-neutral (cavekit-app-shell R6 AC 7) ----------
+
+// TestModel_T157_DividerClick_DoesNotTransferFocus verifies the R6 contract:
+// a Press + Release on the divider cell itself never transfers focus to
+// either pane. The divider is reserved for R15 drag initiation; focus
+// stays wherever it was before the click.
+func TestModel_T157_DividerClick_DoesNotTransferFocus(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, listFocus bool) Model
+		xy    func(m Model) (int, int)
+	}{
+		{
+			name:  "right/start-list-focus",
+			setup: func(t *testing.T, _ bool) Model { return setupRatioModelRight(t, true) },
+			xy:    func(m Model) (int, int) { return rightDividerX(m), 5 },
+		},
+		{
+			name:  "right/start-detail-focus",
+			setup: func(t *testing.T, _ bool) Model { return setupRatioModelRight(t, false) },
+			xy:    func(m Model) (int, int) { return rightDividerX(m), 5 },
+		},
+		{
+			name:  "below/start-list-focus",
+			setup: func(t *testing.T, _ bool) Model { return setupRatioModelBelow(t, true) },
+			xy:    func(m Model) (int, int) { return 20, belowDividerY(m) },
+		},
+		{
+			name:  "below/start-detail-focus",
+			setup: func(t *testing.T, _ bool) Model { return setupRatioModelBelow(t, false) },
+			xy:    func(m Model) (int, int) { return 20, belowDividerY(m) },
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.setup(t, false)
+			startFocus := m.focus
+			x, y := tc.xy(m)
+			// Bare click: Press then Release with no motion between.
+			m = send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+			m = send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+			if m.focus != startFocus {
+				t.Errorf("divider click changed focus: start=%v end=%v", startFocus, m.focus)
+			}
+		})
+	}
+}
+
 // TestModel_T156_RightDrag_UpdatesWidthRatio mirrors the T-104 coverage
 // after the dual-orientation refactor — confirms right-split drag still
 // updates width_ratio (not height_ratio) and saves once on release.

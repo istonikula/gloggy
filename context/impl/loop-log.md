@@ -1,8 +1,14 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T00:26:42+03:00"
+last_edited: "2026-04-19T00:32:00+03:00"
 ---
 # Loop Log
+
+### Iteration 39 — 2026-04-19 (Tier 19 Wave 3: T-157)
+- T-157: divider-cell click focus-neutral test-pin — DONE. Contract (R6 AC 7 new) is MET by construction since T-156 rewrite: the mouse-drag branch in `app/model.go` handleMouse returns on both Press and Release of a ZoneDivider click, never falling through to the click-to-focus switch. No code change needed. New table-driven `TestModel_T157_DividerClick_DoesNotTransferFocus` in `internal/ui/app/model_test.go` exercises 4 permutations (right/list, right/detail, below/list, below/detail) — bare Press+Release on divider asserts `m.focus` unchanged. Closes cavekit-app-shell R6 AC 7 (Tier 19 revision).
+- Wave 3 inline (parent opus = EXECUTION_MODEL). 1 commit planned — T-157 test-only pin.
+- Build P, Tests P (528/528 across 11 pkgs — +5 new T-157 tests for 4 cases + outer table wrapper). Files: internal/ui/app/model_test.go, impl-app-shell.md, loop-log.md.
+- Frontier for Wave 4: T-158 (click-row resolver rewrite, cavekit-entry-list R10 — appshell/layout.go new `ClickToListRow` helper + entrylist delegate). This closes the 2-row offset bug.
 
 ### Iteration 38 — 2026-04-19 (Tier 19 Wave 2: T-156)
 - T-156: mouse-drag resize dual-orientation ownership — DONE. `appshell/ratiokeys.go`: new `RatioFromDragY(y, termHeight int) float64` — inverse of `int(termHeight*heightRatio)` detail-allocation math used by `HeightModel.PaneHeight`; `detail = termHeight - 2 - y`, clamp `[0, termHeight]`, divide, clamp `[RatioMin, RatioMax]`. `app/model.go` handleMouse drag branch rewritten: (a) orientation guard dropped — drag now works in BOTH right and below, (b) Press gated by `m.pane.IsOpen()` so pane-closed press never flips `draggingDivider`, (c) live-update branches on `m.resize.Orientation()` — right uses `RatioFromDragX` + `WidthRatio` + `layout.SetWidthRatio`, below uses `RatioFromDragY` + `paneHeight.SetRatio` + `cfg.HeightRatio` + `pane.SetHeight(paneHeight.PaneHeight())`, (d) Release still fires `saveConfig()` exactly once per drag. Drag branch returns before the click-to-focus transfer block → focus-neutral by construction. `draggingDivider` field doc updated to reflect dual-orientation scope. Closes cavekit-app-shell R15.
