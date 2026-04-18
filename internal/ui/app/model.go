@@ -79,10 +79,12 @@ type Model struct {
 
 	focus              appshell.FocusTarget
 	cachedVisibleCount int
-	// draggingDivider is true between a Press on the right-split
-	// divider column and the subsequent Release. While set, Motion
-	// events update width_ratio regardless of the cursor's current zone
-	// (T-104).
+	// draggingDivider is true between a Press on the divider cell (vertical
+	// in right-split, horizontal in below-mode) and the subsequent Release.
+	// While set, Motion events update the active detail-pane ratio
+	// (width_ratio or height_ratio per orientation) regardless of the
+	// cursor's current zone. Focus is never modified by a drag (T-156,
+	// cavekit-app-shell R15).
 	draggingDivider bool
 }
 
@@ -485,24 +487,34 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	router := appshell.NewMouseRouter(m.layout.Layout())
 	zone := router.RouteMouseMsg(msg)
 
-	// T-104: drag on the vertical divider in right-split resizes the
-	// detail pane width. A Press at the divider column starts a drag
-	// session; subsequent Motion events update width_ratio from the
-	// cursor's x even when the cursor has moved outside the divider.
-	// Release ends the session.
-	if m.resize.Orientation() == appshell.OrientationRight && msg.Button == tea.MouseButtonLeft {
-		if msg.Action == tea.MouseActionPress && zone == appshell.ZoneDivider {
+	// T-156 (cavekit-app-shell R15): mouse-drag resize on the divider
+	// works in BOTH orientations. Press on the divider cell starts a
+	// drag; subsequent motion events update the active detail-pane
+	// ratio live (width_ratio in right-split, height_ratio in
+	// below-mode). Release saves config exactly once. Drag is
+	// focus-neutral (returns before the click-focus transfer below) and
+	// is a no-op when the detail pane is closed (no divider exists to
+	// anchor the drag). T-104 was the right-split-only precursor.
+	if msg.Button == tea.MouseButtonLeft {
+		if msg.Action == tea.MouseActionPress && zone == appshell.ZoneDivider && m.pane.IsOpen() {
 			m.draggingDivider = true
 		}
 		if m.draggingDivider {
 			if msg.Action == tea.MouseActionRelease {
 				m.draggingDivider = false
-				m.saveConfig() // T-099: persist final width_ratio on drag release.
+				m.saveConfig() // T-099: persist final ratio on drag release.
 				return m, nil
 			}
-			newR := appshell.RatioFromDragX(msg.X, m.resize.Width())
-			m.cfg.Config.DetailPane.WidthRatio = newR
-			m.layout = m.layout.SetWidthRatio(newR)
+			if m.resize.Orientation() == appshell.OrientationRight {
+				newR := appshell.RatioFromDragX(msg.X, m.resize.Width())
+				m.cfg.Config.DetailPane.WidthRatio = newR
+				m.layout = m.layout.SetWidthRatio(newR)
+			} else {
+				newR := appshell.RatioFromDragY(msg.Y, m.resize.Height())
+				m.paneHeight = m.paneHeight.SetRatio(newR)
+				m.cfg.Config.DetailPane.HeightRatio = newR
+				m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
+			}
 			m = m.relayout()
 			return m, nil
 		}

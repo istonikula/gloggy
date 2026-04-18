@@ -130,3 +130,25 @@ func RatioFromDragX(x, termWidth int) float64 {
 	}
 	return ClampRatio(float64(detail) / float64(usable))
 }
+
+// RatioFromDragY converts a vertical cursor row position into the new
+// height_ratio for a below-split layout (T-156, cavekit-app-shell R15).
+// The divider is the 1-row horizontal border between the entry list and
+// the detail pane; rows `y+1..termHeight-2` belong to the detail pane
+// (status bar occupies `termHeight-1`). Height ratio storage mirrors
+// `detailpane.HeightModel.PaneHeight = int(termHeight * ratio)`, so the
+// inverse maps divider-row back to ratio via `(termHeight - y - 2) /
+// termHeight`. Result is clamped to [RatioMin, RatioMax].
+func RatioFromDragY(y, termHeight int) float64 {
+	if termHeight <= 0 {
+		return ClampRatio(RatioDefault)
+	}
+	detail := termHeight - 2 - y
+	if detail < 0 {
+		detail = 0
+	}
+	if detail > termHeight {
+		detail = termHeight
+	}
+	return ClampRatio(float64(detail) / float64(termHeight))
+}

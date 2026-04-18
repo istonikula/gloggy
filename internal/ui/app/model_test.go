@@ -1810,3 +1810,235 @@ func TestModel_T155_PaneClosed_AllKeys_NoOp(t *testing.T) {
 		t.Errorf("pane-closed ratio keys must not trigger config save; file exists: %v", err)
 	}
 }
+
+// ---------- T-156: mouse drag resize (cavekit-app-shell R15) ----------
+
+// belowDividerY computes the divider row for a below-mode model —
+// entryListEnd+1, where entryListEnd = layout.EntryListHeight().
+func belowDividerY(m Model) int {
+	return m.layout.Layout().EntryListHeight() + 1
+}
+
+// rightDividerX computes the divider column for a right-split model.
+// Mirrors MouseRouter.Zone: listEnd=ListContentWidth+1, divider=listEnd+1.
+func rightDividerX(m Model) int {
+	return m.layout.Layout().ListContentWidth() + 2
+}
+
+// TestModel_T156_BelowDrag_PressOnDivider_StartsDrag confirms that a left
+// Press on the divider row in below-orientation flips `draggingDivider`.
+func TestModel_T156_BelowDrag_PressOnDivider_StartsDrag(t *testing.T) {
+	m := setupRatioModelBelow(t, false)
+	dy := belowDividerY(m)
+	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if !m.draggingDivider {
+		t.Errorf("Press on below-mode divider row y=%d must start drag", dy)
+	}
+}
+
+// TestModel_T156_BelowDrag_MotionUp_GrowsDetail verifies motion to a
+// smaller y during an active drag pushes height_ratio upward (detail
+// grows when divider moves up).
+func TestModel_T156_BelowDrag_MotionUp_GrowsDetail(t *testing.T) {
+	m := setupRatioModelBelow(t, false)
+	dy := belowDividerY(m)
+	before := m.cfg.Config.DetailPane.HeightRatio
+
+	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = send(m, tea.MouseMsg{X: 20, Y: dy - 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
+	after := m.cfg.Config.DetailPane.HeightRatio
+	if after <= before {
+		t.Errorf("drag up should grow height_ratio: before=%.3f after=%.3f", before, after)
+	}
+}
+
+// TestModel_T156_BelowDrag_MotionDown_ShrinksDetail: motion to a larger y
+// shrinks detail when the divider moves down.
+func TestModel_T156_BelowDrag_MotionDown_ShrinksDetail(t *testing.T) {
+	m := setupRatioModelBelow(t, false)
+	// Seed a roomier starting ratio so a downward motion still fits inside clamp.
+	m.cfg.Config.DetailPane.HeightRatio = 0.50
+	m.paneHeight = m.paneHeight.SetRatio(0.50)
+	m = m.relayout()
+	dy := belowDividerY(m)
+	before := m.cfg.Config.DetailPane.HeightRatio
+
+	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = send(m, tea.MouseMsg{X: 20, Y: dy + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
+	after := m.cfg.Config.DetailPane.HeightRatio
+	if after >= before {
+		t.Errorf("drag down should shrink height_ratio: before=%.3f after=%.3f", before, after)
+	}
+}
+
+// TestModel_T156_BelowDrag_Release_PersistsHeightRatio ensures the final
+// ratio is flushed to disk exactly once on mouse release, and that the
+// in-memory value matches.
+func TestModel_T156_BelowDrag_Release_PersistsHeightRatio(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: want below, got %v", m.resize.Orientation())
+	}
+	dy := belowDividerY(m)
+
+	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	// Ensure config file does NOT exist yet — motion must not save.
+	m = send(m, tea.MouseMsg{X: 20, Y: dy - 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	if _, err := os.Stat(cfgPath); err == nil {
+		t.Error("motion during drag must NOT write config; file exists already")
+	}
+	m = send(m, tea.MouseMsg{X: 20, Y: dy - 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	if m.draggingDivider {
+		t.Error("Release must end drag session")
+	}
+	reloaded := config.Load(cfgPath)
+	if reloaded.Config.DetailPane.HeightRatio != m.cfg.Config.DetailPane.HeightRatio {
+		t.Errorf("disk height_ratio after release: got %.3f, want %.3f",
+			reloaded.Config.DetailPane.HeightRatio, m.cfg.Config.DetailPane.HeightRatio)
+	}
+}
+
+// TestModel_T156_Drag_IsFocusNeutral ensures dragging the divider never
+// mutates m.focus — in either orientation, starting from either focus.
+func TestModel_T156_Drag_IsFocusNeutral(t *testing.T) {
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T, listFocus bool) Model
+		dividerFn func(Model) (x, y int)
+		motionDX  int
+		motionDY  int
+	}{
+		{
+			name:      "right/detail-focus",
+			setup:     setupRatioModelRight,
+			dividerFn: func(m Model) (int, int) { return rightDividerX(m), 5 },
+			motionDX:  -10,
+		},
+		{
+			name:      "right/list-focus",
+			setup:     func(t *testing.T, _ bool) Model { return setupRatioModelRight(t, true) },
+			dividerFn: func(m Model) (int, int) { return rightDividerX(m), 5 },
+			motionDX:  -10,
+		},
+		{
+			name:      "below/detail-focus",
+			setup:     setupRatioModelBelow,
+			dividerFn: func(m Model) (int, int) { return 20, belowDividerY(m) },
+			motionDY:  -3,
+		},
+		{
+			name:      "below/list-focus",
+			setup:     func(t *testing.T, _ bool) Model { return setupRatioModelBelow(t, true) },
+			dividerFn: func(m Model) (int, int) { return 20, belowDividerY(m) },
+			motionDY:  -3,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.setup(t, false)
+			startFocus := m.focus
+			x, y := tc.dividerFn(m)
+			m = send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+			m = send(m, tea.MouseMsg{X: x + tc.motionDX, Y: y + tc.motionDY, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+			m = send(m, tea.MouseMsg{X: x + tc.motionDX, Y: y + tc.motionDY, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+			if m.focus != startFocus {
+				t.Errorf("drag changed focus: start=%v end=%v", startFocus, m.focus)
+			}
+		})
+	}
+}
+
+// TestModel_T156_BelowDrag_ClampsAtMax verifies a drag that would push the
+// divider past the top edge pins to RatioMax.
+func TestModel_T156_BelowDrag_ClampsAtMax(t *testing.T) {
+	m := setupRatioModelBelow(t, false)
+	dy := belowDividerY(m)
+
+	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = send(m, tea.MouseMsg{X: 20, Y: -100, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
+	if got := m.cfg.Config.DetailPane.HeightRatio; got != appshell.RatioMax {
+		t.Errorf("extreme up drag: got %.3f, want RatioMax %.3f", got, appshell.RatioMax)
+	}
+}
+
+// TestModel_T156_BelowDrag_ClampsAtMin verifies a drag that would push the
+// divider past the bottom edge pins to RatioMin.
+func TestModel_T156_BelowDrag_ClampsAtMin(t *testing.T) {
+	m := setupRatioModelBelow(t, false)
+	dy := belowDividerY(m)
+	termH := m.resize.Height()
+
+	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = send(m, tea.MouseMsg{X: 20, Y: termH + 100, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
+	if got := m.cfg.Config.DetailPane.HeightRatio; got != appshell.RatioMin {
+		t.Errorf("extreme down drag: got %.3f, want RatioMin %.3f", got, appshell.RatioMin)
+	}
+}
+
+// TestModel_T156_PaneClosed_PressIsNoOp: pressing anywhere with the pane
+// closed never starts a drag session (there is no divider).
+func TestModel_T156_PaneClosed_PressIsNoOp(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+
+	for _, size := range []struct{ w, h int }{{80, 24}, {200, 24}} {
+		m := New("", false, cfgPath, cfg)
+		m = resize(m, size.w, size.h)
+		m = m.SetEntries(makeEntries(3))
+		if m.pane.IsOpen() {
+			t.Fatalf("precondition: pane must be closed at %dx%d", size.w, size.h)
+		}
+		m = send(m, tea.MouseMsg{X: 10, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		if m.draggingDivider {
+			t.Errorf("%dx%d press with pane closed must not start drag", size.w, size.h)
+		}
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("pane-closed press must not save config; file exists: %v", err)
+	}
+}
+
+// TestModel_T156_RightDrag_UpdatesWidthRatio mirrors the T-104 coverage
+// after the dual-orientation refactor — confirms right-split drag still
+// updates width_ratio (not height_ratio) and saves once on release.
+func TestModel_T156_RightDrag_UpdatesWidthRatio(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right, got %v", m.resize.Orientation())
+	}
+	beforeH := m.cfg.Config.DetailPane.HeightRatio
+	dx := rightDividerX(m)
+
+	m = send(m, tea.MouseMsg{X: dx, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = send(m, tea.MouseMsg{X: dx - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m = send(m, tea.MouseMsg{X: dx - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+
+	if m.cfg.Config.DetailPane.HeightRatio != beforeH {
+		t.Errorf("right-mode drag must not mutate height_ratio: %.3f → %.3f",
+			beforeH, m.cfg.Config.DetailPane.HeightRatio)
+	}
+	reloaded := config.Load(cfgPath)
+	if reloaded.Config.DetailPane.WidthRatio != m.cfg.Config.DetailPane.WidthRatio {
+		t.Errorf("disk width_ratio after right-drag release: got %.3f, want %.3f",
+			reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
+	}
+}
