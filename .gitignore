@@ -18,3 +18,4 @@ logs/
 .claude/settings.local.json
 .claude/*.local.*
 .claude/worktrees/
+/gloggy

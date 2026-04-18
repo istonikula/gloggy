@@ -382,6 +382,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	default: // FocusEntryList
+		// T-143/T-144 (cavekit-entry-list R13): when list search is
+		// active, keys that belong to the search handler must reach the
+		// list before app-level single-key intercepts (/, f, y, enter,
+		// esc) swallow them. Tab is handled earlier and clears search
+		// via the focus-cycle branch, so it is not affected by this
+		// route.
+		//   Input mode: every key goes to list (typing builds the
+		//   query, Enter commits to navigate mode, Backspace edits,
+		//   Esc dismisses).
+		//   Navigate mode: only Esc is redirected here so dismissal
+		//   takes priority over `Esc closes pane` and `Esc clears
+		//   transient`. `n`/`N` / `j` / `k` / `Enter` / etc. fall
+		//   through — Enter on the current matched row opens the
+		//   detail pane, navigation keys reach list.Update via the
+		//   default fallthrough (handleSearchKey passes them on).
+		if m.list.HasActiveSearch() && (m.list.Search().InputMode() || msg.String() == "esc") {
+			var cmd tea.Cmd
+			m.list, cmd = m.list.Update(msg)
+			return m, cmd
+		}
 		// T-097 priority 3: Esc on list clears transient state (wrap
 		// indicator from level-jump / mark-nav). No-op otherwise.
 		// Priorities 1 (help/filter overlays) and 2 (detail-pane close)
