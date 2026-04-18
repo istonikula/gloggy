@@ -85,6 +85,44 @@ func (l Layout) DetailContentWidth() int {
 	return u - int(float64(u)*(1.0-l.WidthRatio))
 }
 
+// ListContentTopY returns the terminal Y coordinate of the first entry-list
+// content row — i.e. the header height + the list pane's top border (1).
+// This is the single owner of the click-to-row Y offset per
+// cavekit-entry-list R10 / cavekit-app-shell R2 (T-158). Consumers MUST
+// read this value rather than re-derive the header or border arithmetic
+// locally; drift between consumers is what caused the historical
+// 2-row click-offset bug.
+func (l Layout) ListContentTopY() int {
+	return l.HeaderHeight + 1
+}
+
+// ClickToListRow converts a terminal Y coordinate into a list-viewport
+// relative row (0-indexed from the first visible row). Returns ok=false
+// when the coordinate lies outside the list's content rows (on the
+// header, list top/bottom border, divider, detail pane, or status bar).
+// Adding the list's current scroll offset to the returned viewportY
+// yields the clicked visible-entry index.
+//
+// Partitioning between panes is owned by cavekit-app-shell R6 (the
+// MouseRouter zone resolver); this helper only resolves Y within the
+// list pane. Callers that skip the zone check must treat ok=false as
+// "not inside list content" — never map it to row 0.
+func (l Layout) ClickToListRow(terminalY int) (int, bool) {
+	start := l.ListContentTopY()
+	// The list pane is wrapped in a 1-row top border and a 1-row bottom
+	// border (entrylist.NewListModel subtracts 2 from EntryListHeight
+	// for its inner viewport). The bottom border sits at entryListEnd,
+	// so content rows span [start, start+viewportRows).
+	viewportRows := l.EntryListHeight() - 2
+	if viewportRows < 1 {
+		return 0, false
+	}
+	if terminalY < start || terminalY >= start+viewportRows {
+		return 0, false
+	}
+	return terminalY - start, true
+}
+
 // DetailPaneVerticalRows returns the outer vertical allocation (rows,
 // border-inclusive) for the detail pane. In below-mode this is
 // DetailPaneHeight (height_ratio * terminalHeight). In right-mode the pane

@@ -2090,3 +2090,155 @@ func TestModel_T156_RightDrag_UpdatesWidthRatio(t *testing.T) {
 			reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
 	}
 }
+
+// ---------- T-158: single-owner click-row resolver (cavekit-entry-list R10) ----------
+
+// clickAt emits a left-Press at (x, y) and returns the updated model.
+func clickAt(m Model, x, y int) Model {
+	return send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+}
+
+// TestModel_T158_Click_FirstRow_SelectsRowZero_BelowMode: click at the
+// first visible content row (terminal y=2) selects visible row 0 — NOT
+// row 2 (the prior bug).
+func TestModel_T158_Click_FirstRow_SelectsRowZero_BelowMode(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(20))
+	if m.pane.IsOpen() {
+		t.Fatalf("precondition: pane should be closed")
+	}
+	m = clickAt(m, 10, 2)
+	if got := m.list.CursorPosition(); got != 1 {
+		t.Errorf("click y=2 (first content row): CursorPosition = %d (1-based), want 1", got)
+	}
+}
+
+// TestModel_T158_Click_SecondRow_SelectsRowOne_BelowMode: y=3 → row 1.
+func TestModel_T158_Click_SecondRow_SelectsRowOne_BelowMode(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(20))
+	m = clickAt(m, 10, 3)
+	if got := m.list.CursorPosition(); got != 2 {
+		t.Errorf("click y=3 (second content row): CursorPosition = %d, want 2", got)
+	}
+}
+
+// TestModel_T158_Click_TopBorder_NoOp: click at y=1 (list top border) does
+// not move the cursor.
+func TestModel_T158_Click_TopBorder_NoOp(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(20))
+	before := m.list.CursorPosition()
+	m = clickAt(m, 10, 1)
+	if got := m.list.CursorPosition(); got != before {
+		t.Errorf("click on top border: CursorPosition = %d, want %d (unchanged)", got, before)
+	}
+}
+
+// TestModel_T158_Click_Header_NoOp: y=0 (header) routes to ZoneHeader, not
+// list — cursor does not move.
+func TestModel_T158_Click_Header_NoOp(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(20))
+	for i := 0; i < 5; i++ {
+		m = key(m, "j") // advance cursor to a non-zero row
+	}
+	before := m.list.CursorPosition()
+	m = clickAt(m, 10, 0)
+	if got := m.list.CursorPosition(); got != before {
+		t.Errorf("click on header: CursorPosition = %d, want %d (unchanged)", got, before)
+	}
+}
+
+// TestModel_T158_Click_FirstRow_RightMode: same single-owner mapping applies
+// in right-split. y=2 → row 0.
+func TestModel_T158_Click_FirstRow_RightMode(t *testing.T) {
+	m := newModel()
+	m = resize(m, 200, 24)
+	entries := makeEntries(20)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right, got %v", m.resize.Orientation())
+	}
+	m = clickAt(m, 10, 2)
+	if got := m.list.CursorPosition(); got != 1 {
+		t.Errorf("right-mode click y=2: CursorPosition = %d, want 1", got)
+	}
+}
+
+// TestModel_T158_Click_FirstRow_BelowMode_PaneOpen: same mapping applies
+// with the detail pane open (EntryListHeight shrinks but contentTopY stays 2).
+func TestModel_T158_Click_FirstRow_BelowMode_PaneOpen(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(20)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: want below, got %v", m.resize.Orientation())
+	}
+	m = clickAt(m, 10, 2)
+	if got := m.list.CursorPosition(); got != 1 {
+		t.Errorf("below-mode pane-open click y=2: CursorPosition = %d, want 1", got)
+	}
+}
+
+// TestModel_T158_DoubleClick_UsesSameResolver: double-click at y=3 opens the
+// detail pane for row 1 — the same row a single click at y=3 would select.
+func TestModel_T158_DoubleClick_UsesSameResolver(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(20)
+	m = m.SetEntries(entries)
+
+	// First click at y=3 positions the cursor on row 1.
+	m = clickAt(m, 10, 3)
+	if got := m.list.CursorPosition(); got != 2 {
+		t.Fatalf("first click y=3: CursorPosition = %d, want 2", got)
+	}
+	// Second click at the SAME y=3 within 500ms triggers double-click,
+	// which emits OpenDetailPaneMsg. We verify the cmd return.
+	updated, cmd := m.Update(tea.MouseMsg{X: 10, Y: 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = updated.(Model)
+	if cmd == nil {
+		// Not every list state emits a command here, but if double-click
+		// fired, we should see OpenDetailPaneMsg.
+		t.Fatal("second click at same y should emit a cmd for double-click")
+	}
+	msg := cmd()
+	open, ok := msg.(entrylist.OpenDetailPaneMsg)
+	if !ok {
+		t.Fatalf("double-click cmd: want OpenDetailPaneMsg, got %T", msg)
+	}
+	if open.Entry.LineNumber != entries[1].LineNumber {
+		t.Errorf("double-click opens wrong entry: got line %d, want %d",
+			open.Entry.LineNumber, entries[1].LineNumber)
+	}
+}
+
+// TestModel_T158_Click_DividerRow_NoListSelection: click on the below-mode
+// divider row does not mutate the list cursor — divider zone is handled
+// separately by the drag branch.
+func TestModel_T158_Click_DividerRow_NoListSelection(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(20)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	for i := 0; i < 3; i++ {
+		m = key(m, "j")
+	}
+	before := m.list.CursorPosition()
+
+	dy := belowDividerY(m)
+	m = clickAt(m, 10, dy)
+
+	if got := m.list.CursorPosition(); got != before {
+		t.Errorf("click on divider row (y=%d): CursorPosition = %d, want %d (unchanged)", dy, got, before)
+	}
+}

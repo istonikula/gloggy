@@ -380,3 +380,43 @@ func TestRenderCompactRow_FlattenNewlines(t *testing.T) {
 		t.Errorf("compact row contains newline: %q", row)
 	}
 }
+
+// ---------- T-158: click-row resolver uses contentTopY injection ----------
+
+// TestListModel_MouseClick_HonorsContentTopY_Offset2 verifies that with
+// contentTopY = 2 (header 1 + top border 1), a click at terminal y=2
+// lands on visible row 0 — NOT row 2 as the pre-T-158 resolver did.
+func TestListModel_MouseClick_HonorsContentTopY_Offset2(t *testing.T) {
+	m := defaultListModel(20).SetEntries(makeEntries(30)).WithContentTopY(2)
+	// Deliver a sized window so ViewportHeight is meaningful.
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+
+	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if got := m.Cursor(); got != 0 {
+		t.Errorf("click y=2 with contentTopY=2: Cursor = %d, want 0", got)
+	}
+
+	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if got := m.Cursor(); got != 3 {
+		t.Errorf("click y=5 with contentTopY=2: Cursor = %d, want 3", got)
+	}
+}
+
+// TestListModel_MouseClick_TopBorderBelowContentTopY_NoOp: click at y=1
+// (above the first content row) is a no-op — rowForY returns -1 and the
+// Press handler does not touch the cursor.
+func TestListModel_MouseClick_TopBorderBelowContentTopY_NoOp(t *testing.T) {
+	m := defaultListModel(20).SetEntries(makeEntries(30)).WithContentTopY(2)
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+	// Move cursor off row 0 so a bug would be observable.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	before := m.Cursor()
+
+	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+
+	if got := m.Cursor(); got != before {
+		t.Errorf("click on top border (y=1): Cursor = %d, want %d (unchanged)", got, before)
+	}
+}

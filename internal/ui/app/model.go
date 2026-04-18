@@ -174,7 +174,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = noticeClearAfter(autoCloseNoticeDuration)
 		}
 		l := m.layout.Layout()
-		m.list = m.list.WithScrolloff(m.cfg.Config.Scrolloff)
+		m.list = m.list.WithScrolloff(m.cfg.Config.Scrolloff).WithContentTopY(l.ListContentTopY())
 		m.list, _ = m.list.Update(tea.WindowSizeMsg{Width: l.ListContentWidth(), Height: l.EntryListHeight()})
 		// T-123 (F-013): vertical allocation is orientation-aware — in
 		// right-split the pane gets the full main-area slot, not
@@ -663,7 +663,7 @@ func (m Model) relayout() Model {
 		SetOrientation(m.resize.Orientation()).
 		SetWidthRatio(m.cfg.Config.DetailPane.WidthRatio)
 	l := m.layout.Layout()
-	m.list = m.list.WithScrolloff(m.cfg.Config.Scrolloff)
+	m.list = m.list.WithScrolloff(m.cfg.Config.Scrolloff).WithContentTopY(l.ListContentTopY())
 	m.list, _ = m.list.Update(tea.WindowSizeMsg{
 		Width:  l.ListContentWidth(),
 		Height: l.EntryListHeight(),

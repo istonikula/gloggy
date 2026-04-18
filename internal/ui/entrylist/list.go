@@ -42,6 +42,14 @@ type ListModel struct {
 	pinnedFullIdx int           // -1 = none; full-entries index of a level-jump match that is filtered out, pinned into the visible list with a "outside filter" indicator
 	lastClickRow  int
 	lastClickTime time.Time
+	// contentTopY is the terminal Y coordinate of the first visible entry
+	// row — i.e. the header height (owned by appshell.Layout) plus the
+	// list pane's 1-row top border. The app sets this via WithContentTopY
+	// at every WindowSizeMsg / relayout so the list never re-derives the
+	// offset (T-158, cavekit-entry-list R10 rewrite). Without this
+	// injection the list had to guess terminal-Y meaning and produced a
+	// 2-row click offset in every geometry that used a header + border.
+	contentTopY int
 	// search holds list-scope free-text search state (T-143, cavekit-
 	// entry-list R13). Activated by app via ActivateSearch() when `/` is
 	// pressed with the list focused.
@@ -66,6 +74,15 @@ func NewListModel(th theme.Theme, cfg config.Config, width, height int) ListMode
 		pinnedFullIdx: -1,
 		search:        NewSearchModel(th),
 	}
+}
+
+// WithContentTopY sets the terminal Y offset of the first entry row
+// (T-158, cavekit-entry-list R10). Value comes from
+// `appshell.Layout.ListContentTopY()` — the list MUST NOT compute it
+// locally.
+func (m ListModel) WithContentTopY(y int) ListModel {
+	m.contentTopY = y
+	return m
 }
 
 // WithScrolloff sets the cursor-margin rows applied after every cursor move
@@ -254,11 +271,19 @@ func (m ListModel) visibleEntriesAndPin() ([]logsource.Entry, int) {
 // Marks returns the mark set.
 func (m ListModel) Marks() *MarkSet { return m.marks }
 
-// rowForY converts a mouse Y coordinate (relative to the list top) to a
-// visible-list cursor index, or -1 if out of bounds.
+// rowForY converts a terminal-absolute mouse Y coordinate to a visible-list
+// cursor index, or -1 if out of content bounds. Translation uses
+// `contentTopY` (set by the app via WithContentTopY — originally computed
+// by appshell.Layout.ListContentTopY, the single owner of the header +
+// top-border offset per cavekit-entry-list R10). T-158 rewrite: previously
+// this treated `y` as list-relative and produced a 2-row offset bug.
 func (m ListModel) rowForY(y int) int {
+	relY := y - m.contentTopY
+	if relY < 0 || relY >= m.scroll.ViewportHeight {
+		return -1
+	}
 	vis := m.visibleEntries()
-	idx := m.scroll.Offset + y
+	idx := m.scroll.Offset + relY
 	if idx < 0 || idx >= len(vis) {
 		return -1
 	}

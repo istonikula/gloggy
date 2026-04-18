@@ -260,3 +260,110 @@ func TestDetailPaneVerticalRows_FloorAtOne(t *testing.T) {
 		t.Errorf("degenerate right: got %d, want ≥ 1", got)
 	}
 }
+
+// ---------- T-158: single-owner click-row resolver (cavekit-entry-list R10) ----------
+
+// TestLayout_ListContentTopY_BelowMode: header(1) + list top border(1) = 2.
+func TestLayout_ListContentTopY_BelowMode(t *testing.T) {
+	l := NewLayout(80, 24, true, 7)
+	if got := l.ListContentTopY(); got != 2 {
+		t.Errorf("below-mode ListContentTopY: got %d, want 2", got)
+	}
+}
+
+// TestLayout_ListContentTopY_RightMode: right-split also has header+border,
+// so the offset is still 2.
+func TestLayout_ListContentTopY_RightMode(t *testing.T) {
+	l := NewLayout(200, 24, true, 0)
+	l.Orientation = OrientationRight
+	if got := l.ListContentTopY(); got != 2 {
+		t.Errorf("right-mode ListContentTopY: got %d, want 2", got)
+	}
+}
+
+// TestLayout_ListContentTopY_PaneClosed: closed-pane layouts still have a
+// header and a list top border — offset stays 2.
+func TestLayout_ListContentTopY_PaneClosed(t *testing.T) {
+	l := NewLayout(80, 24, false, 0)
+	if got := l.ListContentTopY(); got != 2 {
+		t.Errorf("pane-closed ListContentTopY: got %d, want 2", got)
+	}
+}
+
+// TestLayout_ClickToListRow_FirstContentRow: y = ListContentTopY → row 0.
+func TestLayout_ClickToListRow_FirstContentRow(t *testing.T) {
+	l := NewLayout(80, 24, true, 7) // EntryListHeight = 15, viewport = 13
+	row, ok := l.ClickToListRow(2)
+	if !ok {
+		t.Fatalf("y=2 should be in content, got ok=false")
+	}
+	if row != 0 {
+		t.Errorf("y=2: got row %d, want 0", row)
+	}
+}
+
+// TestLayout_ClickToListRow_SequentialRows: each +1 terminal Y advances the
+// row by one.
+func TestLayout_ClickToListRow_SequentialRows(t *testing.T) {
+	l := NewLayout(80, 24, true, 7)
+	for y, wantRow := range map[int]int{2: 0, 3: 1, 5: 3, 14: 12} {
+		row, ok := l.ClickToListRow(y)
+		if !ok {
+			t.Errorf("y=%d: expected in-content, got ok=false", y)
+			continue
+		}
+		if row != wantRow {
+			t.Errorf("y=%d: got row %d, want %d", y, row, wantRow)
+		}
+	}
+}
+
+// TestLayout_ClickToListRow_HeaderIsOutsideContent: y=0 (header) returns
+// ok=false.
+func TestLayout_ClickToListRow_HeaderIsOutsideContent(t *testing.T) {
+	l := NewLayout(80, 24, true, 7)
+	if _, ok := l.ClickToListRow(0); ok {
+		t.Error("y=0 (header) should return ok=false")
+	}
+}
+
+// TestLayout_ClickToListRow_TopBorderIsOutsideContent: y=1 (list top border)
+// returns ok=false.
+func TestLayout_ClickToListRow_TopBorderIsOutsideContent(t *testing.T) {
+	l := NewLayout(80, 24, true, 7)
+	if _, ok := l.ClickToListRow(1); ok {
+		t.Error("y=1 (list top border) should return ok=false")
+	}
+}
+
+// TestLayout_ClickToListRow_BottomBorderIsOutsideContent: the bottom border
+// row of the list pane is out of content.
+func TestLayout_ClickToListRow_BottomBorderIsOutsideContent(t *testing.T) {
+	// EntryListHeight = 24 - 2 - 7 = 15 → content rows = 13 → last content y = 2+12 = 14
+	// Bottom border sits at entryListEnd = 15.
+	l := NewLayout(80, 24, true, 7)
+	if _, ok := l.ClickToListRow(15); ok {
+		t.Error("y=15 (list bottom border) should return ok=false")
+	}
+}
+
+// TestLayout_ClickToListRow_DividerIsOutsideContent: below-mode divider row
+// returns ok=false.
+func TestLayout_ClickToListRow_DividerIsOutsideContent(t *testing.T) {
+	l := NewLayout(80, 24, true, 7)
+	// Divider row in below-mode = entryListEnd+1 = 16.
+	if _, ok := l.ClickToListRow(16); ok {
+		t.Error("y=16 (divider) should return ok=false")
+	}
+}
+
+// TestLayout_ClickToListRow_DegenerateHeight: a layout with no room for
+// content returns ok=false for any Y.
+func TestLayout_ClickToListRow_DegenerateHeight(t *testing.T) {
+	l := NewLayout(80, 4, true, 0)
+	for y := 0; y < 4; y++ {
+		if _, ok := l.ClickToListRow(y); ok {
+			t.Errorf("degenerate height: y=%d should be ok=false", y)
+		}
+	}
+}
