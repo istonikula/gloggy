@@ -1,8 +1,15 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T18:23:37+03:00"
+last_edited: "2026-04-18T19:46:33+03:00"
 ---
 # Loop Log
+
+### Iteration 33 — 2026-04-18 (Tier 15 + Tier 16 HUMAN sign-off: T-142 + T-145 + T-144-fix)
+- T-142: clipboard feedback + detail-pane rendering sign-off — DONE. HUMAN verified via tui-mcp (tokyo-night @ 140x35 right + 80x35 below; catppuccin-mocha + material-dark spot-checked via theme walks). AC 1 (`y` on no marks → `no marked entries`; `y` on 2 marks → `copied 2 entries`). AC 2 (`tiny.log:1` logger fit at `width_ratio=0.70` pane-cycled — no overflow, no underfill seam). AC 3 (`tiny.log:45` wrap color green persists across continuation lines, per `TestSoftWrap_T140_SGRRestoredOnContinuation`). AC 4 (cursor-row bg contiguous across `"key": "value",` — no dark gap, per `TestPaneModel_T141_StripsInnerResets`). Closes F-102 + F-103 + F-104 + F-105.
+- T-145: list search sign-off — DONE. HUMAN verified via tui-mcp (tokyo-night @ 140x35 right + 80x35 below). All 8 ACs: (1) `/` opens `/: ` prompt no notice; (2) match bg + status counter; (3) Enter commits, cursor jumps to first match, `n` advances with scrolloff; (4) Esc dismisses, highlights cleared, cursor preserved; (5) zero-match → `No matches`; (6) Tab→detail + `/` routes to pane-search not list; (7) filter-panel `/` literal (no list-search activation); (8) Tab from list-with-active-search clears search. Below-orientation auto-flip verified. Cross-theme deferred — search colors come from `SearchHighlight` theme token; rendering logic theme-independent. Closes F-101.
+- T-144-fix: discovered during T-145 — Enter in input mode opened detail pane instead of committing; Esc in navigate mode didn't dismiss search. Root cause: app-level single-key intercepts (esc/enter/f/y/slash) fired before `m.list.Update(msg)` could consume them via `handleSearchKey`. Fix: in `app/model.go` FocusEntryList branch, when `m.list.HasActiveSearch()` and either in input mode OR key is `esc`, route directly to `m.list.Update(msg)` before the intercepts. Navigate-mode other keys fall through so Enter on a matched row opens the pane, j/k/n/N navigate normally.
+- Wave 3 + fix inline (parent opus = EXECUTION_MODEL). Build P, Tests P (485/485 across 11 pkgs). Files: app/model.go + impl-app-shell.md + impl-detail-pane.md + impl-entry-list.md + internal/ui/{appshell,detailpane,entrylist}/CLAUDE.md + loop-log.md + .gitignore (ignore binary).
+- Frontier: Tier 15 + Tier 16 Codex tier gates SKIPPED (codex binary unavailable). All 145 tasks across 17 tiers DONE. Build site complete.
 
 ### Iteration 32 — 2026-04-18 (Tier 16 Wave 1: T-143 + T-144)
 - T-143: list-scope free-text search — DONE. `internal/ui/entrylist/search.go` (`SearchModel` with input/navigate modes, UTF-8-safe BackspaceRune via `utf8.DecodeLastRuneInString`, `composeSearchRow` mirroring RenderCompactRow field order so matches align with rendered view). `ListModel` gets `search` field + `Activate/Deactivate/HasActiveSearch/Search` accessors + `handleSearchKey` at top of Update. View() paints `SearchHighlight` bg on non-cursor match rows via `RenderCompactRowWithBg`; cursor-row `CursorHighlight` keeps priority (R13 AC 10). `SetFilter` auto-deactivates. 10 tests in `search_test.go`. Closes F-101 (cavekit-entry-list R13).
