@@ -47,6 +47,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 - **Two-level cursor** — magit-style: `j`/`k` move between entries; `l`/`Tab`/`→` expand into per-field sub-rows; `h`/`←`/`Esc` collapse back.
 - **Scroll navigation** — `g`/`G` go to top/bottom, `Ctrl-d`/`Ctrl-u` half-page. Viewport follows the cursor with a configurable `scrolloff` margin of context rows around the cursor (default 5).
 - **Marks** — `m` toggles a bookmark; `u`/`U` jump between marks. Marked entries are visually indicated.
+- **List-scope search** — `/` opens a free-text search over the visible list (matches against time/level/logger/msg); matching rows are highlighted, `Enter` commits to navigate mode, `n`/`N` move the cursor to the next/prev match with `scrolloff` context, `Esc` dismisses. Matches extend live while new entries stream in from tail mode.
 - **Mouse support** — click to select, scroll wheel to scroll (cursor is dragged along when it would leave the scrolloff margin, nvim-style), click a selected entry to open the detail pane.
 
 ### Detail Pane
@@ -101,12 +102,14 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 | `Tab` / `l` / `→` | Expand entry into per-field sub-rows |
 | `h` / `←` | Collapse sub-rows |
 | `Enter` | Open detail pane for current entry |
+| `/` | Open list-scope search (focus stays on list) |
+| `n`/`N` | Move cursor to next/prev list-search match (viewport adjusts to keep `scrolloff` context) |
 
 ### Detail pane + search
 
 | Key | Action |
 |-----|--------|
-| `/` | Open in-pane search (if list focused, focus transfers to detail pane with search active) |
+| `/` | Open search scoped to the focused pane (detail pane when focused; list when focused — each pane has its own search) |
 | `n`/`N` | Move cursor to next/prev match (viewport adjusts to keep `scrolloff` context) |
 | `Esc` | Dismiss search, then close pane (two-step) |
 

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T20:24:39+03:00"
+last_edited: "2026-04-18T21:00:22+03:00"
 ---
 
 # Build Site: gloggy
@@ -15,9 +15,9 @@ last_edited: "2026-04-18T20:24:39+03:00"
 | Source Kits | 6 domains |
 | Requirements | 60 |
 | Acceptance Criteria | ~360 |
-| Plan Tasks | 145 |
+| Plan Tasks | 154 |
 | Human Sign-off Tasks | 19 |
-| Tiers | 17 (0 through 16) |
+| Tiers | 18 (0 through 17) |
 
 ---
 
@@ -282,6 +282,17 @@ Triggered by `/ck:check` inspector findings F-106..F-115. P1 F-106 is a real dat
 | T-148 | Recompute list-search matches on streaming entry arrivals (F-109) | entry-list/R13 (new streaming AC) | T-143 | M | In `internal/ui/entrylist/list.go` `AppendEntries(newEntries []entry.Entry)` (~line 92), if `m.search.IsActive()` and `m.search.Query() != ""` recompute matches over the appended slice only (O(len(newEntries)) cost) and append any new match indices to the existing match set. Preserve `current` cursor index if it is still within the new match set; otherwise leave it untouched. The composed match haystack must use the same `composeSearchRow` helper used at search activation so the match-visibility contract is identical. Unit tests: (1) activate search with query matching zero existing entries, append 3 entries where 1 matches → `len(m.search.Matches()) == 1`, counter `(0/1)` or `(1/1)` depending on active mode; (2) active search with 2 existing matches, append 2 more matching entries → matches grow from 2 to 4; (3) active search in input mode, append entries → behavior unchanged (input mode already recomputes via key input — this AC targets the navigate-mode + follow-mode path). Closes F-109 (P2). |
 | T-149 | Remove dead `searchHighlightStyle` + unused lipgloss import (F-107) | none (quality) | T-143 | XS | In `internal/ui/entrylist/search.go` delete `searchHighlightStyle()` (lines 208-213). Remove `github.com/charmbracelet/lipgloss` import — the function was its only user. `go build ./...` and `go test ./...` must pass without the helper. Closes F-107 (P2 dead code). |
 | T-150 | [HUMAN] R14 + R13 expansion sign-off | app-shell/R14, entry-list/R13 | T-146, T-147, T-148, T-149 | S | Per overview "Verification Conventions" §1–§5, verify via tui-mcp on `logs/small.log` at `80x24` + `140x35` in right + below orientations (tokyo-night suffices; R14 is theme-independent): (1) activate list search, type `query`, confirm query is `"query"` and the app has NOT quit; (2) activate list search, press `f` — filter panel opens, search highlights gone, keyhint bar does not show `/: ...`; (3) simulate streaming append (or use `logs/tail*.log` tail mode) while a list search is active — new matching entries highlight live and `(cur/total)` updates. |
+
+### Tier 18 -- Search Polish + Test-Pin Gaps (discovered by /ck:check 2026-04-18 post-Tier 17)
+
+Verdict on the Tier 17 loop was **APPROVE** (12/12 verifier MET, 0 P0/P1 inspector findings). Tier 18 is optional polish — NOT a build blocker. F-116 extracts a shared helper to prevent streaming/full-scan match-logic drift; F-117/F-118/F-119 add missing regression tests for behaviors that are already MET in code but not pinned by tests. All four tasks are disjoint and parallelizable.
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-151 | Extract shared `matchRow` helper between `ExtendMatches` + `computeMatches` (F-116) | none (quality) | T-148 | XS | In `internal/ui/entrylist/search.go`, extract `func matchRow(query, hay string) bool` (or a lower-cased-needle helper) and call it from both `ExtendMatches` and `computeMatches`. Single source of truth for case-folding + substring semantics. Existing streaming + full-scan tests must still pass unchanged. Closes F-116 (P2 future-drift risk). |
+| T-152 | Extend `TestModel_Q_ListSearchInputMode_DoesNotQuit` with chained keystrokes (F-117) | app-shell/R14 AC 1 | T-146 | XS | In `internal/ui/app/model_test.go:1351-1378`, after the initial `q` rune send `u`, `i`, `t` and assert `m.list.Search().Query() == "quit"` and no `tea.Quit` issued across the sequence. Closes F-117 (P3 thin test). |
+| T-153 | Add regression test for R14 AC 5 (`?`-Esc preserves search state) (F-118) | app-shell/R14 AC 5 | T-146 | XS | In `internal/ui/app/model_test.go`, new test `TestModel_HelpOverlay_PreservesListSearchState`: activate list search, type a partial query (e.g. `"abc"`), press `?`, press `Esc`, assert `m.list.HasActiveSearch() == true && m.list.Search().Query() == "abc" && m.list.Search().InputMode() == true`. Closes F-118 (P3 test-pin gap). |
+| T-154 | Add regression test for R13 AC 7 mouse-click-off-list clears search (F-119) | entry-list/R13 AC 7 | T-147 | XS | In `internal/ui/app/model_test.go`, new test `TestModel_MouseClick_DetailZone_ClearsActiveListSearch`: open pane, activate list search, send a `tea.MouseMsg` with `Type=MouseLeft,Action=Press` and coords inside the detail pane zone, assert `m.list.HasActiveSearch() == false && m.focus == appshell.FocusDetailPane`. Closes F-119 (P3 test-pin gap). |
 
 ---
 
