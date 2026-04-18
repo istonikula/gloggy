@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-18T14:20:33+03:00"
+last_edited: "2026-04-18T16:17:51+03:00"
 ---
 
 # Review Findings
@@ -83,3 +83,28 @@ Verdict: REVISE — code is spec-compliant against pre-revision kits, but DESIGN
 - Kit revisions in this run: cavekit-detail-pane.md R11 (NEW), cavekit-entry-list.md R12 (NEW), cavekit-config.md R5 (extended with shared `scrolloff`).
 - README was also updated in this run to reflect the new cursor + scrolloff behaviour and to replace the stale "Sonnet only" mention with "Claude" (multi-model).
 - All of Tier 13 is complete per loop-log iteration 25; Tier 14 starts from a clean base at commit `5fe9184`.
+
+---
+
+## /ck:check run 2026-04-18 (post-Tier 14 — clipboard feedback, list search, detail-pane rendering)
+
+Source: user notes — (list) "no search", (list) "copy of marked message does not copy the entries", (details pane) "on small screen when details opened with max preset width, lines overflow (tiny.log:1, logger property)", (details pane) "strange prop value coloring (tiny.log:45, msg prop value when cursor moved into wrapped lines)", (details pane) "cursor background color not shown after prop — `\"prop\": \"value\",` coloring ends before `:` and continues after `,`". Scope: clipboard flow (`internal/ui/app/model.go:408-418`, `internal/ui/appshell/clipboard.go`), entry-list search (missing feature), detail-pane rendering (`internal/ui/detailpane/render.go:42-52, 88-144`, `internal/ui/detailpane/model.go:55-74, 342-365, 459-468`, `internal/ui/detailpane/wrap.go:20-35`, `internal/ui/appshell/layout.go:66-86`).
+
+Verdict: REVISE — two P1 findings (F-102 silent clipboard failure, F-105 non-contiguous cursor bg). F-103 cannot be confirmed from code alone (code shows underfill, not overflow; requires live tui-mcp repro to distinguish overflow-from-double-subtract vs underfill-from-double-subtract depending on which width is fed in). Amendments: R9 app-shell (clipboard feedback ACs), R9/R10/R11 detail-pane (wrap SGR, single-owner border, contiguous cursor bg), R13 entry-list (NEW list search), R13 app-shell (focus-based `/` routing).
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-101: Entry list has no search — `/` falls through to detail-pane routing only (cavekit gap) | P2 | `internal/ui/entrylist/list.go` (no search field); `internal/ui/app/model.go` `/` routing to detail pane | NEW | T-143, T-144, T-145 |
+| F-102: `y` clipboard copy is silent — error from `clipboard.WriteAll` discarded via `//nolint:errcheck`; `ClipboardCopiedMsg` dropped; no status-bar notice on success, no notice on error, no notice on zero marks | P1 | `internal/ui/app/model.go:408-418`; `internal/ui/appshell/clipboard.go` (ClipboardCopiedMsg / ClipboardErrorMsg defined but unused) | NEW | T-138 |
+| F-103: Detail-pane width accounting is broken in BOTH orientations — **right-orientation overflow**: pane extends past terminal right edge (no right border rendered, content clipped at terminal col); **below-orientation underfill**: pane is narrower than the list pane with a 14-col dead zone on the right (`DetailContentWidth()` returns 0 in below-mode → `SetWidth(0)` → pane falls back to prior/stale width). Root cause: layout publishes a CONTENT width via `DetailContentWidth()` but `SetWidth`/`contentWidth()` treats `m.width` as OUTER width and subtracts borders again (`m.width - 2`). Single-owner border accounting is missing. **Live-repro confirmed via tui-mcp** 2026-04-18: on 110×24 right-orientation, detail pane `┌──────...` has no closing `┐` (clips at col 110); below-orientation pane is 66 cols vs list 80 cols (14-col underfill). | P1 (visually confirmed — **right-split content loss past right edge**) | `internal/ui/detailpane/model.go:55-74, 459-468`; `internal/ui/appshell/layout.go:66-86`; `internal/ui/app/model.go:169, 574` (call sites passing `DetailContentWidth` — content width — into `SetWidth` which expects outer) | NEW | T-139 |
+| F-104: Soft-wrap does not preserve SGR across break — `ansi.HardwrapWc(line, width, true)` with default `preserveSGR=false`; styled value spanning wrap point loses bg/fg on continuation line | P1 | `internal/ui/detailpane/wrap.go:20-35`; `internal/ui/detailpane/render.go:42-52` (per-token `Style.Render()` emits `\x1b[0m`) | NEW | T-140 |
+| F-105: Cursor-row bg non-contiguous — per-token `lipgloss.Style.Render()` emits `\x1b[…m … \x1b[0m` segments; outer `paintCursorRow` applies bg + width but lipgloss does NOT re-inject outer SGR across inner resets; bg visually terminates at `:`/`,`/spaces between styled segments | P1 (directly matches user note "coloring ends before `:` and continues after `,`") | `internal/ui/detailpane/model.go:342-365` (paintCursorRow); `internal/ui/detailpane/render.go:42-52, 88-144` (per-token render sources the inner resets) | NEW | T-141 |
+
+### Context carried forward for the next `/ck:make`
+
+- Tier 15 tasks T-138..T-142 address F-102, F-103, F-104, F-105. Execute T-138 first (independent clipboard fix); T-139/T-140/T-141 detail-pane render fixes can proceed in parallel; T-142 is HUMAN sign-off and must be last.
+- Tier 16 tasks T-143..T-145 add the new list-search feature (cavekit-entry-list.md R13 + cavekit-app-shell.md R13 re-routing). T-145 is HUMAN sign-off.
+- F-103 live-repro completed via tui-mcp 2026-04-18 on `logs/tiny.log`: BOTH directions of the bug are present simultaneously. Right-orientation at 110×24: pane extends past terminal right edge, no right border, content clipped. Below-orientation at 80×24: pane is 66 cols vs list 80 cols. The T-139 fix must: (a) standardize on either outer-width or content-width as the single contract between layout and pane (pick one — outer is more common in lipgloss patterns), (b) remove the second border subtract from `contentWidth()`/`View()`, (c) make `DetailContentWidth()` return a non-zero value in below-orientation (currently returns 0, breaking the below-mode path entirely). HUMAN sign-off T-142 must verify right-split at 110×24 + 140×35 shows the closing `┐` border visible and no content past it, AND below-mode at 80×24 shows the detail pane outer width equal to list outer width.
+- Secondary observation during repro: the `|` ratio-preset cycle in right-orientation does not visibly change the pane widths in the rendered output even though the internal ratio state updates (both 0.10 and 0.70 presets render at the same visible widths). Likely adjacent to F-103 — once width accounting is single-owner, the ratio math should also take effect. If not, surface as F-106 in a follow-up check.
+- Kit revisions in this run: cavekit-app-shell.md R9 (expanded to 10 ACs), cavekit-app-shell.md R13 (rewritten to focus-based routing), cavekit-entry-list.md R13 (NEW), cavekit-detail-pane.md R9 (SGR-across-wrap AC added), cavekit-detail-pane.md R10 (single-owner border AC added), cavekit-detail-pane.md R11 (contiguous cursor bg AC added + human sign-off on `tiny.log:45`).
+- DESIGN.md §4 matrix + §9 keymap must be amended to mention the cursor-row contiguity clause and list-search keymap row respectively.

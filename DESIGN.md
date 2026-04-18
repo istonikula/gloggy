@@ -177,6 +177,15 @@ Any divergence is a bug.
   the user can predict where the cursor will be on re-focus. Only intensity
   and bold change. Applies to **entry list AND detail pane**; see §4.4 for
   detail-pane cursor semantics (scrolloff + search integration).
+- The `CursorHighlight` bg MUST render as a **contiguous** cell span across
+  the full pane content width. No gap at structural separators (`:`, `,`,
+  whitespace) or between syntax-highlighted token boundaries. Per-token
+  `lipgloss.Style.Render()` emits `SGR … \x1b[0m` sequences; the outer
+  cursor-row bg paint does NOT re-inject the outer SGR across those inner
+  resets. Implementations must either strip inner `\x1b[0m` resets on the
+  cursor row OR paint bg cell-by-cell after width-aware reflow. Byte-level
+  concatenation of per-token `Style.Render()` output with embedded resets
+  on the cursor row is a design violation.
 - Panes use `lipgloss.NormalBorder()`. Overlays use `RoundedBorder()` or
   `DoubleBorder()` so they are visually distinct from panes.
 - Closing a pane (e.g., details on `Esc`) is an atomic redraw — no fade.
@@ -666,7 +675,8 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
 | `\|` | Cycle 3 layout presets (0.10 / 0.30 / 0.70) | Any |
 | `+` / `-` | Adjust details ratio ± 5% | Any |
 | `=` | Reset ratio to 0.30 (balanced) | Any |
-| `/` | Search in focused pane | Entry list or detail pane |
+| `/` | Search in focused pane — routes to list search when list focused, detail-pane search when detail focused; literal character when filter panel focused | Entry list or detail pane |
+| `n` / `N` | Next / previous match (search active) — cursor moves to match, viewport respects `scrolloff` | Search-active pane |
 | `?` | Toggle help overlay | Any |
 | `q` | Quit | Any |
 | `j` / `k` | Move **cursor** down / up; viewport follows with `scrolloff` margin | Focused pane (list or detail — §4.3, §4.4) |

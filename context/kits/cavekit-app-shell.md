@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T11:45:46+03:00"
+last_edited: "2026-04-18T16:17:51+03:00"
 ---
 
 # Cavekit: App Shell
@@ -104,13 +104,18 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-log-source (progress signals)
 
 ### R9: Clipboard
-**Description:** Pressing `y` copies all marked entries to the system clipboard as JSONL (one JSON object per line). Non-JSON marked entries are included as raw text lines.
+**Description:** Pressing `y` copies all marked entries to the system clipboard as JSONL (one JSON object per line). Non-JSON marked entries are included as raw text lines. The user must receive visible feedback on every `y` press: a success notice with the count, an error notice if the clipboard write fails (e.g. missing `xclip`/`wl-copy`), or a "no marked entries" notice when the mark set is empty. `y` must NEVER be a silent action — swallowing the error (e.g. `//nolint:errcheck`) is a kit violation.
 **Acceptance Criteria:**
 - [ ] [auto] Pressing `y` with marked entries copies them to the system clipboard
 - [ ] [auto] The clipboard content is JSONL: one entry per line in original order
 - [ ] [auto] Non-JSON marked entries are included as raw text lines
 - [ ] [auto] Pressing `y` with no marked entries does not modify the clipboard
-**Dependencies:** cavekit-entry-list (marks)
+- [ ] [auto] Successful copy of N ≥ 1 marked entries emits a transient status-bar notice (e.g. `copied N entries`) via `keyhints.WithNotice`, auto-dismissed within ≤ 3 seconds
+- [ ] [auto] Clipboard-write error (e.g. `atotto/clipboard.WriteAll` returns non-nil on a headless system with no clipboard binary) surfaces a visible transient error notice — the error is NEVER swallowed
+- [ ] [auto] Pressing `y` with zero marked entries emits a `no marked entries` notice (visible feedback, not a silent no-op)
+- [ ] [auto] The implementation does NOT use `//nolint:errcheck` or otherwise discard the `(ClipboardCopiedMsg, error)` return value from `CopyMarkedEntries`; both are routed back into the Bubble Tea update loop as a `tea.Cmd` so notices can be emitted
+- [ ] [human] On `logs/small.log`, marking two entries with `m` then pressing `y` shows a visible "copied 2 entries" notice in the status bar; pressing `y` with no marks shows "no marked entries"; if clipboard cannot be reached the notice reads the system error
+**Dependencies:** cavekit-entry-list (marks), `keyhints.WithNotice` (R4 status-bar notice contract)
 
 ### R10: Pane Visual-State Matrix
 **Description:** Every focusable pane renders in one of three visual states — focused, unfocused-but-visible, or alone — per the matrix in DESIGN.md §4 (authoritative). The focused pane uses FocusBorder borders and full-contrast foreground; an unfocused visible pane uses DividerColor borders, an UnfocusedBg background tint, and a foreground blend toward Dim; a pane that is the only visible pane uses the focused treatment. The visual state must not alter the pane's rendered dimensions (no post-render border wrapping that adds rows or columns).
@@ -154,16 +159,16 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-detail-pane (applies new ratio), cavekit-config (live write-back, ratio settings)
 
 ### R13: Cross-Pane Search Activation
-**Description:** `/` is the in-pane search activation key (owned by cavekit-detail-pane R7). The app shell defines what happens when `/` is pressed while a pane *other than* the detail pane has focus — the activation must never be a silent no-op. If the detail pane is open but unfocused, `/` transfers focus to the detail pane and activates search there in a single keypress. If the detail pane is closed, `/` surfaces a transient status-bar notice (≤ 3s via `keyhints.WithNotice`) telling the user to open an entry first. The key-hint bar and help overlay must advertise `/` honestly in both contexts so the key is discoverable without a hidden focus precondition.
+**Description:** `/` activates an in-pane search. The target pane is determined by **current focus**, not by pane-open state. If the entry list is focused, `/` activates list search (cavekit-entry-list R13). If the detail pane is focused, `/` activates detail-pane search (cavekit-detail-pane R7). If the filter panel is focused, `/` is routed to the filter input as a literal character (not intercepted). The activation must never be a silent no-op at any focus. The key-hint bar and help overlay must advertise `/` accurately per focus — different label when list-focused vs pane-focused.
 **Acceptance Criteria:**
-- [ ] [auto] With entry list focused and detail pane open, pressing `/` sets focus to the detail pane and activates `SearchModel` in one keypress (no Tab required)
-- [ ] [auto] With entry list focused and detail pane closed, pressing `/` emits a transient keyhint notice instructing the user to open an entry first; the notice auto-dismisses within 3 seconds
+- [ ] [auto] With entry list focused (detail pane closed OR open-but-not-focused), pressing `/` activates list search (entry-list R13) — NOT detail-pane search
+- [ ] [auto] With detail pane focused, pressing `/` activates detail-pane search (detail-pane R7) in the detail pane
 - [ ] [auto] With filter panel focused, pressing `/` is routed to the filter input as a literal character (not intercepted as a search activation)
-- [ ] [auto] Pressing `/` is never a silent no-op at any focus; every focus state either activates search or produces a visible notice
-- [ ] [auto] The key-hint bar shows `/` with accurate scope when a precondition exists (e.g. `/ search pane` when pane open, `/ search (open entry first)` when pane closed, hidden when filter panel focused)
-- [ ] [auto] The help overlay entry for `/` states its scope explicitly (e.g. "Search inside detail pane — opens pane if closed")
-- [ ] [human] Walking through `logs/small.log` with list focused, pressing `/` immediately opens search in the detail pane with no intermediate keystroke (verify per overview "Verification Conventions")
-**Dependencies:** cavekit-detail-pane R1 (pane open/close), R7 (search activation target), cavekit-config (theme for notice styling)
+- [ ] [auto] Pressing `/` is never a silent no-op at any focus; every focus state either activates a search or passes the literal character to the focused input
+- [ ] [auto] The key-hint bar shows `/` with accurate scope per focus: `/ search list` when list focused, `/ search pane` when detail pane focused, hidden when filter panel focused
+- [ ] [auto] The help overlay entry for `/` states its focus-sensitive scope explicitly ("Search in focused pane — list or detail")
+- [ ] [human] On `logs/small.log` with list focused (no pane open), pressing `/` opens list search (not a "open an entry first" notice); pressing Tab to focus the pane (with pane open) then `/` opens pane search
+**Dependencies:** cavekit-detail-pane R7 (detail-pane search activation target), cavekit-entry-list R13 (list search activation target), cavekit-config (theme for keyhint styling)
 
 ## Out of Scope
 
@@ -180,6 +185,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-18 — Revision (R9 clipboard feedback + R13 focus-based `/` routing)
+- **Affected:** R9, R13
+- **Summary:** R9 (Clipboard) expanded from 4 to 10 ACs to require **visible user feedback** on every `y` press: success notice with copied entry count, error notice surfacing clipboard-write failures, and a "no marked entries" notice for zero-mark case. The implementation MUST NOT use `//nolint:errcheck` to swallow the error — the silent `_ = CopyMarkedEntries(...)` pattern is now a kit violation. R13 rewritten from "pane-open-state based routing" to **focus-based routing**: `/` activates list search (entry-list R13) when list focused, detail-pane search (detail-pane R7) when pane focused, and is a literal character when filter panel focused. The earlier "open an entry first" notice is removed — list search works standalone.
+- **Driven by:** `/ck:check` run 2026-04-18 after user notes "list: copy of marked message does not copy the entries" (F-102) and "list: no search" (F-101). R13 re-routing paired with new cavekit-entry-list.md R13 (list search).
 
 ### 2026-04-18 — Revision (R11 open-time focus policy)
 - **Affected:** R11

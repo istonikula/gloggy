@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T14:20:33+03:00"
+last_edited: "2026-04-18T16:17:51+03:00"
 ---
 
 # Cavekit: Entry List
@@ -138,6 +138,22 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [human] On `logs/small.log`, pressing `j` repeatedly with a moderate-sized filtered set shows the cursor staying 5 rows above the bottom border before the viewport starts scrolling; mouse-wheel scrolling in the middle of the list keeps the cursor on its document line while rows move under it; wheel near an edge drags the cursor to stay in the scrolloff margin
 **Dependencies:** cavekit-config (shared top-level `scrolloff`), cavekit-detail-pane (shares the same config key — R11)
 
+### R13: Free-Text List Search
+**Description:** The entry list supports an in-list free-text search, scoped to the list pane, distinct from the filter engine and distinct from detail-pane search (R7). Activated with `/` when the list is focused and the detail pane is NOT open-and-focused (routing legislated by cavekit-app-shell R13). Typed query matches case-insensitively against the rendered compact-row text (time, level, logger, message) of each **visible (filtered)** entry. While search is active, matching entries are highlighted with the theme's `SearchHighlight` bg on their row; the search prompt + query + `(current/total)` match counter renders in the key-hint bar or an in-list status line. `n` / `N` cycles the cursor to the next / previous match and honours R12 scrolloff. Esc dismisses search and clears highlights. Search does NOT change the filter set — it is a navigation aid, not a filter; entries that don't match remain visible (just not highlighted). Search state is local to the list and must not leak into the detail pane or filter engine.
+**Acceptance Criteria:**
+- [ ] [auto] Pressing `/` with the entry list focused and no detail pane open (or detail pane open-but-not-focused) opens a search input scoped to the list
+- [ ] [auto] Typing a query matches case-insensitively against the compact-row text (time, level, logger, message) of visible entries — the visible set is unchanged, matching entries simply get `SearchHighlight` bg applied
+- [ ] [auto] The active query and `(current/total)` match counter are rendered visibly while search is active; when `query != "" && matches == 0` a "No matches" indicator is shown
+- [ ] [auto] Pressing `n` moves the cursor to the next matching entry (wrapping with an indicator at the end); `N` moves to the previous (wrapping at the start)
+- [ ] [auto] Cursor movement via `n`/`N` honours R12 scrolloff — the cursor lands with `scrolloff` rows of context above and below where the filtered-entry set permits
+- [ ] [auto] Pressing Esc dismisses the search input, clears the `SearchHighlight` bg on all rows, and leaves the cursor at its current position
+- [ ] [auto] Search state is cleared automatically when the list loses focus via Tab cycle OR when filters change (a filter change invalidates the match set)
+- [ ] [auto] List search does NOT modify the filter engine — entries that do not match the query remain visible (non-highlighted) in the list
+- [ ] [auto] Backspace on a query containing multi-byte runes (emoji / CJK) removes exactly one rune without corrupting UTF-8
+- [ ] [auto] The cursor-row bg (R1, R12) takes visual priority over the `SearchHighlight` bg on the same row — other matching rows keep their `SearchHighlight` styling normally
+- [ ] [human] On `logs/small.log`, pressing `/` then typing a substring of a known log message visibly highlights the matching rows, shows `(cur/total)`, and `n`/`N` scrolls the cursor onto each match with scrolloff context preserved
+**Dependencies:** cavekit-config (`SearchHighlight` theme token), cavekit-app-shell (R13 cross-pane `/` routing — routes `/` to list when list focused and detail not focused), R12 (scrolloff-respecting cursor move)
+
 ## Out of Scope
 
 - Detail pane rendering (handled by detail-pane)
@@ -164,6 +180,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - **Affected:** new R12
 - **Summary:** Added R12 to legislate nvim-style `scrolloff` on the entry list — the viewport keeps a configurable number of context rows (default 5, shared top-level `scrolloff` config) between cursor and edges. All cursor-moving navigation (j/k, g/G, PgDn/PgUp, level-jump, mark-jump) adjusts the viewport to honour the margin; mouse wheel drags the cursor along when the cursor would leave the margin. Same config key used by cavekit-detail-pane.md R11 — users tune one number for both panes. Companion to DESIGN.md §4.3 "Shared scrolloff" subsection.
 - **Driven by:** `/ck:check` run 2026-04-18 after user report "I still see no row highlight where cursor is when focused on details pane" + follow-up "scrolloff should be implemented on the list as well". Addresses finding F-026 (list portion).
+
+### 2026-04-18 — Revision (R13 free-text list search)
+- **Affected:** new R13
+- **Summary:** Added R13 for free-text search scoped to the entry list. `/` when list is focused and detail pane is not open-and-focused opens a query input; matching rows get `SearchHighlight` bg; `n`/`N` cycles the cursor across matches honouring R12 scrolloff. Distinct from filter engine — search does NOT change which entries are visible, only highlights matches and moves the cursor. Distinct from detail-pane search (cavekit-detail-pane.md R7) — cross-pane `/` routing disambiguated by cavekit-app-shell.md R13.
+- **Driven by:** `/ck:check` run 2026-04-18 after user note "list: no search". Addresses finding F-101.
 
 ### 2026-04-16 — Revision (layout fixes)
 - **Affected:** R1, R6
