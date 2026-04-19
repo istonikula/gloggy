@@ -2400,15 +2400,28 @@ func TestModel_T164_Drag_WithMotion_DoesWriteConfig(t *testing.T) {
 	}
 }
 
-// ---------- T-165: degenerate-terminal drag preserves ratio (F-126) ----------
+// ---------- F-132: degenerate-dim guard fidelity (supersedes T-165) ----------
+//
+// The original T-165 tests drove a 0-dim WindowSizeMsg which auto-closed
+// the pane, then re-set draggingDivider=true and sent Motion. With pane
+// closed, the !m.pane.IsOpen() guard at handleMouse model.go:524
+// short-circuits BEFORE the termW/termH<=0 guard at :554-556 / :565-567
+// is ever reached. Removing the degenerate-dim guards left the T-165
+// tests green — proving the tests asserted behaviour via the wrong code
+// path. /ck:review Pass 2 (F-132). The replacement tests below force the
+// pane open at Motion time so the IsOpen() guard passes and the only
+// thing standing between Motion and ratio-shadowing is the degenerate-dim
+// guard. cavekit-app-shell.md R15 degenerate-dim AC was sharpened in the
+// same /ck:revise --trace cycle to mandate this test shape.
 
-// TestModel_T165_Drag_ZeroWidth_PreservesRatio verifies the caller-guard
-// for the right-split drag branch. If a Motion arrives while the stored
-// terminal width is <= 0 (which can happen transiently during window
-// teardown or in test fakes), the drag branch returns early without
-// touching `width_ratio` — otherwise the inverse math would snap to the
-// clamped default and shadow the user's persisted ratio.
-func TestModel_T165_Drag_ZeroWidth_PreservesRatio(t *testing.T) {
+// TestModel_F132_DegenerateDim_Right_GuardFiresWith_PaneOpen pins the
+// right-split termW<=0 caller-guard at model.go:554-556. Forces 0-dim
+// resize → pane auto-closes → re-opens pane via openPane (relayout does
+// NOT re-trigger auto-close, so pane stays open with termW=0) → activates
+// drag flag → sends Motion. If the guard is removed,
+// RatioFromDragX(10, 0) returns ClampRatio(RatioDefault)=0.30 and shadows
+// the persisted 0.55 — failing this test.
+func TestModel_F132_DegenerateDim_Right_GuardFiresWith_PaneOpen(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.toml"
 	cfg := config.LoadResult{Config: config.DefaultConfig()}
@@ -2418,33 +2431,41 @@ func TestModel_T165_Drag_ZeroWidth_PreservesRatio(t *testing.T) {
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	// Seed a non-default persisted ratio so any shadow would be visible.
 	m.cfg.Config.DetailPane.WidthRatio = 0.55
 	m.layout = m.layout.SetWidthRatio(0.55)
 
-	// Artificially activate a drag, then force termWidth to 0 via a
-	// synthetic WindowSizeMsg that mimics a transient teardown. The
-	// auto-close branch will fire (DetailContentWidth = 0 < MinDetailWidth)
-	// and clear draggingDivider, so we re-set it manually to exercise the
-	// inner caller-guard alone.
-	m.draggingDivider = true
+	// Force termW=0 — auto-close fires, pane closes, draggingDivider clears.
 	m = send(m, tea.WindowSizeMsg{Width: 0, Height: 24})
-	// After the auto-close, the pane is closed and draggingDivider was
-	// cleared. Re-set the drag flag to exercise the termW<=0 guard.
+	if m.pane.IsOpen() {
+		t.Fatalf("precondition: pane must auto-close at width=0")
+	}
+	// Re-open the pane. relayout() does not re-evaluate ShouldAutoCloseDetail
+	// (that lives in the WindowSizeMsg handler only), so the pane stays open
+	// even though m.resize.Width() is still 0.
+	m = m.openPane(entries[0])
+	if !m.pane.IsOpen() {
+		t.Fatalf("precondition: pane must re-open via openPane")
+	}
+	if m.resize.Width() != 0 {
+		t.Fatalf("precondition: termW must remain 0, got %d", m.resize.Width())
+	}
+	// All preconditions for the termW<=0 guard are now met: pane open,
+	// drag flag set, Motion incoming with termW=0. The IsOpen() guard
+	// passes — the only thing preventing ratio shadowing is :554-556.
 	m.draggingDivider = true
-
 	startRatio := m.cfg.Config.DetailPane.WidthRatio
+
 	m = send(m, tea.MouseMsg{X: 10, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
 	if m.cfg.Config.DetailPane.WidthRatio != startRatio {
-		t.Errorf("termW<=0 guard failed: ratio shadowed from %.3f to %.3f",
+		t.Errorf("termW<=0 guard absent or bypassed: ratio shadowed from %.3f to %.3f",
 			startRatio, m.cfg.Config.DetailPane.WidthRatio)
 	}
 }
 
-// TestModel_T165_Drag_ZeroHeight_PreservesRatio is the below-mode analog.
-// A Motion arriving while termHeight <= 0 must leave `height_ratio`
-// untouched.
-func TestModel_T165_Drag_ZeroHeight_PreservesRatio(t *testing.T) {
+// TestModel_F132_DegenerateDim_Below_GuardFiresWith_PaneOpen is the
+// below-mode analog pinning model.go:565-567 (termH<=0 guard).
+func TestModel_F132_DegenerateDim_Below_GuardFiresWith_PaneOpen(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.toml"
 	cfg := config.LoadResult{Config: config.DefaultConfig()}
@@ -2457,14 +2478,24 @@ func TestModel_T165_Drag_ZeroHeight_PreservesRatio(t *testing.T) {
 	m.cfg.Config.DetailPane.HeightRatio = 0.45
 	m.paneHeight = m.paneHeight.SetRatio(0.45)
 
-	m.draggingDivider = true
 	m = send(m, tea.WindowSizeMsg{Width: 80, Height: 0})
+	if m.pane.IsOpen() {
+		t.Fatalf("precondition: pane must auto-close at height=0")
+	}
+	m = m.openPane(entries[0])
+	if !m.pane.IsOpen() {
+		t.Fatalf("precondition: pane must re-open via openPane")
+	}
+	if m.resize.Height() != 0 {
+		t.Fatalf("precondition: termH must remain 0, got %d", m.resize.Height())
+	}
 	m.draggingDivider = true
-
 	startRatio := m.cfg.Config.DetailPane.HeightRatio
+
 	m = send(m, tea.MouseMsg{X: 20, Y: 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
 	if m.cfg.Config.DetailPane.HeightRatio != startRatio {
-		t.Errorf("termH<=0 guard failed: ratio shadowed from %.3f to %.3f",
+		t.Errorf("termH<=0 guard absent or bypassed: ratio shadowed from %.3f to %.3f",
 			startRatio, m.cfg.Config.DetailPane.HeightRatio)
 	}
 }

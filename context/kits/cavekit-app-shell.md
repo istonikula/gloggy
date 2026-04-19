@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T10:18:34+03:00"
+last_edited: "2026-04-19T11:19:41+03:00"
 ---
 
 # Cavekit: App Shell
@@ -199,7 +199,7 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] When `RatioFromDragY` / `RatioFromDragX` is inverted against the layout's forward ratio→size math (e.g. `HeightModel.PaneHeight = int(termHeight * ratio)`), a Press directly on the currently rendered divider row/col MUST yield the current ratio unchanged — no step-snap on Press-without-motion
 - [ ] [auto] If the detail pane auto-closes (R7) mid-drag — e.g. a terminal resize takes the pane's computed dimension below the minimum — the drag session MUST terminate silently: subsequent Motion events are swallowed, no ratio mutation occurs, and no config write fires on the eventual Release
 - [ ] [auto] A bare Press+Release on the divider cell with no intermediate Motion MUST NOT rewrite the config file — persistence fires only when the drag actually changed the ratio
-- [ ] [auto] When the terminal's active dimension is degenerate (termHeight or termWidth ≤ 0; this window exists briefly at startup before the first WindowSizeMsg) the drag helpers MUST preserve the current ratio rather than jumping to `RatioDefault` — no silent shadowing of a persisted value
+- [ ] [auto] When the terminal's active dimension is degenerate (termHeight or termWidth ≤ 0; this window exists briefly at startup before the first WindowSizeMsg) the drag helpers MUST preserve the current ratio rather than jumping to `RatioDefault` — no silent shadowing of a persisted value. The regression test for this AC MUST drive the guard with `m.pane.IsOpen() == true` AND the active terminal dimension == 0 simultaneously — going through `WindowSizeMsg{Width:0}` is insufficient because the auto-close branch (R7) short-circuits the test flow before the degenerate-dim guard fires. Removing the caller-guard MUST make the test fail.
 - [ ] [human, tui-mcp] Verify via tui-mcp first: launch the TUI on `logs/small.log`, open the detail pane, use `send_mouse` to emit a press-hold on the divider cell, a series of move events to the target coordinate, and a release; `snapshot` before and after and verify the divider moved, pane dimensions changed proportionally to the drag distance, and the config file reflects the new ratio. Repeat for both below-mode and right-mode. If `send_mouse` cannot reliably emit the button-hold + move + release sequence on this platform, record the limitation in a comment and fall back to direct human sign-off (per the user's HUMAN-sign-off-via-tui-mcp preference)
 **Dependencies:** cavekit-detail-pane (applies ratio change, R6), cavekit-config (live write-back, R6), R6 (mouse routing to the divider cell), R7 (auto-close on minimum-dimension underflow), R12 (shared clamp range and ratio storage)
 
@@ -218,6 +218,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-19 — Revision (R15 degenerate-dim AC sharpened — F-132)
+- **Affected:** R15 (degenerate-dim AC text extended)
+- **Summary:** /ck:review Pass 2 surfaced F-132: the existing T-165 tests for the degenerate-dim guard drove a 0-dim `WindowSizeMsg` which auto-closed the pane, so the subsequent Motion was short-circuited by the prior `!m.pane.IsOpen()` guard at `model.go:524` rather than the `termW/termH<=0` guard at `:554-556`/`:565-567`. Removing the degenerate-dim guards left the T-165 tests green — proving the tests asserted the right behaviour via the wrong code path. AC text extended to mandate that the regression test must drive the guard with `pane.IsOpen()==true` AND `termDim==0` simultaneously, and removing the caller-guard must make the test fail. New regression tests `TestModel_F132_DegenerateDim_{Right,Below}_GuardFiresWith_PaneOpen` re-open the pane via `openPane` after the 0-dim resize (relayout does not re-trigger auto-close) so the IsOpen() guard passes and only the degenerate-dim guard prevents shadowing. Old T-165 tests deleted as superseded.
+- **Driven by:** `/ck:revise --trace` cycle on `/ck:review` finding F-132. Regression tests in `internal/ui/app/model_test.go`.
 
 ### 2026-04-19 — Revision (R15 hardening from Tier 19 `/ck:check`)
 - **Affected:** R15 (5 new ACs, AC 4 text inverted to match physical layout)
