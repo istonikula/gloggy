@@ -59,6 +59,19 @@ func TestGetTheme_AllBuiltins(t *testing.T) {
 	}
 }
 
+// T-178 (cavekit-config.md R4 AC 17): catppuccin-mocha's FocusBorder
+// is the upstream Lavender accent (#b4befe), not Blue (#89b4fa). All
+// official catppuccin ports (neovim, lazygit, btop) use Lavender for
+// active borders — matching the canonical identity.
+func TestCatppuccinMocha_FocusBorder_IsLavender(t *testing.T) {
+	th := GetTheme("catppuccin-mocha")
+	const want = "#b4befe"
+	if string(th.FocusBorder) != want {
+		t.Errorf("catppuccin-mocha FocusBorder = %s, want %s (upstream Lavender)",
+			th.FocusBorder, want)
+	}
+}
+
 // T-176 (cavekit-config.md R4 AC 14): BaseBg values must be pairwise
 // distinct across the three bundled themes so the "at a glance they are
 // perceptibly different" property has objective grounding in the palette

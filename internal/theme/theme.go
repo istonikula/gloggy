@@ -121,7 +121,7 @@ func catppuccinMocha() Theme {
 		SearchHighlight: lipgloss.Color("#fab387"),
 		CursorHighlight: lipgloss.Color("#585b70"),
 		HeaderBg:        lipgloss.Color("#181825"),
-		FocusBorder:     lipgloss.Color("#89b4fa"),
+		FocusBorder:     lipgloss.Color("#b4befe"),
 		DividerColor:    lipgloss.Color("#313244"),
 		UnfocusedBg:     lipgloss.Color("#11111b"),
 		DragHandle:      lipgloss.Color("#6e7388"),
