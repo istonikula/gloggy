@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T11:29:08+03:00"
+last_edited: "2026-04-19T00:00:00Z"
 ---
 
 # Cavekit: App Shell
@@ -129,7 +129,8 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] When a pane is the only visible pane, it uses the focused treatment (FocusBorder borders, base background)
 - [ ] [auto][cross-kit] The cursor row in the entry list is always rendered, even when the entry list is unfocused; intensity and bold vary with focus (full enforcement depends on cavekit-entry-list revision)
 - [ ] [auto] The detail pane top border is visible in both below and right orientations
-**Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-config (DividerColor, UnfocusedBg, FocusBorder tokens)
+- [ ] [auto] The pane-resize drag seam (R15) renders in `DragHandle` color independent of focus: in right-mode the 1-cell `│` divider glyph; in below-mode the horizontal border row between list and detail pane
+**Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-config (DividerColor, UnfocusedBg, FocusBorder, DragHandle tokens)
 
 ### R11: Focus Cycle and Dismissal
 **Description:** `Tab` cycles focus among the visible panes. Opening a pane does NOT itself transfer focus — focus transfers occur only on explicit actions: Tab (this requirement), mouse click on a pane (R6), or the cross-pane `/` activation (R13). This keeps the detail pane usable as a live preview while the user keeps navigating the entry list. When the filter panel or help overlay is open, Tab-cycling is paused and the overlay holds focus. `Esc` is context-sensitive: first close any open overlay; otherwise if the detail pane is open, close it and return focus to the entry list; otherwise clear transient state on the focused pane (e.g. an active search). Esc on entry-list focus with the detail pane open also closes the pane (the list doesn't need to be Tab'd to the pane first to dismiss it). A mouse click on a pane focuses that pane. Tab never closes a pane — closing is always explicit via Esc or a domain-specific dismissal key.
@@ -201,7 +202,9 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] A bare Press+Release on the divider cell with no intermediate Motion MUST NOT rewrite the config file — persistence fires only when the drag actually changed the ratio
 - [ ] [auto] When the terminal's active dimension is degenerate (termHeight or termWidth ≤ 0; this window exists briefly at startup before the first WindowSizeMsg) the drag helpers MUST preserve the current ratio rather than jumping to `RatioDefault` — no silent shadowing of a persisted value. The regression test for this AC MUST drive the guard with `m.pane.IsOpen() == true` AND the active terminal dimension == 0 simultaneously — going through `WindowSizeMsg{Width:0}` is insufficient because the auto-close branch (R7) short-circuits the test flow before the degenerate-dim guard fires. Removing the caller-guard MUST make the test fail.
 - [ ] [human, tui-mcp] Verify via tui-mcp first: launch the TUI on `logs/small.log`, open the detail pane, use `send_mouse` to emit a press-hold on the divider cell, a series of move events to the target coordinate, and a release; `snapshot` before and after and verify the divider moved, pane dimensions changed proportionally to the drag distance, and the config file reflects the new ratio. Repeat for both below-mode and right-mode. If `send_mouse` cannot reliably emit the button-hold + move + release sequence on this platform, record the limitation in a comment and fall back to direct human sign-off (per the user's HUMAN-sign-off-via-tui-mcp preference)
-**Dependencies:** cavekit-detail-pane (applies ratio change, R6), cavekit-config (live write-back, R6), R6 (mouse routing to the divider cell), R7 (auto-close on minimum-dimension underflow), R12 (shared clamp range and ratio storage)
+- [ ] [auto] The drag-initiating cell (divider in right-mode; shared border row in below-mode) renders in `DragHandle`, which is distinct from BOTH `DividerColor` and `FocusBorder` in every bundled theme — a test MUST assert, per theme, that `DragHandle != DividerColor` AND `DragHandle != FocusBorder`, and that the rendered color at the drag-seam cell is `DragHandle` (not the adjacent pane's border colour)
+- [ ] [human, tui-mcp] Verify via tui-mcp: launch the TUI on `logs/small.log`, snapshot right-split with the list focused, and confirm the 1-cell divider between list and detail is visibly distinct in hue/luminance from the detail pane's unfocused border. Repeat in below-split: the horizontal border row between list and detail must be visibly distinct from the unfocused-pane top/bottom borders. Verify for all three bundled themes (`tokyo-night`, `catppuccin-mocha`, `material-dark`)
+**Dependencies:** cavekit-detail-pane (applies ratio change, R6), cavekit-config (live write-back, R6; DragHandle token, R4), R6 (mouse routing to the divider cell), R7 (auto-close on minimum-dimension underflow), R12 (shared clamp range and ratio storage)
 
 ## Out of Scope
 
@@ -218,6 +221,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-19 — Revision (R10/R15 DragHandle visual affordance)
+- **Affected:** R10, R15
+- **Summary:** Introduce a new theme token `DragHandle` to colour the pane-resize drag seam distinctly from the unfocused-pane-border colour (`DividerColor`). Before: in right-split, the 1-cell `│` divider glyph and the borders of any unfocused adjacent pane both rendered in `DividerColor`, yielding a 3-cell uniform band with no visual cue for the draggable seam; below-split had the symmetric problem on the shared horizontal border row. After: the drag seam renders in `DragHandle` — a mid-tone neutral brighter than `DividerColor` but dimmer than `FocusBorder` — independent of focus. New R10 AC enforces the seam colour; new R15 ACs (one auto, one human/tui-mcp) enforce distinctness from `DividerColor` across all three bundled themes. Companion edits in `cavekit-config.md` R4 (token declaration) and `DESIGN.md` §2 token table / §2 three-new-tokens paragraph / §4 matrix cross-cutting / §4.5 divider glyph fg.
+- **Driven by:** User feedback in /ck:sketch session: "the border between the panes from which the dragging is done is the same color as the border of the unfocused pane. We should use distinct color so it would be easier to spot where to drag."
 
 ### 2026-04-19 — Revision (R15 renderer-truth AC: ANSI-strip CSI coverage — F-134)
 - **Affected:** R15 (renderer-truth AC text extended at line 198)

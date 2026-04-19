@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T14:20:33+03:00"
+last_edited: "2026-04-19T00:00:00Z"
 ---
 
 # Cavekit: Config
@@ -35,7 +35,7 @@ Loading, validating, and persisting application configuration from a TOML file. 
 **Dependencies:** R1
 
 ### R4: Theme Selection
-**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, search highlights, cursor highlight (background color for the selected row), header background, focus border/accent, divider color (right-split divider and the border of any unfocused visible pane), and unfocused background (the dim tint painted behind an unfocused pane). The two focus-state tokens play the roles defined in DESIGN.md §2.
+**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, search highlights, cursor highlight (background color for the selected row), header background, focus border/accent, divider color (right-split divider and the border of any unfocused visible pane), and unfocused background (the dim tint painted behind an unfocused pane). The two focus-state tokens (DividerColor, UnfocusedBg) play the roles defined in DESIGN.md §2. A third focus-neutral token, `DragHandle`, colours the pane-resize drag seam (DESIGN.md §4.5 and cavekit-app-shell R15) — distinct from `DividerColor` so the draggable seam is visually spottable against unfocused pane borders.
 **Acceptance Criteria:**
 - [ ] [auto] The default config specifies `tokyo-night` as the active theme
 - [ ] [auto] Setting `theme = "catppuccin-mocha"` in config causes that theme's color tokens to be active
@@ -45,6 +45,9 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - [ ] [human] One-time visual sign-off per bundled theme: all color tokens produce a coherent, readable theme when applied together
 - [ ] [auto] Each bundled theme defines non-empty DividerColor and UnfocusedBg tokens
 - [ ] [human] DividerColor reads as a quiet neutral (closer to Dim than to FocusBorder) and UnfocusedBg is a subtle background tint (per DESIGN.md §2)
+- [ ] [auto] Each bundled theme defines a non-empty `DragHandle` token
+- [ ] [auto] In every bundled theme, `DragHandle != DividerColor` (the drag seam must be visually distinct from unfocused pane borders) and `DragHandle != FocusBorder` (the drag seam must not compete with focus signalling)
+- [ ] [human] `DragHandle` reads as a mid-tone neutral — clearly brighter than `DividerColor` on the theme's background but dimmer than `FocusBorder` (per DESIGN.md §2)
 **Dependencies:** R1, R2
 
 ### R5: Field and Display Settings
@@ -98,6 +101,11 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - See also: cavekit-filter-engine.md (no direct dependency, but future filter presets may use config)
 
 ## Changelog
+
+### 2026-04-19 — Revision (DragHandle token)
+- **Affected:** R4
+- **Summary:** R4 extended to require a third focus-state-adjacent theme token, `DragHandle`, colouring the pane-resize drag seam distinctly from `DividerColor`. ACs enforce non-empty per-theme value, distinctness from both `DividerColor` and `FocusBorder`, and a human sign-off on mid-tone-neutral readability. Companion to cavekit-app-shell R10/R15 revision and DESIGN.md §2 / §4.5 edits.
+- **Driven by:** /ck:sketch session 2026-04-19 — user reported the right-split divider was indistinguishable from unfocused pane borders, making the drag target hard to spot.
 
 ### 2026-04-16 — Revision
 - **Affected:** R4
