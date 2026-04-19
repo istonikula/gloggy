@@ -420,3 +420,33 @@ func TestListModel_MouseClick_TopBorderBelowContentTopY_NoOp(t *testing.T) {
 		t.Errorf("click on top border (y=1): Cursor = %d, want %d (unchanged)", got, before)
 	}
 }
+
+// TestListModel_T163_RowForY_Rejects_When_ContentTopY_Unset pins the
+// T-163 (F-127) regression vector: a ListModel that has never had
+// `WithContentTopY` called on it must reject all rowForY lookups. Without
+// the contentTopYSet guard, `contentTopY` defaults to 0 and rowForY
+// silently resolves any terminal-Y in [0, viewportHeight) to a visible
+// row — reintroducing the pre-T-158 2-row offset bug if the app-shell
+// wiring is ever dropped.
+func TestListModel_T163_RowForY_Rejects_When_ContentTopY_Unset(t *testing.T) {
+	// Fresh list, never wires WithContentTopY. WindowSizeMsg still arrives
+	// so ViewportHeight is set to a normal value — proving the rejection
+	// is due to contentTopYSet, not a degenerate viewport.
+	m := defaultListModel(20).SetEntries(makeEntries(30))
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+
+	for _, y := range []int{0, 2, 5, 10, 15} {
+		if got := m.rowForY(y); got != -1 {
+			t.Errorf("rowForY(%d) without WithContentTopY = %d, want -1 (rejected)", y, got)
+		}
+	}
+
+	// After injecting contentTopY the resolver comes back online.
+	m = m.WithContentTopY(2)
+	if got := m.rowForY(2); got != 0 {
+		t.Errorf("after WithContentTopY(2), rowForY(2) = %d, want 0", got)
+	}
+	if got := m.rowForY(5); got != 3 {
+		t.Errorf("after WithContentTopY(2), rowForY(5) = %d, want 3", got)
+	}
+}

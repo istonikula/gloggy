@@ -50,6 +50,15 @@ type ListModel struct {
 	// injection the list had to guess terminal-Y meaning and produced a
 	// 2-row click offset in every geometry that used a header + border.
 	contentTopY int
+	// contentTopYSet tracks whether WithContentTopY was ever called. T-163
+	// (F-127): if the app-shell wiring that calls WithContentTopY at every
+	// WindowSizeMsg is dropped (regression vector), `contentTopY` stays at
+	// its zero-value 0, making rowForY silently resolve terminal-Y=0
+	// clicks to row 0 — reintroducing the 2-row offset bug T-158 fixed.
+	// rowForY treats !contentTopYSet as "not inside list content" and
+	// returns -1 so the regression surfaces as ignored clicks rather than
+	// as mislocated ones.
+	contentTopYSet bool
 	// search holds list-scope free-text search state (T-143, cavekit-
 	// entry-list R13). Activated by app via ActivateSearch() when `/` is
 	// pressed with the list focused.
@@ -82,6 +91,7 @@ func NewListModel(th theme.Theme, cfg config.Config, width, height int) ListMode
 // locally.
 func (m ListModel) WithContentTopY(y int) ListModel {
 	m.contentTopY = y
+	m.contentTopYSet = true
 	return m
 }
 
@@ -278,6 +288,12 @@ func (m ListModel) Marks() *MarkSet { return m.marks }
 // top-border offset per cavekit-entry-list R10). T-158 rewrite: previously
 // this treated `y` as list-relative and produced a 2-row offset bug.
 func (m ListModel) rowForY(y int) int {
+	// T-163 (F-127): reject all clicks when contentTopY was never injected.
+	// Prevents silent regression of T-158's 2-row offset fix if the
+	// app-shell WithContentTopY wiring is dropped.
+	if !m.contentTopYSet {
+		return -1
+	}
 	relY := y - m.contentTopY
 	if relY < 0 || relY >= m.scroll.ViewportHeight {
 		return -1
