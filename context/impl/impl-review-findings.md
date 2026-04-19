@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-19T10:18:34+03:00"
+last_edited: "2026-04-19T11:46:46+03:00"
 ---
 
 # Review Findings
@@ -243,3 +243,48 @@ Source: automated `/ck:check` after Tier 19 close (T-155..T-159 all DONE; 548/54
 - T-170 HUMAN gate: verify F-122 + F-123 + F-125 + F-129 behaviour via tui-mcp; F-124 (tui-mcp lacks Motion events) means motion-phase AC 2 continues to rely on unit-test evidence.
 - F-128 (`|` flips across focus at 0.50) is deferred — debatable UX (user may find the aliasing natural); bring back if confusion surfaces.
 - F-131 withdrawn after second audit; kept in the row above for traceability.
+
+---
+
+## /ck:check run 2026-04-19 (Tier 21 — F-132/F-133/F-134 review-followups branch)
+
+Source: automated `/ck:check` on branch `tier-21-review-followups` (6 commits from `main`). Scope is narrow — test-fidelity hardening + one inverse-math bug fix — in response to a prior `/ck:review` Pass 2 over the Tier 20 branch. Three-agent review: **ck:verifier** (goal-backward on R15 ACs), **ck:surveyor** (gap analysis + backprop-log audit), **ck:inspector** (peer review). Build P. Tests 574/574 pass across 11 packages.
+
+### Coverage of new/extended R15 ACs
+
+| R15 AC | Mandate added/extended | Status | Evidence |
+|---|---|---|---|
+| L198 renderer-truth (ANSI-strip) | ANSI-stripping helper MUST handle full ECMA-48 CSI two-step form (`ESC [ params/intermediates 0x40..0x7e`) | COMPLETE | `mouse_test.go:237-266` 3-state machine; `mouse_test.go:279-302` 9 sub-case regression test; reverting to hardcoded subset → 9/9 fail |
+| L199 inverse-math (parallel-axis) | X-axis Press-at-current pin MUST source canonical `dividerX` from `Layout.ListContentWidth()` (renderer-truth), not inverse formula | COMPLETE | `ratiokeys.go:121-134` `detail := usable - x` exact inverse; `ratiokeys_test.go:233-257` non-tautological X pin; T-104 mid pin 48/95 → 45/95; reverting formula → 5/5 drift > RatioStep/2 |
+| L202-203 degenerate-dim | Test MUST drive `termW/termH<=0` guard with `pane.IsOpen()==true` simultaneously; removing guard MUST fail test | COMPLETE | `model_test.go:2424-2501` drives WindowSizeMsg→auto-close→re-open→Motion; removing guards shadows 0.55→0.30 (right) and 0.45→0.30 (below) |
+
+### Backprop-log audit (`.cavekit/history/backprop-log.md`)
+
+| Entry | Finding | SHAs resolve | Test refs | Verification | Verdict |
+|---|---|---|---|---|---|
+| #1 | F-132 (test-fidelity / validation-via-wrong-path) | `97c1b9b` ✓ | ✓ | mutation-consistent | CONSISTENT |
+| #2 | F-133 (test-fidelity / parallel-axis-coverage) | `68d2548` + `fd5a26d` ✓ | ✓ | drift math checks out (100−50−2=48→0.505 vs need 0.55) | CONSISTENT |
+| #3 | F-134 (test-fidelity / latent-fragility-in-test-helper) | `024d429` + `91df657` + backfill `3169c71` ✓ | ✓ | 3-state machine required because `[` is in 0x40..0x7e | CONSISTENT |
+
+### Peer review findings
+
+| Finding | Severity | File | Status |
+|---|---|---|---|
+
+No new P0/P1/P2 findings. Inspector logged 4 P3 observations explicitly classified as **non-defects, no action required**:
+
+- O-001 (`mouse_test.go:228-266`) — stripAnsi handles CSI but not OSC/DCS/SOS/PM/APC. R15 line-198 mandate is scoped to CSI; Lipgloss does not emit OSC today. Open a new finding if OSC 8 hyperlinks land.
+- O-002 (`mouse_test.go:253-256`) — literal ESC inside `stCsiBody` is consumed as a body byte rather than restarting state. Well-formed terminal output does not embed nested ESC mid-CSI.
+- O-003 (`ratiokeys_test.go:185-191`) — T-104 mid pin `45/95` reads as a magic number but the derivation comment at `:180-184` explains it (`usable=95, detail=usable-x=45`).
+- O-004 (`.cavekit/history/backprop-log.md:67-68`) — backprop-log entry #3 now correctly cites `024d429` + `91df657`. No dangling SHA.
+
+### Verdict
+
+**APPROVE.** Coverage 4/4 COMPLETE on scoped R15 ACs. Backprop-log 3/3 CONSISTENT. No over-builds, no DESIGN.md drift (off-preset inverse-math changes are not user-visible). No kit amendments needed beyond what shipped inline in the 6 fix commits.
+
+### Context carried forward for the next `/ck:make`
+
+- Tier 21 adds no new tasks to `context/plans/build-site.md`. F-132/F-133/F-134 are closed as follow-ups to the Tier 20 branch review.
+- Loop-log does not yet have a Tier 21 entry. Cosmetic housekeeping — pick up on next consolidation pass.
+- `context/impl/impl-app-shell.md:74` (T-165 row) text still names the deleted `TestModel_T165_Drag_Zero{Width,Height}_PreservesRatio` tests; they were superseded by the F-132 tests which validly cover the same AC. Cosmetic drift only; the AC IS met.
+- Pattern for future kit amendments: when writing a regression test, source the canonical input from the **other side** of the contract (renderer output, forward math, physical spec, reality-based precondition) — not from the thing being tested. F-132/F-133/F-134 were all the same failure mode: tests that agreed with the code because they used the same model.
