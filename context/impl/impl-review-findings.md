@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-19T12:02:40+03:00"
+last_edited: "2026-04-19T19:45:00+03:00"
 ---
 
 # Review Findings
@@ -332,3 +332,41 @@ Source: automated `/ck:check` on branch `tier-22-housekeeping` (1 commit `4aa8a6
 
 - No Tier 23 frontier exists unless a new user request surfaces. Build-site remains complete across all 20 feature tiers; Tier 21 and Tier 22 were post-build housekeeping tiers driven by review findings.
 - Cross-tier pattern confirmed: "dead-code guards surface when the forward/inverse math is tightened". Both T-166 (Y-axis, F-130) and M-001 (X-axis, post-F-133) followed the same shape — after fixing the inverse formula to the exact algebraic inverse, the upper-clamp becomes provably unreachable under the caller contract. Watch for a third instance if any other inverse-math helper is added.
+
+---
+
+## /ck:check run 2026-04-19 (Tier 23 — DragHandle drag-seam token)
+
+Source: post-loop inspection after Tier 23's 5 tasks (T-171..T-175) landed on `tier-23-drag-handle`. Scope: `DragHandle` theme token + right-mode `│` glyph recolor + below-mode top-border override + cross-orientation rendered-cell test + tui-mcp HUMAN sign-off across 3 bundled themes × 2 orientations. 9 commits (`ed91d17`..`e96bcba`); 17 files changed (+511/-34); 596 tests pass (+22 over Tier 22 baseline).
+
+**Coverage:** 3/3 requirements COMPLETE, 6/6 acceptance criteria MET. No falsely-complete, no gaps, no over-builds. Verifier + surveyor both clean.
+
+### Peer review findings
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-200: `WithBelowMode` not refreshed on WindowSizeMsg auto-orientation flip — stale pane flag yields wrong seam SGR when `position=auto` crosses threshold with pane open | P1 | `internal/ui/app/model.go:162-198` vs `:717-739` | NEW | pending /ck:revise --trace --from-finding F-200 (proposes new R7 AC 9: orientation-flip re-render contract) |
+| F-201: Kit+DESIGN "shared border row" framing vs. two-row physical reality (list bottom border + detail top border render as two adjacent rows; only detail top is overridden to DragHandle) | P2 | `cavekit-app-shell.md` R10 AC 10 + R15 AC 14; `DESIGN.md` §6; `internal/ui/appshell/panestyle.go:57-59` | NEW | pending /ck:revise --trace --from-finding F-201 (kit language clarification OR new AC requiring both rows) |
+| F-202: `TestDragSeam_RendersInDragHandle_AllThemes/right` uses ASCII stub panes — zero marginal coverage over T-172's `divider_test.go` | P3 | `internal/ui/appshell/mouse_test.go:310-336` | NEW | (defer) add integrated right-mode subtest via `m.View()` |
+| F-203: `TestDragSeam.../below` bypasses `PaneModel.View()`; tests only style layer — wiring path (`WithBelowMode` setter + `relayout` wiring, the F-200 vector) is not exercised | P3 | `internal/ui/appshell/mouse_test.go:338-362` | NEW | (defer) direct test in `detailpane` package: `NewPaneModel + Open + WithBelowMode(true) + View()` asserts DragHandle SGR on top row |
+| F-204: `theme_test.go` luminance-ordering doc-comment says tui-mcp was unavailable; harness was fixed + HUMAN sign-off landed in `e96bcba`. Comment drift | P3 | `internal/theme/theme_test.go:54-63` | NEW | (defer) reword as belt-and-braces regression guard for the perceptual invariant |
+| F-205: Review-scope prompt listed catppuccin DividerColor as `#45475a` (Dim); actual `DividerColor=#313244`. Test is correct (reads struct), only prompt/notes drifted | P3 | notes-only; no code defect | CLOSED | no action — flagged for future review-scope generation |
+| F-206: `WithDragSeamTop` applies unconditionally; no empty-DragHandle guard (symmetry-break with `PaneStyle`'s `UnfocusedBg != ""` guard) | P3 | `internal/ui/appshell/panestyle.go:57-59` | NEW | (defer) optional symmetry guard; zero impact today (all bundled themes non-empty; no user-input path to theme creation) |
+
+### Pre-existing site/kit drift (not Tier 23 caused — surfaced during survey)
+
+- `internal/ui/appshell/CLAUDE.md` "Implements" list stops at R13; package implements R14 (key-intercept ordering) and R15 (mouse drag).
+- `context/plans/build-site.md:830` app-shell section header reads "(12 requirements, 80 criteria)"; `:948` Coverage Totals row reads "13 requirements, 101 criteria". Kit has R1..R15 (15 requirements). Undercount by 2.
+
+Both are housekeeping — recommend folding into the next `/ck:check`-driven housekeeping tier (similar scope to Tier 22).
+
+### Verdict
+
+**REVISE.** 100% kit coverage but one P1 finding (F-200) is a silent visual regression that survives green tests. F-200 reveals a missing R7 AC (orientation-flip re-render contract) — route through `/ck:revise --trace --from-finding F-200` so the kit amendment + regression test are authored under the single-failure protocol with explicit user approval per `.cavekit/` convention.
+
+### Context carried forward for the next `/ck:make`
+
+- F-200 fix is one-line wiring in `WindowSizeMsg` branch + one regression test. Backprop-log entry will record the trace.
+- F-201 is kit-language-only by default; may escalate to a code task if the tribe decides both border rows should paint DragHandle in below-mode.
+- Defer F-202..F-204, F-206 until a future polish tier unless they block downstream work.
+- Pre-existing drift (appshell CLAUDE.md + build-site counts) is independent of F-200/F-201 trace — fold into the next housekeeping tier.
