@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T00:00:00Z"
+last_edited: "2026-04-19T19:42:23Z"
 ---
 
 # Cavekit: Config
@@ -35,7 +35,7 @@ Loading, validating, and persisting application configuration from a TOML file. 
 **Dependencies:** R1
 
 ### R4: Theme Selection
-**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, search highlights, cursor highlight (background color for the selected row), header background, focus border/accent, divider color (right-split divider and the border of any unfocused visible pane), and unfocused background (the dim tint painted behind an unfocused pane). The two focus-state tokens (DividerColor, UnfocusedBg) play the roles defined in DESIGN.md §2. A third focus-neutral token, `DragHandle`, colours the pane-resize drag seam (DESIGN.md §4.5 and cavekit-app-shell R15) — distinct from `DividerColor` so the draggable seam is visually spottable against unfocused pane borders.
+**Description:** The config specifies which theme is active. Three bundled themes are available: `tokyo-night` (default), `catppuccin-mocha`, and `material-dark`. Each theme defines color tokens for: level badges (error, warn, info, debug), syntax highlighting (key, string, number, boolean, null), marks, dim lines, search highlights, cursor highlight (background color for the selected row), header background, focus border/accent, divider color (right-split divider and the border of any unfocused visible pane), unfocused background (the dim tint painted behind an unfocused pane), and `BaseBg` (the primary pane background). `BaseBg` is painted on all pane backgrounds; the terminal's default background is not used for rendered pane surfaces. The two focus-state tokens (DividerColor, UnfocusedBg) play the roles defined in DESIGN.md §2. A third focus-neutral token, `DragHandle`, colours the pane-resize drag seam (DESIGN.md §4.5 and cavekit-app-shell R15) — distinct from `DividerColor` so the draggable seam is visually spottable against unfocused pane borders. Each theme's color tokens trace to a documented canonical upstream source. The theme constructor cites the source URL and — where applicable — the variant name (e.g. tokyo-night variant vs. storm).
 **Acceptance Criteria:**
 - [ ] [auto] The default config specifies `tokyo-night` as the active theme
 - [ ] [auto] Setting `theme = "catppuccin-mocha"` in config causes that theme's color tokens to be active
@@ -48,6 +48,14 @@ Loading, validating, and persisting application configuration from a TOML file. 
 - [ ] [auto] Each bundled theme defines a non-empty `DragHandle` token
 - [ ] [auto] In every bundled theme, `DragHandle != DividerColor` (the drag seam must be visually distinct from unfocused pane borders) and `DragHandle != FocusBorder` (the drag seam must not compete with focus signalling)
 - [ ] [human] `DragHandle` reads as a mid-tone neutral — clearly brighter than `DividerColor` on the theme's background but dimmer than `FocusBorder` (per DESIGN.md §2)
+- [ ] [auto] Each bundled theme defines a non-empty `BaseBg` token
+- [ ] [auto] `BaseBg` is painted on pane backgrounds wherever an `UnfocusedBg` overlay does not apply — no rendered pane falls through to the terminal's default background
+- [ ] [auto] Across the three bundled themes, `BaseBg` values are pairwise distinct
+- [ ] [auto] Within each bundled theme, `BaseBg != UnfocusedBg` (the primary pane fill must not collapse into the unfocused tint)
+- [ ] [auto] Each theme constructor includes a canonical-source citation (upstream URL + variant name where applicable), discoverable at test time (e.g. as a comment or named constant adjacent to the constructor)
+- [ ] [auto] Catppuccin-mocha's `FocusBorder` equals the upstream Lavender value (`#b4befe`), not Blue
+- [ ] [human] One-time sign-off per bundled theme: the cited canonical source's palette is faithfully reflected in the theme's tokens (augments the existing coherence sign-off; does not replace it)
+- [ ] [human] At a glance, the three bundled themes are perceptibly distinct from each other — not merely shade drift of the same dark palette
 **Dependencies:** R1, R2
 
 ### R5: Field and Display Settings
@@ -97,10 +105,12 @@ Loading, validating, and persisting application configuration from a TOML file. 
 
 - See also: cavekit-entry-list.md (reads field visibility, sub-row fields, logger depth, theme)
 - See also: cavekit-detail-pane.md (reads/writes field visibility, reads theme and pane height)
-- See also: cavekit-app-shell.md (reads theme)
+- See also: cavekit-app-shell.md (reads theme; pane rendering honours `theme.BaseBg` per R4)
 - See also: cavekit-filter-engine.md (no direct dependency, but future filter presets may use config)
 
 ## Changelog
+
+- 2026-04-19: R4 extended for theme palette fidelity — added BaseBg token, canonical-source citation AC, catppuccin Lavender FocusBorder invariant, perceptual-distinctness sign-off. Grounded by context/refs/research-brief-theme-palettes.md.
 
 ### 2026-04-19 — Revision (DragHandle token)
 - **Affected:** R4
