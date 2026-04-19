@@ -107,36 +107,26 @@ func IsRatioKey(key string) bool {
 }
 
 // RatioFromDragX converts a horizontal cursor column position into the new
-// width_ratio for a right-split layout (T-104). The terminal x column is
-// normalized to the usable split width (terminalWidth - 2*paneBorders -
-// dividerWidth) so the divider follows the cursor. The returned ratio
-// corresponds to the DETAIL pane slice (detailContent = usable * ratio)
-// and is clamped to [RatioMin, RatioMax].
+// width_ratio for a right-split layout (T-104, F-133). The terminal x column
+// is normalized against the usable split width (terminalWidth - 2*paneBorders
+// - dividerWidth) so the divider follows the cursor. Result is clamped to
+// [RatioMin, RatioMax].
 //
-// T-161 audit (symmetry with RatioFromDragY inverse-math fix): the
-// X-axis analogue of F-123 is present — press-at-current-divider-col
-// does not exactly re-return the current width_ratio. The existing
-// formula is left unchanged because the T-104 tests (termWidth=100,
-// x=50 → 48/95 ≈ 0.505) encode the current semantics; re-tuning would
-// break those pins and is out of scope for T-161. If T-170 HUMAN
-// sign-off after the T-160 router alignment surfaces visible drift in
-// right-split drag, a follow-up should re-examine this formula.
+// F-133 (R15 inverse-math AC): the formula is the exact inverse of
+// `Layout.DetailContentWidth() = usable - ListContentWidth()` where
+// `ListContentWidth() = floor(usable*(1-ratio))`. The renderer-truth
+// invariant established by R15/T-160 is `dividerX == ListContentWidth()`,
+// so detail content = `usable - dividerX`. Press at the current divider X
+// re-returns the current ratio within int-truncation tolerance.
 func RatioFromDragX(x, termWidth int) float64 {
 	usable := termWidth - 2*paneBorders - dividerWidth
 	if usable <= 0 {
 		return ClampRatio(RatioDefault)
 	}
-	// The detail pane occupies the right-hand slice starting after the
-	// divider + its left border. Its content width is therefore
-	// (termWidth - x - 2): two cells reserved for the detail pane's
-	// right border and the divider-to-right-border gap.
-	detail := termWidth - x - 2
+	detail := usable - x
 	if detail < 0 {
 		detail = 0
 	}
-	// X-axis upper guard is REACHABLE — callers pass x in [0, termWidth-1],
-	// so max detail = termWidth - 2 which exceeds usable = termWidth - 5.
-	// Keep the clamp.
 	if detail > usable {
 		detail = usable
 	}

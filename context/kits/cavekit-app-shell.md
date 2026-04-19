@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T11:19:41+03:00"
+last_edited: "2026-04-19T11:29:08+03:00"
 ---
 
 # Cavekit: App Shell
@@ -196,7 +196,7 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] Dragging past the `[0.10, 0.80]` clamp pins the ratio at the boundary; further cursor motion in the same direction is a no-op until the cursor re-enters the valid range
 - [ ] [auto] Starting a drag with the detail pane closed is a silent no-op — there is no divider cell to grab
 - [ ] [auto] The router's divider cell MUST coincide with the renderer's visible divider glyph — a test MUST render the layout, locate the visible divider glyph (`│` in right-split at mid-Y; the horizontal border row in below-mode), and assert `MouseRouter.Zone(glyphX, glyphY) == ZoneDivider` across all preset ratios {0.10, 0.30, 0.50, 0.80} in both orientations at 140x35 and 80x24. Synthetic unit tests that derive press coordinates from the router's own helpers are insufficient — they agree with the router by construction and cannot detect router/renderer drift
-- [ ] [auto] When `RatioFromDragY` / `RatioFromDragX` is inverted against the layout's forward ratio→size math (e.g. `HeightModel.PaneHeight = int(termHeight * ratio)`), a Press directly on the currently rendered divider row/col MUST yield the current ratio unchanged — no step-snap on Press-without-motion
+- [ ] [auto] When `RatioFromDragY` / `RatioFromDragX` is inverted against the layout's forward ratio→size math (e.g. `HeightModel.PaneHeight = int(termHeight * ratio)`), a Press directly on the currently rendered divider row/col MUST yield the current ratio unchanged — no step-snap on Press-without-motion. The regression test for this AC MUST exercise BOTH `RatioFromDragX` AND `RatioFromDragY` independently — covering one axis is insufficient because each has its own inverse formula tied to its own forward math (`Layout.DetailContentWidth` / `detailpane.HeightModel.PaneHeight`). The X-axis canonical Press column MUST be derived from `Layout.ListContentWidth()` (the renderer-truth divider X established by R15 line 198 / T-160), not from the inverse formula itself — deriving from the inverse would tautologically agree with whatever the inverse computes
 - [ ] [auto] If the detail pane auto-closes (R7) mid-drag — e.g. a terminal resize takes the pane's computed dimension below the minimum — the drag session MUST terminate silently: subsequent Motion events are swallowed, no ratio mutation occurs, and no config write fires on the eventual Release
 - [ ] [auto] A bare Press+Release on the divider cell with no intermediate Motion MUST NOT rewrite the config file — persistence fires only when the drag actually changed the ratio
 - [ ] [auto] When the terminal's active dimension is degenerate (termHeight or termWidth ≤ 0; this window exists briefly at startup before the first WindowSizeMsg) the drag helpers MUST preserve the current ratio rather than jumping to `RatioDefault` — no silent shadowing of a persisted value. The regression test for this AC MUST drive the guard with `m.pane.IsOpen() == true` AND the active terminal dimension == 0 simultaneously — going through `WindowSizeMsg{Width:0}` is insufficient because the auto-close branch (R7) short-circuits the test flow before the degenerate-dim guard fires. Removing the caller-guard MUST make the test fail.
@@ -218,6 +218,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-19 — Revision (R15 inverse-math AC: X-axis parity + formula fix — F-133)
+- **Affected:** R15 (inverse-math AC text extended; `RatioFromDragX` formula corrected)
+- **Summary:** /ck:review Pass 2 surfaced F-133: the R15 inverse-math AC mentioned BOTH `RatioFromDragY` AND `RatioFromDragX`, but only the Y-axis had a regression test. The X-axis math (`detail = termWidth - x - 2`) was off by 3 cells against the renderer-truth divider X established by T-160 — at termWidth=100, ratio=0.55, Press-at-current-X returned 0.589 (drift 0.039, exceeding the RatioStep/2=0.025 tolerance the Y-axis test uses). The author of T-161 explicitly punted on this in `ratiokeys.go` ("X-axis analogue of F-123 is present... left unchanged because the T-104 tests encode the current semantics"). The buggy T-104 pin (`x=50, termWidth=100 → 48/95`) encoded the broken formula. AC text extended to mandate parallel regression tests for BOTH axes, and that the X-axis canonical Press column MUST be sourced from `Layout.ListContentWidth()` (renderer-truth) rather than the inverse formula itself. `RatioFromDragX` rewritten as the exact inverse of `DetailContentWidth = usable - ListContentWidth`: `detail := usable - x`. T-104 mid pin updated from 48/95 → 45/95 to reflect the correct formula. New regression test `TestRatioFromDragX_PressAtCurrentDividerX_KeepsRatio` mirrors the Y-axis test, sweeping presets {0.30, 0.50, 0.55} × termWidth ∈ {80, 100}.
+- **Driven by:** `/ck:revise --trace` cycle on `/ck:review` finding F-133. Regression test in `internal/ui/appshell/ratiokeys_test.go`. Code change in `internal/ui/appshell/ratiokeys.go`.
 
 ### 2026-04-19 — Revision (R15 degenerate-dim AC sharpened — F-132)
 - **Affected:** R15 (degenerate-dim AC text extended)

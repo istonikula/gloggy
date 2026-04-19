@@ -177,12 +177,14 @@ func TestIsRatioKey(t *testing.T) {
 	}
 }
 
-// T-104: dragging the divider to x=50 on a 100-wide terminal halves the
-// usable space → ratio ≈ 48/95 (clamped to RatioMax=0.80).
-// At termWidth=100 and x=50: detail = 100-50-2 = 48, usable = 95, ratio = 48/95 ≈ 0.505.
+// T-104 / F-133: dragging the divider to x=50 on a 100-wide terminal.
+// Forward math: usable = 95, detail content = usable - x = 45, ratio = 45/95.
+// (Pre-F-133 formula was `termWidth-x-2 = 48`, which encoded the off-by-3
+// inverse-math bug — the pin was updated when the formula was made the
+// exact inverse of `DetailContentWidth = usable - ListContentWidth`.)
 func TestRatioFromDragX_Mid(t *testing.T) {
 	r := RatioFromDragX(50, 100)
-	want := 48.0 / 95.0
+	want := 45.0 / 95.0
 	if math.Abs(r-want) > 1e-9 {
 		t.Errorf("RatioFromDragX(50,100) = %.4f, want %.4f", r, want)
 	}
