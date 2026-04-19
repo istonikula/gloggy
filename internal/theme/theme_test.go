@@ -31,6 +31,17 @@ func TestGetTheme_AllBuiltins(t *testing.T) {
 			if string(th.UnfocusedBg) == string(th.Dim) || string(th.UnfocusedBg) == string(th.FocusBorder) {
 				t.Errorf("UnfocusedBg must be distinct from Dim and FocusBorder; got %s", th.UnfocusedBg)
 			}
+			// T-171: DragHandle populated and distinct from DividerColor + FocusBorder
+			// (config R4 AC 9 + AC 10).
+			if string(th.DragHandle) == "" {
+				t.Error("Tier 23 DragHandle token not populated")
+			}
+			if string(th.DragHandle) == string(th.DividerColor) {
+				t.Errorf("DragHandle must be distinct from DividerColor; got %s", th.DragHandle)
+			}
+			if string(th.DragHandle) == string(th.FocusBorder) {
+				t.Errorf("DragHandle must be distinct from FocusBorder; got %s", th.DragHandle)
+			}
 		})
 	}
 }
