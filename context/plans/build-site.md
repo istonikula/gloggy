@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T00:00:00Z"
+last_edited: "2026-04-19T22:56:50+03:00"
 ---
 
 # Build Site: gloggy
@@ -14,10 +14,10 @@ last_edited: "2026-04-19T00:00:00Z"
 |---|---|
 | Source Kits | 6 domains |
 | Requirements | 56 |
-| Acceptance Criteria | 303 (reconciled with current kit state: Tier-20 backfill enumerated + Tier-23 DragHandle) |
-| Plan Tasks | 175 |
-| Human Sign-off Tasks | 22 |
-| Tiers | 23 (0 through 18; 2026-04-18 resize revision **Tier 19**; 2026-04-19 resize divider-coord + drag state-machine hardening **Tier 20**; 2026-04-19 Tiers 21–22 were review/housekeeping with no new tasks; 2026-04-19 DragHandle drag-seam token appended as **Tier 23**) |
+| Acceptance Criteria | 311 (reconciled with current kit state: Tier-20 backfill + Tier-23 DragHandle + Tier-24 theme palette fidelity) |
+| Plan Tasks | 180 |
+| Human Sign-off Tasks | 23 |
+| Tiers | 24 (0 through 18; 2026-04-18 resize revision **Tier 19**; 2026-04-19 resize divider-coord + drag state-machine hardening **Tier 20**; 2026-04-19 Tiers 21–22 were review/housekeeping with no new tasks; 2026-04-19 DragHandle drag-seam token appended as **Tier 23**; 2026-04-19 theme palette fidelity — BaseBg + citations + catppuccin Lavender — appended as **Tier 24**) |
 
 ---
 
@@ -338,6 +338,18 @@ Kit revision `ed91d17` introduces a third focus-state-adjacent theme token, `Dra
 | T-174 | Drag-seam distinctness + rendered-cell color test (per theme) | app-shell/R15 (new AC 15), config/R4 (new AC 10) | T-171, T-172, T-173 | S | New test `TestDragSeam_RendersInDragHandle_AllThemes` in `internal/ui/appshell/mouse_test.go` (or sibling). For each bundled theme × each orientation (right/below): render the layout; locate the drag-seam cell (right: `│` glyph column at mid-Y, reused from T-160's ANSI-safe locator; below: the row between list and detail pane); assert the SGR at that cell contains `theme.DragHandle`'s value and NEITHER `theme.DividerColor` NOR `theme.FocusBorder`. Also assert `DragHandle != DividerColor` AND `DragHandle != FocusBorder` as a data-only check per config R4 AC 10. Reuse the T-160 ANSI-strip state machine (`stPlain`/`stPostEsc`/`stCsiBody`) so future styling layers don't regress the locator. |
 | T-175 | [HUMAN] DragHandle visual sign-off (tui-mcp, 3 themes × 2 orientations) | config/R4 (human AC 11), app-shell/R10 (human AC 4 re-confirm), R15 (new AC 16) | T-172, T-173, T-174 | S | Per overview Verification Conventions §1–§5, verify via tui-mcp. For each bundled theme (`tokyo-night`, `catppuccin-mocha`, `material-dark`): launch the TUI on `logs/small.log`; `snapshot` in right-split at `140x35` with the list focused — confirm the 1-cell `│` divider between list and detail is visibly distinct in hue/luminance from the detail pane's unfocused border (which is `DividerColor`) and from the list's focused border (which is `FocusBorder`); `snapshot` in below-split at `80x24` — confirm the horizontal border row between list and detail pane is visibly distinct from the detail pane's unfocused top/bottom borders. Record colour codes in the impl-tracking Notes column. If any theme's `DragHandle` fails the mid-tone-neutral readability check ("clearly brighter than DividerColor, dimmer than FocusBorder"), file a tuning task and update T-171's palette values before marking DONE. |
 
+### Tier 24 -- Theme Palette Fidelity — BaseBg + Citations + Catppuccin Lavender (kit revision 2026-04-19)
+
+Kit revision 2026-04-19 extends `cavekit-config.md` R4 for palette fidelity, grounded by `context/refs/research-brief-theme-palettes.md`. Finding: all three bundled themes converge visually because (1) each theme's identity editor-background hex is never rendered — the terminal's default bg dominates, (2) catppuccin-mocha's `FocusBorder` uses Blue (#89b4fa) instead of its upstream Lavender identity accent (#b4befe), and (3) constructors lack canonical-source citations, making palette drift invisible at review. Kit delta: R4 +8 ACs (BaseBg token non-empty per theme, BaseBg painted on pane bg with no fallthrough to terminal default, BaseBg pairwise distinct across themes, BaseBg != UnfocusedBg within each theme, canonical-source citation discoverable at test time, catppuccin FocusBorder == #b4befe, human canonical-fidelity sign-off, human cross-theme perceptibly-distinct sign-off). Companion: `cavekit-app-shell.md` R10 description extended to note pane backgrounds render `theme.BaseBg` (no new ACs in R10 — the AC lives in config R4). 5 tasks (4 auto + 1 HUMAN sign-off); T-176 is the theme-data fan-in, T-177/T-178/T-179 parallelizable after T-176, T-180 is the HUMAN sign-off gate.
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-176 | `BaseBg` theme token — struct field + bundled theme values | config/R4 (new ACs 12, 14, 15) | T-009, T-084, T-171 | XS | In `internal/theme/theme.go`: add `BaseBg lipgloss.Color` to the `Theme` struct alongside `DividerColor`/`UnfocusedBg`/`FocusBorder`/`DragHandle`. Populate each bundled theme with the canonical editor-background hex from its upstream source — `tokyo-night` `#1a1b26` (night variant editor bg, per research brief §Tokyo Night), `catppuccin-mocha` `#1e1e2e` (mocha Base, per catppuccin palette.json), `material-dark` `#212121` (Astorino editor bg, per community-fork palette). Unit tests in `internal/theme/theme_test.go`: (a) each bundled theme reports a non-empty `BaseBg` (closes config R4 AC 12); (b) across the three bundled themes, `BaseBg` values are pairwise distinct (closes AC 14); (c) within each theme, `BaseBg != UnfocusedBg` (closes AC 15). No renderer changes in this task — T-179 handles the paint wiring. |
+| T-177 | Canonical-source citations per theme constructor | config/R4 (new AC 16) | T-176 | S | Introduce per-theme palette constants adjacent to each constructor in `internal/theme/theme.go`, mapping canonical upstream names to hex so drift is visible at code review. Each theme constructor cites its canonical source via a named exported constant (e.g. `TokyoNightSource = "https://github.com/enkia/tokyo-night-vscode-theme (night variant)"`, `CatppuccinMochaSource = "https://github.com/catppuccin/catppuccin (mocha flavor)"`, `MaterialDarkSource = "https://github.com/myambitions/vsc-community-material-theme (Astorino legacy palette)"`). Refactor each constructor's literal hex values to reference intermediate palette constants (e.g. `tokyoNight.red`, `mocha.lavender`, `matl.red`) so drift becomes a compile-time change, not a hex-edit buried in a long struct literal. Unit test `TestTheme_CanonicalSourceCitations_Discoverable`: for each bundled theme, assert the source constant is non-empty and contains both an `https://` URL and either the variant name or a canonical-identifier keyword (`night`, `mocha`, `Astorino`, `material`). Keep the existing `tokyoNight` / `catppuccinMocha` / `materialDark` function signatures intact to avoid touching `builtinThemes` wiring. **Design Ref:** research brief §Constructor changes (named palette constants pattern). |
+| T-178 | Catppuccin-mocha `FocusBorder` → Lavender (#b4befe) | config/R4 (new AC 17) | — | XS | In `internal/theme/theme.go` `catppuccinMocha()`: change `FocusBorder` from `lipgloss.Color("#89b4fa")` (Blue) to `lipgloss.Color("#b4befe")` (Lavender), the upstream identity accent used across all official catppuccin ports (neovim, lazygit, btop) for active borders. This single change makes the mocha focus signal perceptibly distinct from tokyo-night's blue-biased `FocusBorder`. Unit test: `assert theme.FocusBorder == "#b4befe"` for the catppuccin-mocha theme. Note: this may create a merge ripple with T-177 (which refactors the same constructor) — if T-177 lands first, T-178 updates the `mocha.lavender`-vs-`mocha.blue` constant assignment in the FocusBorder line. Does NOT alter T-171 `DragHandle` values — those are focus-neutral and were set independent of FocusBorder choice. |
+| T-179 | Paint `BaseBg` on pane backgrounds (no terminal-default fallthrough) | config/R4 (new AC 13) | T-176, T-100, T-103 | S | In the pane-rendering layer — likely `internal/ui/entrylist/`, `internal/ui/detailpane/`, and `internal/ui/appshell/` layout composition — apply `.Background(lipgloss.Color(theme.BaseBg))` to rendered pane surfaces wherever an `UnfocusedBg` overlay does not apply. Per the cavekit-app-shell R10 matrix: focused panes render `BaseBg`, alone panes render `BaseBg`, unfocused-but-visible panes continue to render `UnfocusedBg` (unchanged). The R10 AC "must not alter rendered dimensions" still holds — `BaseBg` is a background colour, not a border. Audit all three pane view paths (entry list, detail pane, overlays) to ensure no pane body renders a zero-value or unset background that would fall through to the terminal default. New renderer test `TestPaneBackground_BaseBgRendered_AllThemes`: for each bundled theme × each focus state (focused, unfocused-visible, alone): render the pane; parse the ANSI output; assert the SGR at pane-interior cells (non-border, non-text-glyph rows) contains `BaseBg` for focused/alone states; `UnfocusedBg` for unfocused-visible states; never the empty string (terminal default). Reuse the T-160/T-174 ANSI-strip state machine for cell locating. Potential interaction with T-174: drag-seam cells still carry `DragHandle` (foreground on the glyph); `BaseBg` applies to pane interior, not to the seam cell itself — re-run T-174 after T-179 to confirm no regression. |
+| T-180 | [HUMAN] Theme palette fidelity sign-off (tui-mcp, 3 themes × canonical fidelity + cross-theme distinctness) | config/R4 (new AC 18 human, AC 19 human) | T-176, T-177, T-178, T-179 | S | Per overview Verification Conventions §1–§5, verify via tui-mcp on `logs/small.log`. **(a) Canonical fidelity per theme (AC 18):** for each of `tokyo-night`, `catppuccin-mocha`, `material-dark` — launch the TUI, `snapshot` at `140x35 right` with the detail pane open and focused; cross-reference rendered colours against the citation constants from T-177 and against the canonical values in `context/refs/research-brief-theme-palettes.md`. Confirm: BaseBg matches the upstream editor bg for that theme (tokyo-night navy #1a1b26, catppuccin Base #1e1e2e, material Astorino #212121); catppuccin's active border reads as lavender-purple (#b4befe), not blue. **(b) Cross-theme perceptibly-distinct sign-off (AC 19):** take the same-orientation snapshots of all three themes and compare side-by-side — confirm the pane backgrounds are visibly different at a glance (cool navy-blue vs neutral-warm mauve-tinged vs near-black neutral), not merely shade-drift of the same dark palette. Record BaseBg, FocusBorder, and the headline identity accent (tokyo-night cyan, catppuccin lavender, material electric cyan) for each theme in `context/impl/impl-config.md` Notes. If any theme fails canonical fidelity (e.g. the research brief's flagged material-dark invented tokens — `LevelDebug` #676e95, `SyntaxNull` #676e95, `Dim` #4a4a6a, `CursorHighlight` #4a5568 — present visibly and break the "faithful reflection" criterion), file a follow-up tuning task against material-dark's constructor and update T-177's palette constants before marking DONE. If any pair of themes fails perceptual distinctness (e.g. BaseBg hex values too close in luminance), file a BaseBg tuning task and update T-176 values. |
+
 ---
 
 ## Dependency Graph
@@ -590,9 +602,20 @@ graph LR
     T-172 --> T-175
     T-173 --> T-175
     T-174 --> T-175
+    T-009 --> T-176
+    T-084 --> T-176
+    T-171 --> T-176
+    T-176 --> T-177
+    T-176 --> T-179
+    T-100 --> T-179
+    T-103 --> T-179
+    T-176 --> T-180
+    T-177 --> T-180
+    T-178 --> T-180
+    T-179 --> T-180
 ```
 
-> Note: Tier 11-18 edges are intentionally not present in the mermaid block above — those tiers were added after the graph was first drawn and have their blocker chains recorded in the per-tier `blockedBy` columns instead. Tier 19, 20, and 23 edges above use the same `blockedBy` data. (Tiers 21–22 added no tasks.)
+> Note: Tier 11-18 edges are intentionally not present in the mermaid block above — those tiers were added after the graph was first drawn and have their blocker chains recorded in the per-tier `blockedBy` columns instead. Tier 19, 20, 23, and 24 edges above use the same `blockedBy` data. (Tiers 21–22 added no tasks.)
 
 ---
 
@@ -631,7 +654,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R8 | 2 | Tail-mode entries carry correct line numbers continuing from the last initially loaded line | T-028 | COVERED |
 | R8 | 3 | Tail mode is not activated when reading from stdin, regardless of flags | T-028 | COVERED |
 
-### config (7 requirements, 35 criteria)
+### config (7 requirements, 43 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -654,6 +677,14 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R4 | 9 | Each bundled theme defines a non-empty `DragHandle` token | T-171 | COVERED |
 | R4 | 10 | In every bundled theme, `DragHandle != DividerColor` AND `DragHandle != FocusBorder` | T-171, T-174 | COVERED |
 | R4 | 11 | [human] `DragHandle` reads as a mid-tone neutral — clearly brighter than `DividerColor`, dimmer than `FocusBorder` | T-175 | COVERED |
+| R4 | 12 | Each bundled theme defines a non-empty `BaseBg` token | T-176 | COVERED |
+| R4 | 13 | `BaseBg` is painted on pane backgrounds wherever an `UnfocusedBg` overlay does not apply — no rendered pane falls through to the terminal's default background | T-179 | COVERED |
+| R4 | 14 | Across the three bundled themes, `BaseBg` values are pairwise distinct | T-176 | COVERED |
+| R4 | 15 | Within each bundled theme, `BaseBg != UnfocusedBg` | T-176 | COVERED |
+| R4 | 16 | Each theme constructor includes a canonical-source citation (upstream URL + variant name where applicable), discoverable at test time | T-177 | COVERED |
+| R4 | 17 | Catppuccin-mocha's `FocusBorder` equals the upstream Lavender value (`#b4befe`), not Blue | T-178 | COVERED |
+| R4 | 18 | [human] One-time sign-off per bundled theme: the cited canonical source's palette is faithfully reflected in the theme's tokens | T-180 | COVERED |
+| R4 | 19 | [human] At a glance, the three bundled themes are perceptibly distinct from each other — not merely shade drift of the same dark palette | T-180 | COVERED |
 | R5 | 1 | The default compact row fields are time, level, logger, and msg | T-010 | COVERED |
 | R5 | 2 | Setting sub-row fields in config causes those fields to appear as sub-rows in entry list | T-010, T-030 | COVERED |
 | R5 | 3 | Setting hidden fields in config causes those fields to be omitted from the detail pane | T-010, T-038 | COVERED |
@@ -936,19 +967,19 @@ _(Former R6 AC "Mouse drag on the pane divider triggers pane resize" was moved t
 
 ### Coverage Totals
 
-> Totals below reflect the current kit state through Tier 23 (2026-04-19 DragHandle drag-seam token). Tier 20 (drag state-machine hardening) ACs are now enumerated in the matrix above (R15 rows 10-14 + entry-list R10 row 7). Tier 23 (DragHandle) ACs are enumerated in config R4 rows 9-11, app-shell R10 row 10, app-shell R15 rows 15-16.
+> Totals below reflect the current kit state through Tier 24 (2026-04-19 theme palette fidelity — BaseBg + citations + catppuccin Lavender). Tier 20 (drag state-machine hardening) ACs are enumerated in the matrix above (R15 rows 10-14 + entry-list R10 row 7). Tier 23 (DragHandle) ACs are enumerated in config R4 rows 9-11, app-shell R10 row 10, app-shell R15 rows 15-16. Tier 24 (theme palette fidelity) ACs are enumerated in config R4 rows 12-19.
 
 | Domain | Requirements | Criteria | Covered | Gaps |
 |---|---|---|---|---|
 | log-source | 8 | 26 | 26 | 0 |
-| config | 7 | 35 | 35 | 0 |
+| config | 7 | 43 | 43 | 0 |
 | filter-engine | 7 | 27 | 27 | 0 |
 | entry-list | 11 | 61 | 61 | 0 |
 | detail-pane | 10 | 53 | 53 | 0 |
 | app-shell | 13 | 101 | 101 | 0 |
-| **Total** | **56** | **303** | **303** | **0** |
+| **Total** | **56** | **311** | **311** | **0** |
 
-> All enumerated criteria are covered by at least one task. Deltas from prior 276 total: R10 rewrite 4 → 6 ACs (+2); R12 rewrite 7 → 11 ACs (+4); R6 old AC 3 moved to R15 AC 1, new AC 7 added → net 0; R15 original 9 ACs (+9); Tier-20 R15 hardening 5 ACs (+5: renderer-truth, inverse-math, mid-drag auto-close, no-motion-no-persist, degenerate-dim); entry-list R10 unset-safety 1 AC (+1); Tier-23 DragHandle token: config R4 (+3), app-shell R10 (+1), app-shell R15 (+2). Detail-pane R6 ACs 5/9 rewording only. F-132/F-133/F-134 sharpened existing R15 AC text in place (Tiers 21–22) with no AC-count change.
+> All enumerated criteria are covered by at least one task. Deltas from prior 276 total: R10 rewrite 4 → 6 ACs (+2); R12 rewrite 7 → 11 ACs (+4); R6 old AC 3 moved to R15 AC 1, new AC 7 added → net 0; R15 original 9 ACs (+9); Tier-20 R15 hardening 5 ACs (+5: renderer-truth, inverse-math, mid-drag auto-close, no-motion-no-persist, degenerate-dim); entry-list R10 unset-safety 1 AC (+1); Tier-23 DragHandle token: config R4 (+3), app-shell R10 (+1), app-shell R15 (+2); Tier-24 theme palette fidelity: config R4 (+8: BaseBg non-empty, BaseBg painted/no-fallthrough, BaseBg pairwise distinct, BaseBg != UnfocusedBg, canonical-source citation, catppuccin Lavender FocusBorder, human canonical fidelity, human cross-theme perceptible distinctness); app-shell R10 description extended to cross-reference `theme.BaseBg` with no new AC. Detail-pane R6 ACs 5/9 rewording only. F-132/F-133/F-134 sharpened existing R15 AC text in place (Tiers 21–22) with no AC-count change.
 
 ---
 
@@ -1112,6 +1143,16 @@ The 2026-04-17 kit revision (commit `a2fe53c`) added **27 new plan tasks** (T-08
 ---
 
 ## Revision Log
+
+### 2026-04-19 — Theme palette fidelity — BaseBg + citations + catppuccin Lavender (Tier 24)
+- **Source:** `/ck:research` brief `context/refs/research-brief-theme-palettes.md` (14 sources, HIGH confidence on tokyo-night + catppuccin-mocha, MEDIUM-HIGH on material-dark). User observation: all three bundled themes looked the same in-app despite distinct-on-paper palettes. Root cause: (1) each theme's identity editor-bg hex (tokyo-night navy #1a1b26, catppuccin Base #1e1e2e, material Astorino #212121) was never rendered — the terminal's default bg dominated all pane surfaces; (2) catppuccin-mocha's `FocusBorder` used Blue (#89b4fa), the same family as tokyo-night's, instead of its upstream identity Lavender (#b4befe) used by all official catppuccin ports for active borders; (3) theme constructors lacked canonical-source citations, so palette drift (e.g. material-dark's invented #676e95 LevelDebug/SyntaxNull and #4a4a6a Dim — none present in upstream Astorino palette) was invisible at review.
+- **Kits changed:** `cavekit-config.md` R4 (+8 ACs: BaseBg token non-empty per theme, BaseBg painted on pane bg with no terminal-default fallthrough, BaseBg pairwise distinct across the three themes, `BaseBg != UnfocusedBg` within each theme, canonical-source citation discoverable at test time, catppuccin-mocha `FocusBorder == #b4befe`, human canonical-fidelity per-theme sign-off, human cross-theme perceptibly-distinct sign-off); `cavekit-app-shell.md` R10 description extended to cross-reference `theme.BaseBg` (no new ACs — the paint-contract AC lives in config R4). No changes to filter-engine, entry-list, detail-pane, log-source kits.
+- **Acceptance-criteria delta:** 303 → 311 (+8, all in config R4).
+- **Requirement count delta:** 56 (unchanged — all edits extend existing R4).
+- **Tasks added:** 5 (T-176 through T-180). T-176 is the theme-data fan-in (`BaseBg lipgloss.Color` field + per-theme canonical values + 3 data-shape ACs); T-177 refactors constructors to use named palette constants + adds canonical-source citation constants (`TokyoNightSource`, `CatppuccinMochaSource`, `MaterialDarkSource`) discoverable at test time; T-178 is the 1-line catppuccin FocusBorder Blue → Lavender fix; T-179 paints `BaseBg` on pane surfaces in the render layer, covering the "no fallthrough to terminal default" AC with a per-theme × per-focus-state renderer test reusing the T-160/T-174 ANSI state machine; T-180 is the HUMAN sign-off gate via tui-mcp across the three themes — canonical fidelity cross-referenced against research-brief values, plus side-by-side cross-theme distinctness comparison.
+- **Tiers added:** 24 (theme palette fidelity). Previous tier ceiling was 23.
+- **Research grounding:** context/refs/research-brief-theme-palettes.md §Implications for Design enumerated the Theme-struct changes (BaseBg field, optional AccentColor deferred), constructor changes (palette constants + citations, catppuccin Lavender, material-dark invented-token flags left for sign-off follow-up), and R4 kit changes (BaseBg AC set, canonical-fidelity human sign-off). Material-dark invented tokens (`LevelDebug` #676e95, `SyntaxNull` #676e95, `Dim` #4a4a6a, `CursorHighlight` #4a5568) were flagged but not directly tasked — T-180's AC 18 human sign-off is the mechanism that surfaces them if they visibly break canonical fidelity, triggering a follow-up tier rather than pre-emptive fixes that may not be visually necessary.
+- **Commit history referenced:** T-009 (original theme structs + constructors), T-084 (DividerColor/UnfocusedBg token fan-in), T-171 (DragHandle token fan-in — same pattern T-176 follows), T-100/T-103 (pane-border paint paths T-179 extends for BaseBg), T-160/T-174 (ANSI-strip state machine reused by T-179's renderer test).
 
 ### 2026-04-19 — DragHandle drag-seam token (Tier 23)
 - **Source:** `/ck:sketch` session 2026-04-19 driven by user feedback that the right-split `│` divider glyph and the below-split shared border row between list and detail pane both rendered in `DividerColor`, making the draggable seam indistinguishable from the unfocused pane borders adjacent to it — a 3-cell uniform band in right-mode with no visual cue where to click-and-drag. Kit revision commit `ed91d17`.
