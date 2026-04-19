@@ -215,6 +215,45 @@ func TestRatioFromDragX_NormalizedByWidth(t *testing.T) {
 	}
 }
 
+// F-133: pressing on the divider at its current physical X column must
+// re-return the current ratio (no step-snap). Mirrors the Y-axis pin.
+// The canonical divider X is sourced from the renderer-truth invariant
+// established by R15/T-160 (`Layout.ListContentWidth()`), NOT from the
+// inverse formula itself — deriving from the inverse would tautologically
+// agree with whatever the inverse computes.
+//
+// Tolerance RatioStep/2 = 0.025 matches the Y-axis test. Old formula
+// (`termWidth - x - 2`) drifts ~0.04 at termWidth=100, ratio=0.55 — well
+// outside tolerance.
+//
+// RatioMin (0.10) and RatioMax (0.80) are excluded: at the boundary,
+// ClampRatio rescues both formulas and the test cannot distinguish them.
+func TestRatioFromDragX_PressAtCurrentDividerX_KeepsRatio(t *testing.T) {
+	cases := []struct {
+		termWidth int
+		ratio     float64
+	}{
+		{100, 0.30},
+		{100, 0.50},
+		{100, 0.55},
+		{80, 0.30},
+		{80, 0.50},
+	}
+	for _, tc := range cases {
+		// Canonical divider X from renderer-truth: dividerX equals the
+		// list pane's content width (R15 AC line 198 / T-160).
+		l := NewLayout(tc.termWidth, 24, true, 0)
+		l.Orientation = OrientationRight
+		l.WidthRatio = tc.ratio
+		dividerX := l.ListContentWidth()
+		got := RatioFromDragX(dividerX, tc.termWidth)
+		if math.Abs(got-tc.ratio) > RatioStep/2+1e-9 {
+			t.Errorf("RatioFromDragX(%d, %d) = %.4f; want ≈%.4f (±%.3f) for ratio %.2f",
+				dividerX, tc.termWidth, got, tc.ratio, RatioStep/2, tc.ratio)
+		}
+	}
+}
+
 // T-161 (F-123): pressing on the divider at its current physical Y row
 // must re-return the current ratio (no step-snap). Uses the forward
 // math from `detailpane.HeightModel.PaneHeight = int(termHeight*ratio)`
