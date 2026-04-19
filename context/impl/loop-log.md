@@ -1,8 +1,20 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T11:58:20+03:00"
+last_edited: "2026-04-19T12:45:00+03:00"
 ---
 # Loop Log
+
+### Iteration 45 — 2026-04-19 (Tier 23: DragHandle drag-seam token)
+- Branch `tier-23-drag-handle`. 4 code tasks DONE, 1 HUMAN pending.
+- **Scope:** visible drag seam distinct from unfocused pane border. DragHandle = mid-tone neutral brighter than DividerColor, dimmer than FocusBorder. Focus-independent — seam colour does not change with focus state. Covers cavekit-config.md R4 (+3 ACs: DragHandle on Theme, non-empty per theme, distinct from DividerColor + FocusBorder) + cavekit-app-shell.md R10 (+1 AC: seam distinctness invariant) + R15 (+2 ACs: right-split `│` uses DragHandle, below-orientation top border uses DragHandle).
+- **T-171** (config): `DragHandle lipgloss.Color` field on `Theme`. Values picked to sit between existing DividerColor and FocusBorder on each theme's neutral ramp: tokyo-night `#5a6475` (between `#3b4261` and `#7aa2f7`); catppuccin-mocha `#6e7388` (between `#313244` and `#89b4fa`); material-dark `#65737e` (between `#37474f` and `#82aaff`). `theme_test.go` extended with per-theme non-empty + distinctness assertions.
+- **T-172** (app-shell right-split): `appshell/divider.go RenderDivider` swapped `Foreground(th.DividerColor)` → `Foreground(th.DragHandle)` so the mid-column `│` glyph renders in DragHandle across both focus states. New `TestRenderDivider_GlyphUsesDragHandle_AllThemes` locks the SGR invariant.
+- **T-173** (app-shell below-mode): new `appshell.WithDragSeamTop(style, th)` helper applies `BorderTopForeground(th.DragHandle)` to the detail pane's existing border. Chose over task-suggested option (a) (separate 1-row seam strip) because (a) cascades through `borderRows=2` assumptions + `SetHeight` wiring; SGR output at seam cell is identical between approaches. Wired via new `PaneModel.belowMode bool` + `WithBelowMode(bool)` setter; `app/model.go relayout()` sets `WithBelowMode(orientation == OrientationBelow)`. New `panestyle_test.go TestPaneStyle_WithDragSeamTop_TopRowUsesDragHandle` asserts top-row DragHandle + middle/bottom rows byte-identical to base (no leak off top edge). Primary tracking in impl-app-shell.md; cross-ref row in impl-detail-pane.md.
+- **T-174** (cross-orientation test): `TestDragSeam_RendersInDragHandle_AllThemes` in `appshell/mouse_test.go`, 3 themes × 2 orientations. Right path uses `LayoutModel.Render` + stripAnsi → locates `│` glyph column → extracts preceding SGR run via F-134-style 3-state CSI parser → asserts DragHandle SGR, NO DividerColor SGR, NO FocusBorder SGR. Below path exercises `PaneStyle + WithDragSeamTop` at the style layer (avoids circular import). AC 10 distinctness verified directly via `colorANSI` comparison.
+- Tests: 592 pass across 11 packages (from 574 baseline, +18 regression tests).
+- Commits: `c0dbdca` T-171, `be3b08f` T-172, `57f68fa` T-173, `7bf2e7c` T-174.
+- **T-175 pending:** HUMAN sign-off via tui-mcp — 3 themes × 2 orientations (140x35 right + 80x24 below), read_region to confirm seam reads as mid-tone neutral per theme (distinct from both focused FocusBorder and unfocused DividerColor by eye / SGR inspection).
+- Next: T-175 tui-mcp sign-off, then Tier 23 boundary gate + merge to main.
 
 ### Iteration 44 — 2026-04-19 (Tier 22: housekeeping — M-001 dead clamp + drift)
 - Tier 22 housekeeping branch `tier-22-housekeeping` closing one MINOR finding from the Tier 21 `/ck:review` Pass 1 plus two cosmetic drift items flagged during `/ck:check`.

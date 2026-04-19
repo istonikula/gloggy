@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T14:40:26+03:00"
+last_edited: "2026-04-19T12:30:00+03:00"
 ---
 # Implementation Tracking: config
 
@@ -20,3 +20,4 @@ Build site: context/plans/build-site.md
 | T-085 | DONE | DetailPane.WidthRatio/Position/OrientationThresholdCols/WrapMode fields; defaults 0.30/auto/100/soft; enum validation |
 | T-086 | DONE | Ratio independence: Save preserves both height/width keys; regression tests in writeback_test.go for both directions |
 | T-130 | DONE | Scrolloff int, default 5, top-level key; missing→default, negative→0 warn; round-trips via Save |
+| T-171 | DONE | DragHandle lipgloss.Color field on Theme (Tier 23 kit revision ed91d17). Mid-tone neutral populated per bundled theme: tokyo-night `#5a6475` (between DividerColor `#3b4261` and FocusBorder `#7aa2f7`); catppuccin-mocha `#6e7388` (between `#313244`/`#89b4fa`); material-dark `#65737e` (between `#37474f`/`#82aaff`). `theme_test.go` extended: per-theme non-empty DragHandle check (config R4 AC 9) + distinctness from DividerColor and FocusBorder (config R4 AC 10). Fan-in for T-172 (right divider) + T-173 (below top border). Closes cavekit-config.md R4 new AC 9 + AC 10. |
