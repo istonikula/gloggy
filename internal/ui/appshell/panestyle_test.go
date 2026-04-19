@@ -4,8 +4,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/istonikula/gloggy/internal/theme"
 )
+
+// bgColorANSI renders a probe with background color c and returns the
+// SGR prefix lipgloss emits for it. Mirrors colorANSI() but targets the
+// background SGR (`48;2;R;G;B` in TrueColor) instead of the foreground.
+func bgColorANSI(c lipgloss.Color) string {
+	rendered := lipgloss.NewStyle().Background(c).Render("x")
+	end := strings.Index(rendered, "x")
+	if end <= 0 {
+		return ""
+	}
+	return rendered[:end]
+}
 
 // F-201 pinning test — below-mode drag-seam ownership.
 //
@@ -56,6 +70,57 @@ func TestPaneStyle_DragSeamOnlyOverridesDetailTop_NotListBottom(t *testing.T) {
 				t.Errorf("list pane bottom border must NOT carry DragHandle SGR (drag seam is the detail pane's top border alone, not a shared row); got %q", listBottom)
 			}
 		})
+	}
+}
+
+// T-179 (cavekit-config.md R4 AC 13): focused / alone panes render
+// theme.BaseBg; unfocused-but-visible panes render theme.UnfocusedBg.
+// No rendered pane falls through to the terminal's default background.
+// This test asserts at the SGR level so a future change that drops the
+// Background(...) call from PaneStyle — leaving cells unstyled — fails
+// loudly. The "alone" state maps to PaneStateFocused via entrylist's
+// applyPaneStyle (m.Focused || m.Alone), so asserting focused ≡
+// asserting alone.
+func TestPaneBackground_BaseBgRendered_AllThemes(t *testing.T) {
+	cases := []struct {
+		label  string
+		state  PaneVisualState
+		wantBg func(th theme.Theme) lipgloss.Color
+		rejBg  func(th theme.Theme) lipgloss.Color
+	}{
+		{
+			label:  "focused",
+			state:  PaneStateFocused,
+			wantBg: func(th theme.Theme) lipgloss.Color { return th.BaseBg },
+			rejBg:  func(th theme.Theme) lipgloss.Color { return th.UnfocusedBg },
+		},
+		{
+			label:  "unfocused",
+			state:  PaneStateUnfocused,
+			wantBg: func(th theme.Theme) lipgloss.Color { return th.UnfocusedBg },
+			rejBg:  func(th theme.Theme) lipgloss.Color { return th.BaseBg },
+		},
+	}
+	for _, name := range theme.BuiltinNames() {
+		th := theme.GetTheme(name)
+		for _, tc := range cases {
+			t.Run(name+"/"+tc.label, func(t *testing.T) {
+				want := bgColorANSI(tc.wantBg(th))
+				rej := bgColorANSI(tc.rejBg(th))
+				if want == "" || rej == "" {
+					t.Fatalf("empty bg SGR probe want=%q rej=%q — TrueColor?", want, rej)
+				}
+				rendered := PaneStyle(th, tc.state).Width(10).Render("body")
+				if !strings.Contains(rendered, want) {
+					t.Errorf("missing expected bg SGR %q in render:\n%q",
+						want, rendered)
+				}
+				if strings.Contains(rendered, rej) {
+					t.Errorf("rejected bg SGR %q leaked into render:\n%q",
+						rej, rendered)
+				}
+			})
+		}
 	}
 }
 

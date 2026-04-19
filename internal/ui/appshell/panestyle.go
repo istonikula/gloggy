@@ -23,6 +23,14 @@ const (
 // state. The style includes a complete rectangular border on all four sides.
 // Callers should reserve 2 cells of width and 2 rows of height for the
 // border when sizing pane content.
+//
+// Background paint (T-179, config R4 AC 13):
+//   - Focused / alone panes render `theme.BaseBg`.
+//   - Unfocused-but-visible panes render `theme.UnfocusedBg`.
+//
+// No rendered pane falls through to the terminal's default background. If
+// `UnfocusedBg` is empty on a custom theme, `BaseBg` is used as a defensive
+// fallback so the invariant still holds.
 func PaneStyle(th theme.Theme, state PaneVisualState) lipgloss.Style {
 	border := lipgloss.NormalBorder()
 	switch state {
@@ -31,14 +39,21 @@ func PaneStyle(th theme.Theme, state PaneVisualState) lipgloss.Style {
 			Border(border).
 			BorderForeground(th.DividerColor).
 			Faint(true)
-		if th.UnfocusedBg != "" {
+		switch {
+		case th.UnfocusedBg != "":
 			s = s.Background(th.UnfocusedBg)
+		case th.BaseBg != "":
+			s = s.Background(th.BaseBg)
 		}
 		return s
 	default: // PaneStateFocused
-		return lipgloss.NewStyle().
+		s := lipgloss.NewStyle().
 			Border(border).
 			BorderForeground(th.FocusBorder)
+		if th.BaseBg != "" {
+			s = s.Background(th.BaseBg)
+		}
+		return s
 	}
 }
 
