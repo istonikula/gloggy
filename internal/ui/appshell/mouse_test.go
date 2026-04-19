@@ -265,6 +265,160 @@ func stripAnsi(s string) string {
 	return b.String()
 }
 
+// T-174: drag-seam distinctness + rendered-cell SGR test (Tier 23
+// kit revision ed91d17). Per theme × orientation: render the seam
+// cell and assert its SGR carries theme.DragHandle's code — never
+// theme.DividerColor's code (the unfocused-border colour) and never
+// theme.FocusBorder's (the focused-border / focus-cue colour).
+// Also includes the data-only distinctness check from config R4
+// AC 10 (DragHandle differs from both neighbours in every theme).
+//
+// Right-split reuses the T-160 renderer-truth locator: stub pane
+// strings so the inline `│` is the only vertical-bar glyph in the
+// rendered output, then find the glyph column on a mid-row and scan
+// backwards for the opening CSI introducer.
+//
+// Below-mode exercises the PaneStyle + WithDragSeamTop composition
+// directly (avoids a circular detailpane → appshell import) — the
+// PaneModel wraps exactly this style in its View(), so asserting on
+// the raw style output equals asserting on the rendered pane's top
+// row.
+func TestDragSeam_RendersInDragHandle_AllThemes(t *testing.T) {
+	for _, themeName := range theme.BuiltinNames() {
+		th := theme.GetTheme(themeName)
+
+		// Data-only: config R4 AC 10 — DragHandle distinct from both
+		// neighbours so no theme collapses into an ambiguous cue.
+		if string(th.DragHandle) == "" {
+			t.Fatalf("[%s] DragHandle empty", themeName)
+		}
+		if string(th.DragHandle) == string(th.DividerColor) {
+			t.Errorf("[%s] DragHandle == DividerColor (%s)", themeName, th.DragHandle)
+		}
+		if string(th.DragHandle) == string(th.FocusBorder) {
+			t.Errorf("[%s] DragHandle == FocusBorder (%s)", themeName, th.DragHandle)
+		}
+
+		drag := colorANSI(th.DragHandle)
+		div := colorANSI(th.DividerColor)
+		focus := colorANSI(th.FocusBorder)
+		if drag == "" || div == "" || focus == "" {
+			t.Fatalf("[%s] empty SGR probe (drag=%q div=%q focus=%q) — check TrueColor profile",
+				themeName, drag, div, focus)
+		}
+
+		t.Run(themeName+"/right", func(t *testing.T) {
+			lm := NewLayoutModel(120, 30).
+				WithTheme(th).
+				SetDetailPane(true, 10).
+				SetOrientation(OrientationRight).
+				SetWidthRatio(0.30)
+			lay := lm.Layout()
+			stubList := strings.Repeat("L", lay.ListContentWidth())
+			stubDetail := strings.Repeat("D", lay.DetailContentWidth()+2)
+			out := lm.Render("H", stubList, stubDetail, "S")
+			lines := strings.Split(out, "\n")
+			midRow := len(lines) / 2
+			glyphCol := locateGlyphCol(t, lines[midRow], '│')
+			if glyphCol < 0 {
+				t.Fatalf("no `│` on mid-row %d: %q", midRow, lines[midRow])
+			}
+			sgr := sgrBeforeGlyph(t, lines[midRow], glyphCol, '│')
+			if !strings.Contains(sgr, drag) {
+				t.Errorf("right divider SGR missing DragHandle %q; got %q", drag, sgr)
+			}
+			if strings.Contains(sgr, div) {
+				t.Errorf("right divider SGR still carries DividerColor %q; got %q", div, sgr)
+			}
+			if strings.Contains(sgr, focus) {
+				t.Errorf("right divider SGR carries FocusBorder %q (drag-seam must be focus-neutral); got %q", focus, sgr)
+			}
+		})
+
+		t.Run(themeName+"/below", func(t *testing.T) {
+			// Below-mode detail pane seam = the top border row of the
+			// pane style with WithDragSeamTop applied. Exercise both
+			// focus states since WithDragSeamTop must override either
+			// base colour without leaking off the top edge.
+			for _, state := range []PaneVisualState{PaneStateFocused, PaneStateUnfocused} {
+				base := PaneStyle(th, state).Width(10)
+				seam := WithDragSeamTop(base, th).Render("body")
+				lines := strings.Split(seam, "\n")
+				if len(lines) < 3 {
+					t.Fatalf("rendered pane has <3 rows: %q", seam)
+				}
+				top := lines[0]
+				if !strings.Contains(top, drag) {
+					t.Errorf("below/%v top border missing DragHandle %q; got %q", state, drag, top)
+				}
+				// Bottom border must still carry the focus-state
+				// colour (bottom ≠ seam). Strictly check absence of
+				// DragHandle there.
+				bottom := lines[len(lines)-1]
+				if strings.Contains(bottom, drag) {
+					t.Errorf("below/%v bottom border carries DragHandle SGR %q; override leaked off the top edge: %q", state, drag, bottom)
+				}
+			}
+		})
+	}
+}
+
+// sgrBeforeGlyph returns the CSI SGR sequence immediately preceding the
+// first occurrence of `glyph` on (ANSI-stripped) column `col` in `line`.
+// Uses the same three-state ANSI parse as stripAnsi so future styling
+// layers that emit non-SGR CSI sequences (cursor positioning, etc.) do
+// not skew the locator. Returns the last SGR encountered (`\x1b[...m`)
+// before the rune at `col`, or the empty string if none was seen.
+func sgrBeforeGlyph(t *testing.T, line string, col int, glyph rune) string {
+	t.Helper()
+	const (
+		stPlain   = 0
+		stPostEsc = 1
+		stCsiBody = 2
+	)
+	state := stPlain
+	plainCol := 0
+	var current strings.Builder // accumulates the currently-open CSI sequence
+	lastSGR := ""
+	for _, r := range line {
+		switch state {
+		case stPostEsc:
+			current.WriteRune(r)
+			if r == '[' {
+				state = stCsiBody
+			} else {
+				state = stPlain
+				current.Reset()
+			}
+		case stCsiBody:
+			current.WriteRune(r)
+			if r >= 0x40 && r <= 0x7e {
+				if r == 'm' {
+					lastSGR = "\x1b" + current.String()
+				}
+				state = stPlain
+				current.Reset()
+			}
+		default:
+			if r == 0x1b {
+				state = stPostEsc
+				current.Reset()
+				current.WriteRune(r)
+				continue
+			}
+			if plainCol == col {
+				if r == glyph {
+					return lastSGR
+				}
+				// Column matched but not the glyph we expected —
+				// advance to keep scanning.
+			}
+			plainCol++
+		}
+	}
+	return lastSGR
+}
+
 // F-134: stripAnsi must handle the full ECMA-48 CSI final-byte range
 // (0x40..0x7e), not a hardcoded subset. This guards locateGlyphCol —
 // which the R15 line-198 renderer-truth assertion depends on — against
