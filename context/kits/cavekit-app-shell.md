@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T00:00:00Z"
+last_edited: "2026-04-19T20:00:00+03:00"
 ---
 
 # Cavekit: App Shell
@@ -83,7 +83,7 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-entry-list (mouse handling), cavekit-detail-pane (mouse handling)
 
 ### R7: Terminal Resize Handling
-**Description:** When the terminal is resized, all panes reflow to fill the new dimensions. No crashes, no layout corruption, and pane proportions are maintained. WindowSizeMsg must be processed by all child models even when they have no data yet — the initial resize arrives before async file loading completes. When the detail pane orientation is set to `auto`, every terminal-resize event re-evaluates orientation against the configured threshold. Both the below-mode height ratio and the right-mode width ratio are preserved independently across orientation flips.
+**Description:** When the terminal is resized, all panes reflow to fill the new dimensions. No crashes, no layout corruption, and pane proportions are maintained. WindowSizeMsg must be processed by all child models even when they have no data yet — the initial resize arrives before async file loading completes. When the detail pane orientation is set to `auto`, every terminal-resize event re-evaluates orientation against the configured threshold. Both the below-mode height ratio and the right-mode width ratio are preserved independently across orientation flips. Every WindowSizeMsg-driven orientation change must also propagate into pane-local rendering flags that depend on orientation — the resize handler and the `relayout()` path must refresh the same flags, or the pane's rendered state drifts from the declared orientation.
 **Acceptance Criteria:**
 - [ ] [auto] After a terminal resize, the layout fills the new terminal dimensions
 - [ ] [auto] Pane proportions (e.g. detail pane height ratio) are preserved after resize
@@ -93,6 +93,7 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] When detail_pane.position is "auto", orientation is re-evaluated on every terminal-resize event against orientation_threshold_cols
 - [ ] [auto] height_ratio and width_ratio are both preserved across orientation flips — flipping from below to right does not overwrite one with the other, and flipping back restores the previous values
 - [ ] [auto] When the detail pane's computed dimension falls below the minimum (width < 30 cells in right orientation, height < 3 rows in below orientation) the pane auto-closes and the status bar emits a one-time notice
+- [ ] [auto] When `detail_pane.position` is "auto" and the detail pane is open, a WindowSizeMsg that crosses `orientation_threshold_cols` must refresh every pane-local rendering flag that depends on orientation (at minimum the detail pane's below-mode flag that drives the R10 drag-seam top-border paint). Post-flip, the rendered drag-seam SGR at the correct seam location (right: `│` glyph column mid-Y; below: the detail pane's top-border row) must match the NEW orientation's seam contract per R10 AC 10, not the pre-flip state. The regression test must exercise both flip directions (right→below and below→right) with the pane open throughout and assert the rendered SGR at each step
 **Dependencies:** cavekit-detail-pane (pane proportions), cavekit-entry-list, cavekit-config (orientation settings)
 
 ### R8: Loading Indicator
@@ -221,6 +222,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-19 — Revision (R7 orientation-flip re-render contract — F-200)
+- **Affected:** R7 (description extended; new AC 9 appended)
+- **Summary:** /ck:check Tier 23 Pass 2 surfaced F-200: `WithBelowMode` was wired in `relayout()` (model.go:735) but omitted from the inline pane-wiring chain in the `WindowSizeMsg` handler (model.go:192-195). When `position=auto` + pane open, a terminal resize that crossed `orientation_threshold_cols` flipped `m.resize.Orientation()` but left `m.pane.belowMode` stale — so the detail pane's R10 drag-seam top-border rendered in the pre-flip orientation's colors. `TestModel_OrientationFlip_VerticalSizeTracks` at model_test.go:1154 exercised the exact flow but did not assert on seam SGR, so the bug shipped green. R7 description extended to mandate that the resize handler and `relayout()` refresh the same pane-local orientation-dependent flags. New AC 9 mandates that the post-flip rendered drag-seam SGR at the correct seam location match the NEW orientation's contract per R10 AC 10, with a regression test exercising both flip directions.
+- **Driven by:** `/ck:revise --trace` cycle on `/ck:check` finding F-200. Regression test in `internal/ui/app/model_f200_test.go`. Code change in `internal/ui/app/model.go`.
 
 ### 2026-04-19 — Revision (R10/R15 DragHandle visual affordance)
 - **Affected:** R10, R15
