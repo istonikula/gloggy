@@ -1,8 +1,27 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T10:56:53+03:00"
+last_edited: "2026-04-19T11:58:20+03:00"
 ---
 # Loop Log
+
+### Iteration 44 — 2026-04-19 (Tier 22: housekeeping — M-001 dead clamp + drift)
+- Tier 22 housekeeping branch `tier-22-housekeeping` closing one MINOR finding from the Tier 21 `/ck:review` Pass 1 plus two cosmetic drift items flagged during `/ck:check`.
+- **M-001** (ratiokeys.go): removed unreachable `if detail > usable` upper-clamp from `RatioFromDragX` — under the F-133 formula `detail = usable - x` with `x ≥ 0`, `detail ≤ usable` by construction. Symmetric with F-130/T-166 which already did this on `RatioFromDragY`. Replacement comment cites M-001 and the Y-axis precedent.
+- **Drift #1** (impl-app-shell.md:74 T-165 row): rewrote the description to note the F-132 supersession instead of naming the deleted `TestModel_T165_Drag_Zero{Width,Height}_PreservesRatio` tests. Links forward to Tier 21 backprop-log entry #1 for the validation-via-wrong-path context.
+- **Drift #2** (loop-log.md): this entry + the missing Iteration 43 Tier 21 entry below.
+- Build P, Tests P (574/574 across 11 packages — M-001 removal is semantically pure dead-code elimination; no behavior change).
+- Frontier: merge `tier-22-housekeeping` → `main`. No new R-IDs, no kit amendments, no build-site changes.
+
+### Iteration 43 — 2026-04-19 (Tier 21: review-followups F-132/F-133/F-134)
+- Branch `tier-21-review-followups`, 7 commits (6 fix + 1 `/ck:check` tracking), merged to `main` as `e8bf635` with `--no-ff`.
+- Source: `/ck:review` Pass 2 on the Tier 20 branch surfaced three test-fidelity findings. Closed via `/ck:revise --trace` cycles (`.cavekit/history/backprop-log.md` entries #1, #2, #3).
+- **F-132** (P2, test-fidelity): T-165 degenerate-dim tests bypassed the `termW/termH<=0` guard via the prior `!m.pane.IsOpen()` short-circuit (auto-close fired before the guard). Tests rewritten (`TestModel_F132_DegenerateDim_{Right,Below}_GuardFiresWith_PaneOpen`) to force pane open at Motion time. Old T-165 tests deleted. Kit R15 degenerate-dim AC sharpened to mandate the new test shape. Commit `97c1b9b`.
+- **F-133** (P1, test-fidelity + real inverse-math bug): `RatioFromDragX` was off by 3 cells vs the renderer-truth divider X (`Layout.ListContentWidth()`); only Y-axis had a Press-at-current pin. Formula rewritten as exact inverse of `DetailContentWidth = usable - ListContentWidth` (`detail := usable - x`). T-104 mid pin updated 48/95 → 45/95. New pin test `TestRatioFromDragX_PressAtCurrentDividerX_KeepsRatio` sources canonical `dividerX` from `Layout.ListContentWidth()`, NOT the inverse formula (non-tautological). Kit R15 inverse-math AC extended to mandate parallel-axis coverage. Commits `68d2548` (test), `fd5a26d` (impl + kit).
+- **F-134** (latent): test-only `stripAnsi` helper used hardcoded CSI terminator subset `{m, K, H, A, B, C, D, J}` instead of full ECMA-48 range `0x40..0x7e`. Rewritten as 3-state machine (`stPlain` / `stPostEsc` / `stCsiBody`) so `[` introducer is consumed as introducer, not mistaken for a final byte. New `TestStripAnsi_HandlesFullCSIFinalByteRange` covers 9 sub-cases (HVP, CHA, DECTCEM h/l, `~`, DSR, DA, save/restore cursor). Kit R15 renderer-truth AC extended to mandate full CSI coverage in any future ANSI-stripping helper. Commits `024d429` (test), `91df657` (impl + kit), `3169c71` (SHA backfill).
+- **Pattern lesson (captured in impl-review-findings.md)**: when writing a regression test, source the canonical input from the OTHER side of the contract (renderer output, forward math, physical spec, reality-based precondition) — NOT from the thing being tested. All three findings shared the same failure mode: tests agreed with the code because they used the same model.
+- `/ck:check` verdict **APPROVE**: 4/4 new R15 ACs COMPLETE, backprop-log 3/3 CONSISTENT, inspector 0 P0/P1/P2 + 4 P3 non-defects, Pass 1 Karpathy 0 CRITICAL / 0 IMPORTANT / 1 MINOR (M-001, picked up in Tier 22).
+- Tests: 574 pass across 11 packages (from 552 pre-Tier-21; +22 regression tests).
+- Files touched: `internal/ui/appshell/{ratiokeys,ratiokeys_test,mouse_test}.go`, `internal/ui/app/model_test.go`, `context/kits/cavekit-app-shell.md`, `.cavekit/history/backprop-log.md`, `context/impl/impl-review-findings.md`.
 
 ### Iteration 42 — 2026-04-19 (Tier 20: drag-branch hardening + renderer-truth)
 - Tier 20 surfaced by `/ck:check` post-Tier-19 with 11 tasks (10 code + 1 HUMAN). Source findings: F-121, F-122, F-123, F-125, F-126, F-127, F-129, F-130. `/ck:make-parallel` invoked; worktree subagent dispatch produced 0 tool_use returns (same harness race documented in iteration 34) so pivoted to inline sequential execution (parent=opus=EXECUTION_MODEL).

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-19T11:46:46+03:00"
+last_edited: "2026-04-19T12:02:40+03:00"
 ---
 
 # Review Findings
@@ -288,3 +288,47 @@ No new P0/P1/P2 findings. Inspector logged 4 P3 observations explicitly classifi
 - Loop-log does not yet have a Tier 21 entry. Cosmetic housekeeping — pick up on next consolidation pass.
 - `context/impl/impl-app-shell.md:74` (T-165 row) text still names the deleted `TestModel_T165_Drag_Zero{Width,Height}_PreservesRatio` tests; they were superseded by the F-132 tests which validly cover the same AC. Cosmetic drift only; the AC IS met.
 - Pattern for future kit amendments: when writing a regression test, source the canonical input from the **other side** of the contract (renderer output, forward math, physical spec, reality-based precondition) — not from the thing being tested. F-132/F-133/F-134 were all the same failure mode: tests that agreed with the code because they used the same model.
+
+---
+
+## /ck:check run 2026-04-19 (Tier 22 — housekeeping: M-001 dead clamp + impl-tracking drift)
+
+Source: automated `/ck:check` on branch `tier-22-housekeeping` (1 commit `4aa8a64` from `main`). Scope is pure housekeeping — one MINOR Pass 1 finding from the Tier 21 `/ck:review` (M-001) plus two cosmetic drift items flagged during the Tier 21 `/ck:check`. Two-agent review: **ck:surveyor** (gap analysis + loop-log audit), **ck:inspector** (peer review). No verifier dispatched (branch introduces zero new ACs). Build P. Tests 574/574 pass across 11 packages.
+
+### Coverage
+
+| Status | R15 ACs | Delta from Tier 21 |
+|---|---|---|
+| COMPLETE | 12 | +0 (no new ACs introduced) |
+| PARTIAL | 0 | 0 |
+| MISSING | 0 | 0 |
+| OVER-BUILT | 0 | 0 |
+
+### M-001 safety derivation (surveyor + inspector converge)
+
+- Formula `detail := usable - x`; caller `model.go:557` passes `msg.X ≥ 0` (Bubble Tea column index invariant)
+- Therefore `detail ≤ usable` by construction — the removed `if detail > usable { detail = usable }` branch was unreachable under caller contract
+- Inspector ran 816-case algebraic sweep (including negative-x inputs down to -20) — old and new formulas diverge on zero inputs because `ClampRatio` at the tail catches any ratio > RatioMax
+- Replacement comment cites F-130/T-166 Y-axis precedent inline; shape now symmetric with `RatioFromDragY`
+
+### Loop-log audit
+
+| Claim | Verdict |
+|---|---|
+| Iter 43 SHAs (97c1b9b, 68d2548, fd5a26d, 024d429, 91df657, 3169c71) + merge e8bf635 | CONSISTENT |
+| Pre/post test counts 552 → 574 (+22 regression tests) | CONSISTENT with +9 stripAnsi + 5 X pin + 2 F-132 + support adjustments |
+| Iter 44 test count 574/574 | CONSISTENT with live run |
+| `impl-app-shell.md:74` T-165 row drift | RESOLVED (no longer names deleted tests) |
+
+### Peer review findings
+
+**0 P0 · 0 P1 · 0 P2 · 0 P3.** Inspector: *"Me swing club at clamp. Clamp already dead. Me hit air."*
+
+### Verdict
+
+**APPROVE.** Pure dead-code elimination plus factually-accurate tracking updates. Ready to merge `tier-22-housekeeping` → `main`.
+
+### Context carried forward for the next `/ck:make`
+
+- No Tier 23 frontier exists unless a new user request surfaces. Build-site remains complete across all 20 feature tiers; Tier 21 and Tier 22 were post-build housekeeping tiers driven by review findings.
+- Cross-tier pattern confirmed: "dead-code guards surface when the forward/inverse math is tightened". Both T-166 (Y-axis, F-130) and M-001 (X-axis, post-F-133) followed the same shape — after fixing the inverse formula to the exact algebraic inverse, the upper-clamp becomes provably unreachable under the caller contract. Watch for a third instance if any other inverse-math helper is added.

@@ -127,9 +127,11 @@ func RatioFromDragX(x, termWidth int) float64 {
 	if detail < 0 {
 		detail = 0
 	}
-	if detail > usable {
-		detail = usable
-	}
+	// M-001 (Tier 22 housekeeping, symmetric with F-130/T-166 on the Y axis):
+	// no upper clamp. With the F-133 formula `detail = usable - x` and callers
+	// passing x ≥ 0, detail ≤ usable by construction; ClampRatio at the tail
+	// handles any residual drift. The former `if detail > usable` branch was
+	// unreachable.
 	return ClampRatio(float64(detail) / float64(usable))
 }
 
