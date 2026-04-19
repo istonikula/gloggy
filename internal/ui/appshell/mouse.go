@@ -63,13 +63,25 @@ func (r MouseRouter) Zone(x, y int) MouseZone {
 		if y < entryListStart || y >= statusRow {
 			return ZoneUnknown
 		}
-		listEnd := r.layout.ListContentWidth() + 1 // list pane right-border column
-		divider := listEnd + 1
-		detailStart := divider + 1
+		// T-160 (F-122): the visible `│` glyph renders at column
+		// ListContentWidth() — confirmed by rendering the layout and
+		// locating the glyph programmatically (see
+		// TestMouseRouter_T160_RendererTruth_DividerColMatchesGlyph).
+		// The list pane is rendered as {leftBorder, content, rightBorder}
+		// whose outer width equals ListContentWidth(), so the right
+		// border sits at col ListContentWidth()-1; the divider glyph
+		// follows at col ListContentWidth(); the detail pane's left
+		// border sits at col ListContentWidth()+1. Prior arithmetic
+		// (listEnd=LCW+1, divider=LCW+2) was 2 cols past the visible
+		// divider, so drag-initiation Presses on the real divider were
+		// misrouted to ZoneDetailPane.
+		listRightBorder := r.layout.ListContentWidth() - 1
+		divider := r.layout.ListContentWidth()
+		detailLeftBorder := divider + 1
 		switch {
-		case x < listEnd:
+		case x < listRightBorder:
 			return ZoneEntryList
-		case x == listEnd, x == detailStart:
+		case x == listRightBorder, x == detailLeftBorder:
 			return ZoneUnknown // 1-cell buffer on each side of divider
 		case x == divider:
 			return ZoneDivider

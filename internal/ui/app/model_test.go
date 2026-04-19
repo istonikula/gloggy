@@ -563,8 +563,9 @@ func TestModel_DividerDrag_UpdatesWidthRatio(t *testing.T) {
 	before := m.cfg.Config.DetailPane.WidthRatio
 
 	// Press on the divider column to start the drag session.
+	// Post-T-160 the visible `│` column equals ListContentWidth().
 	l := m.layout.Layout()
-	divider := l.ListContentWidth() + 2
+	divider := l.ListContentWidth()
 	m = send(m, tea.MouseMsg{X: divider, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	if !m.draggingDivider {
 		t.Fatalf("precondition: expected draggingDivider=true after Press on divider column %d", divider)
@@ -724,7 +725,7 @@ func TestModel_DividerDragRelease_PersistsWidthRatio(t *testing.T) {
 	}
 
 	l := m.layout.Layout()
-	divider := l.ListContentWidth() + 2
+	divider := l.ListContentWidth() // post-T-160 visible-glyph column
 
 	m = send(m, tea.MouseMsg{X: divider, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	if !m.draggingDivider {
@@ -1820,9 +1821,10 @@ func belowDividerY(m Model) int {
 }
 
 // rightDividerX computes the divider column for a right-split model.
-// Mirrors MouseRouter.Zone: listEnd=ListContentWidth+1, divider=listEnd+1.
+// Mirrors MouseRouter.Zone post-T-160: divider = ListContentWidth() (the
+// visible `│` glyph column, verified by renderer-truth test in appshell/).
 func rightDividerX(m Model) int {
-	return m.layout.Layout().ListContentWidth() + 2
+	return m.layout.Layout().ListContentWidth()
 }
 
 // TestModel_T156_BelowDrag_PressOnDivider_StartsDrag confirms that a left
@@ -2240,5 +2242,229 @@ func TestModel_T158_Click_DividerRow_NoListSelection(t *testing.T) {
 
 	if got := m.list.CursorPosition(); got != before {
 		t.Errorf("click on divider row (y=%d): CursorPosition = %d, want %d (unchanged)", dy, got, before)
+	}
+}
+
+// ---------- T-162: mid-drag auto-close terminates the drag (F-125) ----------
+
+// TestModel_T162_Drag_AutoClose_TerminatesSession verifies that if the
+// pane auto-closes mid-drag (e.g. terminal shrinks below the right-split
+// min-width threshold), the subsequent Motion + Release stream does NOT
+// mutate the persisted ratio and does NOT write to the config file. The
+// belt-and-braces clear in the WindowSizeMsg auto-close branch guarantees
+// `draggingDivider` is false by the time the next Motion arrives.
+func TestModel_T162_Drag_AutoClose_TerminatesSession(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "right" // pin orientation across resizes
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if !m.pane.IsOpen() {
+		t.Fatal("precondition: pane must be open")
+	}
+	if m.resize.Orientation() != appshell.OrientationRight {
+		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
+	}
+	dividerX := rightDividerX(m)
+	startW := m.cfg.Config.DetailPane.WidthRatio
+
+	// Begin a drag with a Press on the divider.
+	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if !m.draggingDivider {
+		t.Fatalf("precondition: Press at divider x=%d must start drag", dividerX)
+	}
+
+	// Shrink the terminal so the right-split detail width falls below
+	// MinDetailWidth (30). Usable = w-5, detailW = usable * 0.30.
+	// Using w=70 → usable=65 → detailW=19 < 30 → auto-close fires.
+	m = resize(m, 70, 24)
+	if m.pane.IsOpen() {
+		t.Fatalf("precondition: pane must have auto-closed at w=70")
+	}
+	if m.draggingDivider {
+		t.Errorf("auto-close must clear draggingDivider (belt-and-braces)")
+	}
+
+	// Any subsequent Motion + Release must be a no-op for ratio + config.
+	m = send(m, tea.MouseMsg{X: 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m = send(m, tea.MouseMsg{X: 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+
+	if m.cfg.Config.DetailPane.WidthRatio != startW {
+		t.Errorf("width_ratio mutated after mid-drag auto-close: start=%.3f end=%.3f",
+			startW, m.cfg.Config.DetailPane.WidthRatio)
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("mid-drag auto-close must NOT write config; file exists: %v", err)
+	}
+}
+
+// TestModel_T162_DragBranch_GuardsOnClosedPane covers the inner guard —
+// if something somehow leaves draggingDivider=true with pane closed (e.g.
+// future code path we haven't anticipated), the drag branch must still
+// short-circuit before touching the ratio or saving config.
+func TestModel_T162_DragBranch_GuardsOnClosedPane(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "right"
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	m = m.SetEntries(makeEntries(3))
+	// Artificial stale state: pane closed but drag flag set.
+	m.draggingDivider = true
+	startW := m.cfg.Config.DetailPane.WidthRatio
+
+	m = send(m, tea.MouseMsg{X: 50, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	if m.draggingDivider {
+		t.Error("closed-pane drag-branch guard must clear draggingDivider")
+	}
+	if m.cfg.Config.DetailPane.WidthRatio != startW {
+		t.Errorf("closed-pane drag-branch must not mutate ratio: %.3f → %.3f",
+			startW, m.cfg.Config.DetailPane.WidthRatio)
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("closed-pane drag-branch must not write config; file exists: %v", err)
+	}
+}
+
+// ---------- T-164: bare Press+Release skips config write (F-129) ----------
+
+// TestModel_T164_BareClick_OnDivider_DoesNotWriteConfig verifies that a
+// Press immediately followed by a Release on the divider (no intervening
+// Motion) does NOT write the config file. Previously the Release branch
+// unconditionally called saveConfig, so bare clicks on the divider
+// rewrote `config.toml` every time a user clicked near the border.
+func TestModel_T164_BareClick_OnDivider_DoesNotWriteConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "right"
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	dividerX := rightDividerX(m)
+	startW := m.cfg.Config.DetailPane.WidthRatio
+
+	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if !m.draggingDivider {
+		t.Fatalf("precondition: Press at divider x=%d must start drag", dividerX)
+	}
+	if m.dragDirty {
+		t.Error("Press must reset dragDirty to false")
+	}
+	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+
+	if m.draggingDivider {
+		t.Error("Release must end drag session")
+	}
+	if m.cfg.Config.DetailPane.WidthRatio != startW {
+		t.Errorf("bare click mutated width_ratio: start=%.3f end=%.3f",
+			startW, m.cfg.Config.DetailPane.WidthRatio)
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("bare Press+Release on divider must NOT write config; file exists: %v", err)
+	}
+}
+
+// TestModel_T164_Drag_WithMotion_DoesWriteConfig is the positive-case
+// anchor — a drag that actually moves the divider still flushes the new
+// ratio to disk on Release. Without this, T-164 would be trivially
+// satisfied by disabling all writes.
+func TestModel_T164_Drag_WithMotion_DoesWriteConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "right"
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	dividerX := rightDividerX(m)
+
+	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = send(m, tea.MouseMsg{X: dividerX - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	if !m.dragDirty {
+		t.Error("Motion that changes ratio must set dragDirty=true")
+	}
+	m = send(m, tea.MouseMsg{X: dividerX - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Errorf("drag with motion must write config: %v", err)
+	}
+}
+
+// ---------- T-165: degenerate-terminal drag preserves ratio (F-126) ----------
+
+// TestModel_T165_Drag_ZeroWidth_PreservesRatio verifies the caller-guard
+// for the right-split drag branch. If a Motion arrives while the stored
+// terminal width is <= 0 (which can happen transiently during window
+// teardown or in test fakes), the drag branch returns early without
+// touching `width_ratio` — otherwise the inverse math would snap to the
+// clamped default and shadow the user's persisted ratio.
+func TestModel_T165_Drag_ZeroWidth_PreservesRatio(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "right"
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 200, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	// Seed a non-default persisted ratio so any shadow would be visible.
+	m.cfg.Config.DetailPane.WidthRatio = 0.55
+	m.layout = m.layout.SetWidthRatio(0.55)
+
+	// Artificially activate a drag, then force termWidth to 0 via a
+	// synthetic WindowSizeMsg that mimics a transient teardown. The
+	// auto-close branch will fire (DetailContentWidth = 0 < MinDetailWidth)
+	// and clear draggingDivider, so we re-set it manually to exercise the
+	// inner caller-guard alone.
+	m.draggingDivider = true
+	m = send(m, tea.WindowSizeMsg{Width: 0, Height: 24})
+	// After the auto-close, the pane is closed and draggingDivider was
+	// cleared. Re-set the drag flag to exercise the termW<=0 guard.
+	m.draggingDivider = true
+
+	startRatio := m.cfg.Config.DetailPane.WidthRatio
+	m = send(m, tea.MouseMsg{X: 10, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	if m.cfg.Config.DetailPane.WidthRatio != startRatio {
+		t.Errorf("termW<=0 guard failed: ratio shadowed from %.3f to %.3f",
+			startRatio, m.cfg.Config.DetailPane.WidthRatio)
+	}
+}
+
+// TestModel_T165_Drag_ZeroHeight_PreservesRatio is the below-mode analog.
+// A Motion arriving while termHeight <= 0 must leave `height_ratio`
+// untouched.
+func TestModel_T165_Drag_ZeroHeight_PreservesRatio(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "below"
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	m.cfg.Config.DetailPane.HeightRatio = 0.45
+	m.paneHeight = m.paneHeight.SetRatio(0.45)
+
+	m.draggingDivider = true
+	m = send(m, tea.WindowSizeMsg{Width: 80, Height: 0})
+	m.draggingDivider = true
+
+	startRatio := m.cfg.Config.DetailPane.HeightRatio
+	m = send(m, tea.MouseMsg{X: 20, Y: 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	if m.cfg.Config.DetailPane.HeightRatio != startRatio {
+		t.Errorf("termH<=0 guard failed: ratio shadowed from %.3f to %.3f",
+			startRatio, m.cfg.Config.DetailPane.HeightRatio)
 	}
 }

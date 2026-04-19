@@ -86,6 +86,11 @@ type Model struct {
 	// cursor's current zone. Focus is never modified by a drag (T-156,
 	// cavekit-app-shell R15).
 	draggingDivider bool
+	// dragDirty tracks whether a Motion actually changed the ratio during
+	// the current drag session (T-164, F-129). Release only persists to
+	// disk when true — a bare Press+Release with no Motion leaves the
+	// config untouched. Reset to false on Press.
+	dragDirty bool
 }
 
 // New creates the root model from parsed CLI args and loaded config.
@@ -172,6 +177,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.layout = m.layout.SetDetailPane(false, m.paneHeight.PaneHeight())
 			m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList).WithNotice(autoCloseNoticeText)
 			cmd = noticeClearAfter(autoCloseNoticeDuration)
+			// T-162 (F-125): belt-and-braces — terminate any active
+			// divider-drag session here so subsequent Motion/Release
+			// events in the stream cannot mutate ratios or write config.
+			m.draggingDivider = false
+			m.dragDirty = false
 		}
 		l := m.layout.Layout()
 		m.list = m.list.WithScrolloff(m.cfg.Config.Scrolloff).WithContentTopY(l.ListContentTopY())
@@ -498,19 +508,67 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Button == tea.MouseButtonLeft {
 		if msg.Action == tea.MouseActionPress && zone == appshell.ZoneDivider && m.pane.IsOpen() {
 			m.draggingDivider = true
+			m.dragDirty = false // T-164 (F-129): reset on new Press.
+			// T-164 (F-129) + T-161 X-axis audit: Press does NOT apply
+			// the inverse-math mapping. Earlier code fell through into
+			// the Motion branch on Press, which rewrote the ratio even
+			// on a bare click. Press now only seeds the drag-session
+			// state; only explicit Motion moves the divider.
+			return m, nil
 		}
 		if m.draggingDivider {
-			if msg.Action == tea.MouseActionRelease {
+			// T-162 (F-125): if the pane was auto-closed mid-drag (e.g.
+			// terminal resize via WindowSizeMsg), the session state is
+			// stale. Swallow the event and end the session without
+			// mutating the ratio or writing config.
+			if !m.pane.IsOpen() {
 				m.draggingDivider = false
-				m.saveConfig() // T-099: persist final ratio on drag release.
+				m.dragDirty = false
 				return m, nil
 			}
+			if msg.Action == tea.MouseActionRelease {
+				wasDirty := m.dragDirty
+				m.draggingDivider = false
+				m.dragDirty = false
+				if wasDirty {
+					m.saveConfig() // T-099: persist final ratio on drag release.
+				}
+				// T-164 (F-129): a bare Press+Release with no Motion
+				// leaves the config file untouched.
+				return m, nil
+			}
+			// Only Motion events move the divider. Ignore repeated
+			// Press or other mouse actions that arrive during an
+			// active session.
+			if msg.Action != tea.MouseActionMotion {
+				return m, nil
+			}
+			// T-165 (F-126): degenerate-terminal guard. When the active
+			// dimension is ≤ 0 the inverse-math helpers can only return
+			// the clamped default, which would shadow the user's
+			// persisted ratio. Skip the ratio write entirely in that
+			// case — the next real Motion (after the terminal regrows)
+			// will apply a meaningful update.
 			if m.resize.Orientation() == appshell.OrientationRight {
-				newR := appshell.RatioFromDragX(msg.X, m.resize.Width())
+				termW := m.resize.Width()
+				if termW <= 0 {
+					return m, nil
+				}
+				newR := appshell.RatioFromDragX(msg.X, termW)
+				if newR != m.cfg.Config.DetailPane.WidthRatio {
+					m.dragDirty = true
+				}
 				m.cfg.Config.DetailPane.WidthRatio = newR
 				m.layout = m.layout.SetWidthRatio(newR)
 			} else {
-				newR := appshell.RatioFromDragY(msg.Y, m.resize.Height())
+				termH := m.resize.Height()
+				if termH <= 0 {
+					return m, nil
+				}
+				newR := appshell.RatioFromDragY(msg.Y, termH)
+				if newR != m.cfg.Config.DetailPane.HeightRatio {
+					m.dragDirty = true
+				}
 				m.paneHeight = m.paneHeight.SetRatio(newR)
 				m.cfg.Config.DetailPane.HeightRatio = newR
 				m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
