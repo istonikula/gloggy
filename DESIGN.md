@@ -1,6 +1,6 @@
 ---
 created: "2026-04-17T20:25:44+03:00"
-last_edited: "2026-04-17T20:32:00+03:00"
+last_edited: "2026-04-19T21:30:00+03:00"
 ---
 
 # gloggy — Visual Design System
@@ -72,8 +72,9 @@ inside `internal/ui/**` are a DESIGN.md violation.
 | Polish | `FocusBorder` | Focused pane border color (accent hue) |
 | **NEW** | `DividerColor` | Right-split divider; border of unfocused panes |
 | **NEW** | `UnfocusedBg` | Background fill of unfocused pane (dim tint) |
+| **NEW** | `DragHandle` | Pane-resize drag seam — right-split `│` divider glyph and below-split detail pane's top border row (list's own bottom border is an adjacent row, rendered in its own focus color) |
 
-### The two new tokens
+### The three new tokens
 
 `DividerColor` is a **quiet** neutral — closer to `Dim` than to `FocusBorder`.
 Used in two places: (1) the 1-column divider between panes in `right`-split,
@@ -86,6 +87,18 @@ pane. It is *not* the same as `Dim`: `Dim` is a foreground color used for
 timestamps, nulls, and abbreviated logger prefixes (e.g., `c.e.s.MyClass`).
 `UnfocusedBg` is a background. An unfocused pane gets both — `UnfocusedBg`
 behind everything plus a foreground blend toward `Dim`.
+
+`DragHandle` is a **distinct mid-tone neutral** colouring the pane-resize
+drag seam so the user can spot where to grab with the mouse. In right-
+split that is the 1-cell `│` divider glyph; in below-split it is the
+detail pane's top border row — the row at the very top edge of the
+detail pane. The list pane's own bottom border is a separate adjacent
+row rendered in the list's focus-state color, not painted as part of
+the seam.
+Brightness ordering: `DividerColor` < `DragHandle` < `FocusBorder` —
+brighter than an unfocused pane border (so the seam is visible against
+it) but not as loud as the accent (so it does not compete with focus
+signalling). The drag handle does **not** recolor on focus change.
 
 ### Focus-state role summary
 
@@ -189,6 +202,13 @@ Any divergence is a bug.
 - Panes use `lipgloss.NormalBorder()`. Overlays use `RoundedBorder()` or
   `DoubleBorder()` so they are visually distinct from panes.
 - Closing a pane (e.g., details on `Esc`) is an atomic redraw — no fade.
+- **Drag-handle seam:** The row/column that initiates a mouse-drag resize
+  (cavekit-app-shell R15) renders in `DragHandle`, independent of focus.
+  Right-split: the 1-cell `│` divider glyph. Below-split: the detail
+  pane's top border row (NOT the list's bottom border — those are two
+  adjacent rows; only the detail pane's top is overridden to
+  `DragHandle` via `WithDragSeamTop`). This seam uses `DragHandle`
+  whether or not either adjacent pane is focused.
 
 ### 4.1 Header Bar
 
@@ -332,7 +352,7 @@ status bar emits a notice (§8).
 A single column separating list from details in `right` orientation.
 
 - **Width:** exactly 1 cell.
-- **Glyph:** `│`, filled top-to-bottom, fg `DividerColor`.
+- **Glyph:** `│`, filled top-to-bottom, fg `DragHandle`.
 - **Static:** does not recolor on focus change. Pane borders carry focus.
 
 Both panes also draw their own borders, so the chrome stack between list
@@ -422,8 +442,8 @@ direction is a silent no-op — not a wrap. See cavekit-app-shell R12.
 ### Pane resize by mouse drag (R15)
 
 Press-and-hold mouse-button-1 on the divider cell (the 1-column vertical
-`│` in right-split, the 1-row horizontal border between panes in
-below-mode). Motion updates the active ratio live (`width_ratio` in
+`│` in right-split, the detail pane's top border row in below-mode —
+the list's bottom border is not a drag target). Motion updates the active ratio live (`width_ratio` in
 right-split, `height_ratio` in below-mode), one visible step per event,
 no throttling. Release persists the final ratio to config **exactly
 once** per drag (not once per motion frame). The drag is **focus-
@@ -520,9 +540,14 @@ intensity + background tint + content contrast**.
 |---|---|---|---|
 | Entry list pane | `NormalBorder()` | `FocusBorder` | `DividerColor` |
 | Detail pane | `NormalBorder()` | `FocusBorder` | `DividerColor` |
-| Right-split divider | 1-cell `│` glyph | `DividerColor` | `DividerColor` (static) |
+| Right-split divider (drag seam) | 1-cell `│` glyph | `DragHandle` (static) | `DragHandle` (static) |
+| Below-split seam (drag seam) | detail pane's top border row (list's bottom is a separate adjacent row) | `DragHandle` (static) | `DragHandle` (static) |
 | Filter panel | `RoundedBorder()` | `FocusBorder` | — (always focused) |
 | Help overlay | `DoubleBorder()` | `FocusBorder` | — |
+
+The "drag seam" rows encode cavekit-app-shell R15's affordance: the seam is
+focus-neutral and uses `DragHandle` (not `DividerColor`) so it is visually
+distinguishable from the adjacent unfocused pane borders. See §4.5.
 
 **Detail pane top border** is visible in both `below` and `right`
 orientations (T-082). The top border encodes focus state and must not be
@@ -686,6 +711,9 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
 
 - **Focus / state:** `FocusBorder`, `DividerColor`, `UnfocusedBg`,
   `CursorHighlight`, `HeaderBg`, `Dim`.
+- **Drag seam:** `DragHandle` — colours the pane-resize drag seam,
+  static across focus state, distinct from `DividerColor` (§2, §4.5,
+  cavekit-app-shell R15).
 - **Semantic:** `Level{Error,Warn,Info,Debug}`,
   `Syntax{Key,String,Number,Boolean,Null}`.
 - **UI:** `Mark`, `SearchHighlight`.
@@ -756,7 +784,7 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
 > Border accounting and §7 Do's #2, subtract `DividerWidth` (= 1) plus both
 > panes' border widths (4 cells total) before computing widths. Use
 > `lipgloss.Width()` on any rendered row to verify the final composition.
-> The divider is a 1-cell vertical `│` glyph in `DividerColor`; it does not
+> The divider is a 1-cell vertical `│` glyph in `DragHandle`; it does not
 > recolor on focus change (§4.5)."
 
 **Example 3 — status bar focus label:**

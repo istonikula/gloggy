@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T10:18:34+03:00"
+last_edited: "2026-04-19T00:00:00Z"
 ---
 
 # Build Site: gloggy
@@ -14,10 +14,10 @@ last_edited: "2026-04-19T10:18:34+03:00"
 |---|---|
 | Source Kits | 6 domains |
 | Requirements | 56 |
-| Acceptance Criteria | 291 (reconciled from Coverage Totals; prior `~360` estimate was loose) |
-| Plan Tasks | 170 |
-| Human Sign-off Tasks | 21 |
-| Tiers | 20 (0 through 18; 2026-04-18 resize revision appended as **Tier 19**; 2026-04-19 resize divider-coord + drag state-machine hardening appended as **Tier 20**) |
+| Acceptance Criteria | 303 (reconciled with current kit state: Tier-20 backfill enumerated + Tier-23 DragHandle) |
+| Plan Tasks | 175 |
+| Human Sign-off Tasks | 22 |
+| Tiers | 23 (0 through 18; 2026-04-18 resize revision **Tier 19**; 2026-04-19 resize divider-coord + drag state-machine hardening **Tier 20**; 2026-04-19 Tiers 21–22 were review/housekeeping with no new tasks; 2026-04-19 DragHandle drag-seam token appended as **Tier 23**) |
 
 ---
 
@@ -324,6 +324,20 @@ Post-Tier-19 `/ck:check` surfaced that T-156 unit tests validated R15 against th
 | T-169 | Consolidation commit + kit + impl tracking | — | T-160, T-161, T-162, T-163, T-164, T-165, T-166 | XS | Gather all Tier 20 code changes into a clean commit sequence, update `context/impl/impl-app-shell.md` + `impl-entry-list.md` per the `ck:impl-tracking` skill, mark F-122/F-123/F-125/F-126/F-127/F-129/F-130 addressed-by columns, update `loop-log.md` with Tier 20 iteration summary. |
 | T-170 | [HUMAN] Tier 20 sign-off (tui-mcp) | app-shell/R15 (human ACs), entry-list/R10 (human AC re-confirm) | T-160, T-161, T-162, T-163, T-164, T-165, T-166, T-167 | S | Per overview Verification Conventions §1–§5, launch TUI on `logs/small.log` at `140x35 right` and `80x24 below` (tokyo-night). **(a) F-122 fix:** `snapshot` to locate the visible `│` divider column; `send_mouse` Press at that exact col+mid-Y, Release — assert the drag initiates (not a focus click). **(b) F-123 fix:** `snapshot` divider Y at the current (persisted) ratio; `send_mouse` Press at that Y; `snapshot` again — pane dimensions unchanged (no step-snap on Press). **(c) F-125 fix:** open pane → begin a drag via Press + Motion → resize the terminal via `resize` to below auto-close threshold → confirm the pane auto-closes → issue Motion + Release → confirm no config write and no ratio mutation. **(d) F-129 fix:** capture `config.toml` mtime; Press+Release on the divider with no intermediate Motion; confirm mtime unchanged. Record any unverifiable scenarios (tui-mcp lacks Motion per F-124) and fall back to unit-test evidence for those. |
 
+### Tier 23 -- DragHandle Drag-Seam Token (kit revision 2026-04-19, commit ed91d17)
+
+Kit revision `ed91d17` introduces a third focus-state-adjacent theme token, `DragHandle`, to colour the pane-resize drag seam distinctly from `DividerColor` (the unfocused pane-border colour). Before: in right-split, the 1-cell `│` divider glyph and the borders of any unfocused adjacent pane both rendered in `DividerColor`, producing a 3-cell uniform band with no visual cue for the draggable seam; below-split had the symmetric problem on the shared horizontal border row between the list and the detail pane. After: the seam renders in `DragHandle` (a mid-tone neutral, brighter than `DividerColor` but dimmer than `FocusBorder`) independent of focus. Scope: `cavekit-config.md` R4 +3 ACs (token declaration, distinctness, human sign-off), `cavekit-app-shell.md` R10 +1 AC (seam colour across both orientations), `cavekit-app-shell.md` R15 +2 ACs (per-theme distinctness + rendered-cell assertion, `[human, tui-mcp]` cross-theme visual verification). 5 tasks (4 auto + 1 HUMAN sign-off); T-171 is the theme-data fan-in, T-172/T-173 are parallelizable renderer edits, T-174 is the regression test gate, T-175 is the HUMAN sign-off.
+
+(Tiers 21 and 22 from the loop/commit history did not add tasks — Tier 21 was a `/ck:check` APPROVE verdict gate over Tier 20; Tier 22 was housekeeping — M-001 dead-clamp removal + impl-tracking drift + a second `/ck:check` APPROVE. Both sharpened AC text (F-132/F-133/F-134) in place rather than introducing new ACs. Tier numbering continues sequentially with the build-site skipping over empty tiers.)
+
+| Task | Title | Kit Req | blockedBy | Effort | Description |
+|---|---|---|---|---|---|
+| T-171 | `DragHandle` theme token — struct field + bundled theme values | config/R4 (new AC 9) | T-009, T-084 | XS | In `internal/theme/theme.go`: add `DragHandle lipgloss.Color` to the `Theme` struct alongside `DividerColor`/`UnfocusedBg`/`FocusBorder`. Populate a mid-tone neutral value in each of the three bundled themes — brighter than `DividerColor` on that theme's background, dimmer than `FocusBorder`. Rough targets (tune perceptually in T-175): `tokyo-night` `#5a6475` (DividerColor `#3b4261`, FocusBorder `#7aa2f7`); `catppuccin-mocha` `#6e7388` (DividerColor `#45475a`, FocusBorder `#89b4fa`); `material-dark` `#65737e` (DividerColor `#3c434f`, FocusBorder `#82aaff`). Unit test: each bundled theme reports a non-empty `DragHandle` value, `DragHandle != DividerColor`, `DragHandle != FocusBorder` (closes config R4 AC 9 + AC 10). |
+| T-172 | Right-mode divider glyph rendered in `DragHandle` | app-shell/R10 (new AC 10), R15 (new AC 15) | T-089, T-171 | XS | In `internal/ui/appshell/divider.go` (T-089's renderer): change the `│` glyph foreground from `theme.DividerColor` to `theme.DragHandle`. The glyph remains focus-independent (colour does not change on focus shift per app-shell R15 focus-neutrality). Unit test extends the T-089 renderer test: assert the rendered ANSI output contains `DragHandle`'s SGR code at the glyph column, not `DividerColor`'s code. |
+| T-173 | Below-mode shared border row rendered in `DragHandle` | app-shell/R10 (new AC 10) | T-103, T-171 | S | The "shared border row" between the entry list and the detail pane in below-mode is currently rendered as the detail pane's top border in `DividerColor` (part of T-100/T-103's unfocused-border pass). Split the border paint so the top-of-detail-pane row uses `DragHandle` when the detail pane is below the entry list (i.e. the row is adjacent to the list), while preserving unfocused-border semantics for the detail pane's left/right/bottom borders. Implementation options: (a) render the top border as a separate 1-row strip between the list and the pane (cleanest, matches right-mode's 1-cell divider conceptually), or (b) override the top-border segment colour in the pane's border style. Prefer (a) — keeps the seam symmetrical with right-mode T-172 for T-174's test. Unit test: in below-mode the row between list and pane has `DragHandle` SGR; left/right/bottom borders of the pane retain `DividerColor` (unfocused) or `FocusBorder` (focused) per R10 matrix. |
+| T-174 | Drag-seam distinctness + rendered-cell color test (per theme) | app-shell/R15 (new AC 15), config/R4 (new AC 10) | T-171, T-172, T-173 | S | New test `TestDragSeam_RendersInDragHandle_AllThemes` in `internal/ui/appshell/mouse_test.go` (or sibling). For each bundled theme × each orientation (right/below): render the layout; locate the drag-seam cell (right: `│` glyph column at mid-Y, reused from T-160's ANSI-safe locator; below: the row between list and detail pane); assert the SGR at that cell contains `theme.DragHandle`'s value and NEITHER `theme.DividerColor` NOR `theme.FocusBorder`. Also assert `DragHandle != DividerColor` AND `DragHandle != FocusBorder` as a data-only check per config R4 AC 10. Reuse the T-160 ANSI-strip state machine (`stPlain`/`stPostEsc`/`stCsiBody`) so future styling layers don't regress the locator. |
+| T-175 | [HUMAN] DragHandle visual sign-off (tui-mcp, 3 themes × 2 orientations) | config/R4 (human AC 11), app-shell/R10 (human AC 4 re-confirm), R15 (new AC 16) | T-172, T-173, T-174 | S | Per overview Verification Conventions §1–§5, verify via tui-mcp. For each bundled theme (`tokyo-night`, `catppuccin-mocha`, `material-dark`): launch the TUI on `logs/small.log`; `snapshot` in right-split at `140x35` with the list focused — confirm the 1-cell `│` divider between list and detail is visibly distinct in hue/luminance from the detail pane's unfocused border (which is `DividerColor`) and from the list's focused border (which is `FocusBorder`); `snapshot` in below-split at `80x24` — confirm the horizontal border row between list and detail pane is visibly distinct from the detail pane's unfocused top/bottom borders. Record colour codes in the impl-tracking Notes column. If any theme's `DragHandle` fails the mid-tone-neutral readability check ("clearly brighter than DividerColor, dimmer than FocusBorder"), file a tuning task and update T-171's palette values before marking DONE. |
+
 ---
 
 ## Dependency Graph
@@ -564,9 +578,21 @@ graph LR
     T-156 --> T-159
     T-157 --> T-159
     T-158 --> T-159
+    T-009 --> T-171
+    T-084 --> T-171
+    T-089 --> T-172
+    T-103 --> T-173
+    T-171 --> T-172
+    T-171 --> T-173
+    T-171 --> T-174
+    T-172 --> T-174
+    T-173 --> T-174
+    T-172 --> T-175
+    T-173 --> T-175
+    T-174 --> T-175
 ```
 
-> Note: Tier 11-18 edges are intentionally not present in the mermaid block above — those tiers were added after the graph was first drawn and have their blocker chains recorded in the per-tier `blockedBy` columns instead. Tier 19 edges above use the same `blockedBy` data.
+> Note: Tier 11-18 edges are intentionally not present in the mermaid block above — those tiers were added after the graph was first drawn and have their blocker chains recorded in the per-tier `blockedBy` columns instead. Tier 19, 20, and 23 edges above use the same `blockedBy` data. (Tiers 21–22 added no tasks.)
 
 ---
 
@@ -605,7 +631,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R8 | 2 | Tail-mode entries carry correct line numbers continuing from the last initially loaded line | T-028 | COVERED |
 | R8 | 3 | Tail mode is not activated when reading from stdin, regardless of flags | T-028 | COVERED |
 
-### config (7 requirements, 32 criteria)
+### config (7 requirements, 35 criteria)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -625,6 +651,9 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R4 | 6 | [human] One-time visual sign-off per bundled theme: all color tokens produce a coherent, readable theme | T-061, T-062, T-063 | COVERED |
 | R4 | 7 | Each bundled theme defines non-empty DividerColor and UnfocusedBg tokens | T-084 | COVERED |
 | R4 | 8 | [human] DividerColor reads as a quiet neutral and UnfocusedBg is a subtle background tint | T-109 | COVERED |
+| R4 | 9 | Each bundled theme defines a non-empty `DragHandle` token | T-171 | COVERED |
+| R4 | 10 | In every bundled theme, `DragHandle != DividerColor` AND `DragHandle != FocusBorder` | T-171, T-174 | COVERED |
+| R4 | 11 | [human] `DragHandle` reads as a mid-tone neutral — clearly brighter than `DividerColor`, dimmer than `FocusBorder` | T-175 | COVERED |
 | R5 | 1 | The default compact row fields are time, level, logger, and msg | T-010 | COVERED |
 | R5 | 2 | Setting sub-row fields in config causes those fields to appear as sub-rows in entry list | T-010, T-030 | COVERED |
 | R5 | 3 | Setting hidden fields in config causes those fields to be omitted from the detail pane | T-010, T-038 | COVERED |
@@ -674,7 +703,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R7 | 2 | The index preserves the original entry order | T-020 | COVERED |
 | R7 | 3 | When filters change, the index is recomputed and re-emitted | T-020 | COVERED |
 
-### entry-list (11 requirements, 58 criteria)
+### entry-list (11 requirements, 58 criteria — section header intentionally stale; see Coverage Totals for reconciled counts)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -735,6 +764,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R10 | 4 | Double-click uses the same click-to-row resolver as single-click | T-158 | COVERED |
 | R10 | 5 | Mouse scroll wheel scrolls the list | T-040 | COVERED |
 | R10 | 6 | [human, tui-mcp] Click coords on rows 1, 2, 5, last → cursor highlight lands on the clicked row (no offset) in both orientations | T-159 | COVERED |
+| R10 | 7 | Click-to-row resolver rejects clicks when `contentTopY` has not been injected — defaulting to zero MUST NOT silently reintroduce the 2-row-offset bug (panic or explicit "wired" flag) | T-163 | COVERED |
 | R11 | 1 | The list model exposes the current cursor position as a 1-based index within the visible entry set | T-080 | COVERED |
 | R11 | 2 | The cursor position updates when the cursor moves (j/k, g/G, level-jump, mark-nav) | T-080 | COVERED |
 | R11 | 3 | When filters change, the cursor position reflects the new filtered set | T-080 | COVERED |
@@ -797,7 +827,7 @@ Every acceptance criterion from all 6 kits mapped to its covering task(s).
 | R10 | 2 | Rendering a line containing multi-byte characters (emoji or CJK) does not produce column drift or pane overflow | T-107 | COVERED |
 | R10 | 3 | Rendering a line containing ANSI escape sequences does not produce column drift or pane overflow | T-107 | COVERED |
 
-### app-shell (12 requirements, 80 criteria)
+### app-shell (12 requirements, 80 criteria — section header intentionally stale; see Coverage Totals for reconciled counts)
 
 | Req | # | Criterion | Task(s) | Status |
 |---|---|---|---|---|
@@ -868,6 +898,7 @@ _(Former R6 AC "Mouse drag on the pane divider triggers pane resize" was moved t
 | R10 | 7 | When a pane is the only visible pane, it uses the focused treatment (FocusBorder borders, base background) | T-101 | COVERED |
 | R10 | 8 | [cross-kit] The cursor row in the entry list is always rendered even when the entry list is unfocused; intensity and bold vary with focus | T-102 | COVERED |
 | R10 | 9 | The detail pane top border is visible in both below and right orientations | T-103 | COVERED |
+| R10 | 10 | The pane-resize drag seam renders in `DragHandle` color independent of focus — right-mode `│` divider glyph; below-mode shared border row between list and detail pane | T-172, T-173 | COVERED |
 | R11 | 1 | Pressing Tab with the entry list and detail pane both visible cycles focus between them | T-096 | COVERED |
 | R11 | 2 | Tab is inert (does not cycle focus) while the filter panel or help overlay is open | T-096 | COVERED |
 | R11 | 3 | Pressing Esc with an overlay open closes the overlay only | T-097 | COVERED |
@@ -895,22 +926,29 @@ _(Former R6 AC "Mouse drag on the pane divider triggers pane resize" was moved t
 | R15 | 7 | Dragging past the `[0.10, 0.80]` clamp pins the ratio at the boundary; further cursor motion in the same direction is a no-op until the cursor re-enters the valid range | T-156 | COVERED |
 | R15 | 8 | Starting a drag with the detail pane closed is a silent no-op — no divider cell to grab | T-156 | COVERED |
 | R15 | 9 | [human, tui-mcp] Mouse drag verified via `send_mouse` press-hold + move + release in both orientations, with single config write on release | T-159 | COVERED |
+| R15 | 10 | Renderer-truth divider-col assertion: the router's divider cell MUST coincide with the Lipgloss-rendered `│` glyph column (right-split) and the horizontal border row (below-split) across presets {0.10, 0.30, 0.50, 0.80} × orientations × geometries — including a full ECMA-48 CSI terminator-range ANSI stripper | T-160 | COVERED |
+| R15 | 11 | Inverse-math invariant (both axes): a Press directly on the currently rendered divider row/col yields the current ratio unchanged — no step-snap on Press-without-motion; X-axis canonical Press col sourced from `Layout.ListContentWidth()` (renderer-truth), not from the inverse formula | T-161 | COVERED |
+| R15 | 12 | If the detail pane auto-closes (R7) mid-drag, the drag session terminates silently — Motion events swallowed, no ratio mutation, no config write on Release | T-162 | COVERED |
+| R15 | 13 | A bare Press+Release on the divider with no intermediate Motion MUST NOT rewrite the config file — persistence fires only when the drag actually changed the ratio | T-164 | COVERED |
+| R15 | 14 | When the terminal's active dimension is degenerate (termHeight/termWidth ≤ 0, brief startup window) the drag helpers MUST preserve the current ratio rather than jumping to `RatioDefault` — guard exercised with `pane.IsOpen()==true` AND degenerate dim simultaneously | T-165 | COVERED |
+| R15 | 15 | The drag-seam cell (right: `│` glyph; below: shared border row) renders in `DragHandle`, distinct from BOTH `DividerColor` AND `FocusBorder` in every bundled theme — assert per theme at the rendered cell using ANSI-safe column locator | T-174 | COVERED |
+| R15 | 16 | [human, tui-mcp] DragHandle drag-seam visual distinctness across all three bundled themes, both orientations — clearly distinct in hue/luminance from unfocused pane borders | T-175 | COVERED |
 
 ### Coverage Totals
 
-> Totals below reflect the current kit state including all revisions through 2026-04-18 (Tier 19 resize revision). The enumerated Coverage Matrix sections above are an approximation of the per-revision counts at matrix-generation time; individual cells stay correct, but Domain totals may round differently than the header Summary as kits pick up new ACs across tiers.
+> Totals below reflect the current kit state through Tier 23 (2026-04-19 DragHandle drag-seam token). Tier 20 (drag state-machine hardening) ACs are now enumerated in the matrix above (R15 rows 10-14 + entry-list R10 row 7). Tier 23 (DragHandle) ACs are enumerated in config R4 rows 9-11, app-shell R10 row 10, app-shell R15 rows 15-16.
 
 | Domain | Requirements | Criteria | Covered | Gaps |
 |---|---|---|---|---|
 | log-source | 8 | 26 | 26 | 0 |
-| config | 7 | 32 | 32 | 0 |
+| config | 7 | 35 | 35 | 0 |
 | filter-engine | 7 | 27 | 27 | 0 |
-| entry-list | 11 | 60 | 60 | 0 |
+| entry-list | 11 | 61 | 61 | 0 |
 | detail-pane | 10 | 53 | 53 | 0 |
-| app-shell | 13 | 93 | 93 | 0 |
-| **Total** | **56** | **291** | **291** | **0** |
+| app-shell | 13 | 101 | 101 | 0 |
+| **Total** | **56** | **303** | **303** | **0** |
 
-> All enumerated criteria are covered by at least one task. Deltas from prior 276 total: R10 rewrite 4 → 6 ACs (+2). R12 rewrite 7 → 11 ACs (+4). R6: old AC 3 "mouse drag triggers pane resize" moved to R15 AC 1, new AC 7 "divider-cell click is focus-neutral" added → net 0. New R15 adds 9 ACs. Detail-pane R6 ACs 5/9 rewording only, no net change.
+> All enumerated criteria are covered by at least one task. Deltas from prior 276 total: R10 rewrite 4 → 6 ACs (+2); R12 rewrite 7 → 11 ACs (+4); R6 old AC 3 moved to R15 AC 1, new AC 7 added → net 0; R15 original 9 ACs (+9); Tier-20 R15 hardening 5 ACs (+5: renderer-truth, inverse-math, mid-drag auto-close, no-motion-no-persist, degenerate-dim); entry-list R10 unset-safety 1 AC (+1); Tier-23 DragHandle token: config R4 (+3), app-shell R10 (+1), app-shell R15 (+2). Detail-pane R6 ACs 5/9 rewording only. F-132/F-133/F-134 sharpened existing R15 AC text in place (Tiers 21–22) with no AC-count change.
 
 ---
 
@@ -1074,6 +1112,16 @@ The 2026-04-17 kit revision (commit `a2fe53c`) added **27 new plan tasks** (T-08
 ---
 
 ## Revision Log
+
+### 2026-04-19 — DragHandle drag-seam token (Tier 23)
+- **Source:** `/ck:sketch` session 2026-04-19 driven by user feedback that the right-split `│` divider glyph and the below-split shared border row between list and detail pane both rendered in `DividerColor`, making the draggable seam indistinguishable from the unfocused pane borders adjacent to it — a 3-cell uniform band in right-mode with no visual cue where to click-and-drag. Kit revision commit `ed91d17`.
+- **Kits changed:** `cavekit-config.md` R4 (+3 ACs: DragHandle token non-empty per theme, `DragHandle != DividerColor` AND `!= FocusBorder`, human mid-tone-neutral sign-off); `cavekit-app-shell.md` R10 (+1 AC: drag seam renders in `DragHandle` independent of focus — right-mode `│` glyph, below-mode shared border row); `cavekit-app-shell.md` R15 (+2 ACs: per-theme distinctness + rendered-cell color assertion, human tui-mcp cross-theme distinctness verification); `DESIGN.md` §2 token table + §4 matrix cross-cutting + §4.5 divider glyph fg.
+- **Acceptance-criteria delta:** 297 → 303 (+6).
+- **Requirement count delta:** 56 (unchanged — all edits extend existing R-numbers).
+- **Tasks added:** 5 (T-171 through T-175). T-171 is the theme-data fan-in (`DragHandle lipgloss.Color` field + per-theme values); T-172 recolors the right-mode `│` glyph in T-089's renderer; T-173 splits the below-mode shared border row off from unfocused-border paint so it can carry `DragHandle` while preserving unfocused-border semantics for the pane's other three sides; T-174 is the renderer-truth distinctness test (per theme × per orientation, reusing T-160's ANSI-safe column locator); T-175 is the HUMAN sign-off gate via tui-mcp across all three themes × both orientations.
+- **Tiers added:** 23 (DragHandle drag-seam token). Previous tier ceiling was 20. Tiers 21 and 22 from the loop log did not add tasks — Tier 21 was a `/ck:check` APPROVE verdict over Tier 20; Tier 22 was housekeeping (M-001 dead-clamp removal + impl-tracking drift + second `/ck:check` APPROVE). F-132/F-133/F-134 were `/ck:revise --trace` cycles that sharpened existing R15 AC text in place (state-machine ANSI stripper, X-axis inverse-math parity, degenerate-dim test fidelity) rather than introducing new ACs.
+- **Root cause recap:** R10 visual-state matrix delegated "unfocused pane border" and "right-split divider" both to `DividerColor`, leaving no dedicated token for the drag seam. When a user focused one pane in right-split, the focused pane's border went to `FocusBorder` (bright) but the adjacent unfocused pane's border plus the 1-cell divider between them both stayed at `DividerColor` (dim) — a 3-cell band with no visual cue for where the draggable hit-target sits. Below-split had the symmetric problem on the single shared horizontal border row between list and detail pane. Introducing `DragHandle` as a mid-tone neutral (brighter than `DividerColor`, dimmer than `FocusBorder`) gives the seam its own visual identity independent of focus.
+- **Coverage Matrix reconciliation:** this revision also enumerates the Tier-20 hardening ACs that had been tracked as a known approximation (old line 901 disclaimer): R15 rows 10-14 (T-160..T-165) and entry-list R10 row 7 (T-163) now appear explicitly in the matrix. Post-Tier-23 coverage totals: log-source 26, config 35, filter-engine 27, entry-list 61, detail-pane 53, app-shell 101 → **303 / 303 covered, 0 gaps**.
 
 ### 2026-04-19 — Resize divider-coord alignment + drag state-machine hardening (Tier 20)
 - **Source:** `/ck:check` run on 2026-04-19 after Tier 19 HUMAN sign-off (T-159 via tui-mcp on `logs/small.log`). Surveyor + inspector verdict: **REVISE** — 25/27 Tier-19 ACs MET, but two R15 ACs PARTIAL because T-156 unit tests used the router's own coord helpers to synthesize events — agreeing with the router trivially while the real user-facing behaviour on the *visible* divider was broken. Findings F-122 (P1 router/renderer col mismatch) + F-123 (P2 `RatioFromDragY` off-by-one) were already filed in iteration 41 of loop-log; `/ck:check` additionally surfaced F-125 (P2 drag survives mid-drag auto-close), F-127 (P3 `rowForY` regression vector), F-129 (P3 bare Press+Release rewrites config), F-126 (P3 degenerate-terminal drag shadows persisted ratio), F-130 (P3 unreachable upper guard). Closes F-121 (kit-text inversion) inline in the kit amendment pass.

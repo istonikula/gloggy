@@ -189,8 +189,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// T-123 (F-013): vertical allocation is orientation-aware — in
 		// right-split the pane gets the full main-area slot, not
 		// height_ratio × terminalHeight.
+		// F-200 (R7 AC 9): WindowSizeMsg-driven orientation flips must
+		// refresh pane-local orientation-dependent flags so the R10
+		// drag-seam top-border paint tracks the new orientation — symmetric
+		// with relayout() so neither path leaves belowMode stale.
 		m.pane = m.pane.
 			WithScrolloff(m.cfg.Config.Scrolloff).
+			WithBelowMode(m.resize.Orientation() == appshell.OrientationBelow).
 			SetHeight(appshell.DetailPaneVerticalRows(l)).
 			SetWidth(l.DetailContentWidth())
 		m.header = m.header.WithWidth(w)
@@ -729,8 +734,10 @@ func (m Model) relayout() Model {
 	// T-123 (F-013, F-014): recompute pane vertical allocation on every
 	// relayout (open, ratio change, orientation flip). In right-split that
 	// means the full main-area slot; in below-mode it stays height_ratio.
+	// T-173: below-mode flag drives drag-seam top-border rendering.
 	m.pane = m.pane.
 		WithScrolloff(m.cfg.Config.Scrolloff).
+		WithBelowMode(m.resize.Orientation() == appshell.OrientationBelow).
 		SetHeight(appshell.DetailPaneVerticalRows(l)).
 		SetWidth(l.DetailContentWidth())
 	return m
