@@ -400,14 +400,38 @@ Split ratio is the fraction of inner area that the **detail pane** occupies.
 
 ### Ratio keymap
 
-| Key | Action |
-|---|---|
-| `\|` | Cycle presets `compact (0.10) → balanced (0.30) → maximize (0.70) → compact…` |
-| `+` | +0.05 |
-| `-` | -0.05 |
-| `=` | Reset to 0.30 |
+Resize the detail pane's share of the split. `+`/`-`/`|` act on the
+**focused pane's** share (detail directly when detail-focused; list share
+= 1 − detail ratio when list-focused). Presets are `{0.30, 0.50}`. Reset
+`=` is focus-independent. With the detail pane closed, all four keys are
+silent no-ops (nothing to resize).
 
-Clamp `[0.10, 0.80]`. Both ends guarded in code.
+| Key | Focused pane | Action |
+|---|---|---|
+| `\|` | detail | Toggle detail ratio between `0.30` and `0.50` |
+| `\|` | list | Toggle list share between `0.30` and `0.50` (detail = 1 − share) |
+| `+` | detail | Grow detail share by `0.05` (detail ratio +0.05) |
+| `+` | list | Grow list share by `0.05` (detail ratio −0.05) |
+| `-` | detail | Shrink detail share by `0.05` (detail ratio −0.05) |
+| `-` | list | Shrink list share by `0.05` (detail ratio +0.05) |
+| `=` | any | Reset detail ratio to `0.30` (list share `0.70`) |
+
+Clamp `[0.10, 0.80]`. At a clamp boundary, further motion in the same
+direction is a silent no-op — not a wrap. See cavekit-app-shell R12.
+
+### Pane resize by mouse drag (R15)
+
+Press-and-hold mouse-button-1 on the divider cell (the 1-column vertical
+`│` in right-split, the 1-row horizontal border between panes in
+below-mode). Motion updates the active ratio live (`width_ratio` in
+right-split, `height_ratio` in below-mode), one visible step per event,
+no throttling. Release persists the final ratio to config **exactly
+once** per drag (not once per motion frame). The drag is **focus-
+neutral** — `m.focus` never changes as a result of a drag. Dragging past
+`[0.10, 0.80]` pins the ratio at the boundary; further motion in the
+same direction is a no-op until the cursor re-enters the valid range.
+Starting a drag with the detail pane closed is a silent no-op (no
+divider cell to grab). See cavekit-app-shell R15.
 
 ### Border accounting (critical)
 
@@ -672,9 +696,9 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
 |---|---|---|
 | `Tab` | Cycle focus between visible panes | Always (paused while filter/help overlay open) |
 | `Esc` | Close overlay → close details → clear transient | Context-sensitive (§6) |
-| `\|` | Cycle 3 layout presets (0.10 / 0.30 / 0.70) | Any |
-| `+` / `-` | Adjust details ratio ± 5% | Any |
-| `=` | Reset ratio to 0.30 (balanced) | Any |
+| `\|` | Toggle focused pane's share between presets `{0.30, 0.50}` | Any (pane-closed no-op) |
+| `+` / `-` | Grow / shrink focused pane's share by ± 0.05 | Any (pane-closed no-op) |
+| `=` | Reset detail ratio to 0.30 (focus-independent) | Any (pane-closed no-op) |
 | `/` | Search in focused pane — routes to list search when list focused, detail-pane search when detail focused; literal character when filter panel focused | Entry list or detail pane |
 | `n` / `N` | Next / previous match (search active) — cursor moves to match, viewport respects `scrolloff` | Search-active pane |
 | `?` | Toggle help overlay | Any |
@@ -687,6 +711,7 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
 | `PgDn` / `Ctrl+d` / `Space` | Cursor + viewport down (viewport − 1), clamped | Detail pane |
 | `PgUp` / `Ctrl+u` / `b` | Cursor + viewport up (viewport − 1), clamped | Detail pane |
 | Mouse wheel | Scroll viewport; cursor dragged when it would enter the `scrolloff` margin | List + detail pane |
+| Mouse drag on divider | Resize panes live; single config write on release; focus-neutral | Any (pane-closed no-op) |
 | `m` | Mark row | Entry list |
 | `y` | Copy marked rows as JSONL | Any |
 | `f` | Open filter panel (in progress) | Any |
