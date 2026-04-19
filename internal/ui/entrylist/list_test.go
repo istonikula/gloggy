@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -237,6 +238,64 @@ func TestView_VisualState_Unfocused_DiffersFromFocused_AndHasBg(t *testing.T) {
 	if strings.Contains(fLines[0], "48;") {
 		t.Errorf("focused border line must not have UnfocusedBg: %q", fLines[0])
 	}
+}
+
+// Regression for F-202 (color-profile-collapse, Tier 24): a previous
+// T-180 sign-off concluded themes were perceptually distinct based on
+// tui-mcp screenshots. That conclusion was wrong — the tui-mcp PTY
+// environment downgraded termenv's color profile (stdout not detected
+// as a true TTY), which caused lipgloss to downsample every theme's
+// TrueColor BaseBg hex to the same xterm-256 palette slot (`48;5;232m`).
+// All three themes rendered identical dark bg in the screenshots.
+//
+// This test runs under the test-package `init()` that forces
+// `termenv.TrueColor`, so we're asserting the RENDERER-LEVEL outcome:
+// when the color profile IS TrueColor, do the three bundled themes
+// produce DISTINCT BaseBg SGR in the real `View()` output path?
+//
+// Why this test exists: the tui-mcp visual verification is unreliable
+// for fine-grained bg distinction because the harness environment is
+// not guaranteed to have TrueColor. Users in real terminals with
+// COLORTERM=truecolor should see the distinctness (and `main.go`'s
+// `forceTrueColorIfSupported()` guards that path). This test is the
+// objective floor: in a TrueColor profile, themes MUST NOT collapse.
+//
+// cavekit-config.md R4 AC 19 (cross-theme perceptibly-distinct).
+func TestView_BaseBg_ThemesProduceDistinctSGR_UnderTrueColor(t *testing.T) {
+	names := []string{"tokyo-night", "catppuccin-mocha", "material-dark"}
+	seen := map[string]string{} // baseBgSGR -> theme name
+
+	for _, name := range names {
+		th := theme.GetTheme(name)
+		m := NewListModel(th, config.DefaultConfig(), 60, 8).SetEntries(makeEntries(3))
+		m.Focused = true
+		out := m.View()
+
+		baseBgSGR := bgColorANSI(th.BaseBg)
+		if baseBgSGR == "" {
+			t.Fatalf("%s: empty BaseBg SGR probe — is TrueColor forced in init()?", name)
+		}
+		if !strings.Contains(out, baseBgSGR) {
+			t.Errorf("%s: View() output missing BaseBg SGR %q", name, baseBgSGR)
+		}
+		if prev, clash := seen[baseBgSGR]; clash {
+			t.Errorf("%s and %s collapse to the same BaseBg SGR %q — profile downsampling likely active",
+				prev, name, baseBgSGR)
+		}
+		seen[baseBgSGR] = name
+	}
+}
+
+// bgColorANSI mirrors the appshell test helper — renders a probe with
+// background color c and returns the SGR prefix. Local copy so this test
+// doesn't cross package boundaries.
+func bgColorANSI(c lipgloss.Color) string {
+	rendered := lipgloss.NewStyle().Background(c).Render("x")
+	end := strings.Index(rendered, "x")
+	if end <= 0 {
+		return ""
+	}
+	return rendered[:end]
 }
 
 // T-101: when the pane is alone (no other pane visible), it uses the

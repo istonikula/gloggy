@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T23:17:16+03:00"
+last_edited: "2026-04-19T23:50:00+03:00"
 ---
 # Loop Log
 
@@ -15,6 +15,7 @@ last_edited: "2026-04-19T23:17:16+03:00"
 - Tests: 614 pass across 11 packages (from 596 pre-Tier-24 baseline, +18 regression subtests: `TestGetTheme_AllBuiltins` BaseBg checks, `TestBaseBg_PairwiseDistinct_AllThemes`, `TestTheme_CanonicalSourceCitations_Discoverable`, `TestCatppuccinMocha_FocusBorder_IsLavender`, `TestPaneBackground_BaseBgRendered_AllThemes`).
 - Files touched: `internal/theme/theme.go`, `internal/theme/theme_test.go`, `internal/ui/appshell/panestyle.go`, `internal/ui/appshell/panestyle_test.go`.
 - Next: tier gate (severity mode — run if Codex available) + merge `tier-24-theme-palette-fidelity` → `main`. No new R-IDs, no downstream kit amendments.
+- **F-202 addendum (post-sign-off, same iteration):** User reported "they still look the same" after the initial T-180 sign-off. Investigation traced the failure to two issues: (a) `internal/ui/entrylist/list.go applyPaneStyle` did not set Width on the PaneStyle — fragile bg paint that depended on content rows being self-padded (defensive fix: set `.Width(m.width).MaxWidth(m.width + 2)` matching `detailpane/model.go:502`); (b) the **real** root cause — **color-profile downsampling in the tui-mcp PTY harness**. Diagnostic showed `lipgloss.DefaultRenderer.ColorProfile()` returning 0 (Ascii) inside tui-mcp sessions despite `COLORTERM=truecolor` being set, because termenv's auto-detection considers stdout-is-a-TTY via its internal `isatty` check — which fails under some PTY wrappers. Under Ascii/ANSI256 profile, lipgloss downsamples every TrueColor hex to the same 256-palette slot (`48;5;232m` for all three BaseBg, `38;5;111m` for both non-mocha FocusBorders), making the three themes render visually identical regardless of their canonical hex values. Fix: `cmd/gloggy/main.go` now calls `forceTrueColorIfSupported()` at startup — if `COLORTERM=truecolor` or `24bit`, it calls `lipgloss.SetColorProfile(termenv.TrueColor)` unconditionally. No-op on terminals that don't advertise TrueColor. New regression test `TestView_BaseBg_ThemesProduceDistinctSGR_UnderTrueColor` in `internal/ui/entrylist/list_test.go` pins the objective renderer-level invariant: under TrueColor profile, the three bundled themes' `BaseBg` SGR MUST differ in the real `View()` output path. This replaces the compromised tui-mcp visual sign-off with an objective floor. **Lesson:** tui-mcp screenshots are unreliable for fine-grained color distinction; use raw-SGR assertions or ask the user to verify in their real terminal. Tests: 615 pass across 11 packages (from 614, +1 SGR-distinctness test).
 
 ### Iteration 45 — 2026-04-19 (Tier 23: DragHandle drag-seam token)
 - Branch `tier-23-drag-handle`. 4 code tasks DONE, 1 HUMAN pending.
