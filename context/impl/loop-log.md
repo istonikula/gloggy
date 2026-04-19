@@ -1,8 +1,19 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T01:25:00+03:00"
+last_edited: "2026-04-19T10:51:05+03:00"
 ---
 # Loop Log
+
+### Iteration 42 — 2026-04-19 (Tier 20: drag-branch hardening + renderer-truth)
+- Tier 20 surfaced by `/ck:check` post-Tier-19 with 11 tasks (10 code + 1 HUMAN). Source findings: F-121, F-122, F-123, F-125, F-126, F-127, F-129, F-130. `/ck:make-parallel` invoked; worktree subagent dispatch produced 0 tool_use returns (same harness race documented in iteration 34) so pivoted to inline sequential execution (parent=opus=EXECUTION_MODEL).
+- **Wave 1 (3 commits):** `62e6e3d` T-163 single-owner contentTopYSet safety in `entrylist/list.go`; `b05bc69` T-161 (RatioFromDragY `-2`→`-1` inverse fix) + T-166 (dead upper-guard deletion) in `appshell/ratiokeys.go`; `33876d6` T-167 (DESIGN.md §5 preset + focus-aware table + new "Pane resize by mouse drag" subsection + §9 sync + design-changelog append) + T-168 (kit R15 AC 4 cross-reference placeholder — already landed in `/ck:check` amendment).
+- **Wave 2 (1 combined inline commit):** `73b7d19` T-160+T-162+T-164+T-165 drag-branch hardening. Biggest discoveries:
+  - **T-160**: `Layout.ListContentWidth()` is actually the list pane's OUTER block width, not the inner content — the list internally subtracts 2 for content. Probed via `LayoutModel.Render` with stub panes across presets {0.10, 0.30, 0.50, 0.80} at 140x35 and 80x24: visible `│` always renders at col `ListContentWidth()`. Flipped router arithmetic (was off by 2). New renderer-truth test that forcibly agrees with the rendered output instead of with the router's own helpers (the tautology that hid F-122 in T-156 tests).
+  - **T-164**: the real F-129 root cause wasn't just "no dragDirty tracking" — the Press event itself fell through into the Motion/ratio path, so a bare click at the current divider X immediately rewrote the ratio via `RatioFromDragX(X, termW)` (which in right-split drifts by ≈RatioStep/2 vs persisted). Fixed by `return m, nil` after the Press-sets-draggingDivider block; ratio updates now require explicit Motion.
+- Tests: 552 pass across 11 packages (from 548 pre-Tier-20). Build P, Tests P on every commit.
+- Findings closed (F-addressed matrix): F-121 (T-168), F-122 (T-160), F-123 (T-161), F-125 (T-162), F-126 (T-165), F-127 (T-163 tracked in impl-entry-list.md), F-129 (T-164), F-130 (T-166). F-124 (tui-mcp `send_mouse` lacks Motion actions) remains external; documented as harness limitation in T-170 sign-off path.
+- Frontier after Wave 2: **T-170** (HUMAN sign-off via tui-mcp). All code tasks DONE (T-160, T-161, T-162, T-163, T-164, T-165, T-166, T-167, T-168, T-169).
+- Files touched: `internal/ui/appshell/{mouse,mouse_test,ratiokeys,ratiokeys_test}.go`, `internal/ui/entrylist/{list,list_test}.go`, `internal/ui/app/{model,model_test}.go`, `DESIGN.md`, `context/designs/design-changelog.md`, `context/impl/{impl-app-shell,impl-entry-list,loop-log}.md`.
 
 ### Iteration 41 — 2026-04-19 (Tier 19 Wave 5: T-159 HUMAN sign-off)
 - T-159: HUMAN sign-off via tui-mcp on `logs/small.log` at 140x35 right-split and 80x24 below-mode (tokyo-night, `position=auto`) — DONE.
