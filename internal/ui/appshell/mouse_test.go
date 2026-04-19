@@ -225,21 +225,78 @@ func locateGlyphCol(t *testing.T, line string, glyph rune) int {
 	return -1
 }
 
+// stripAnsi removes ANSI escape sequences from s. The state machine
+// recognises the two-step CSI form `ESC [ <params/intermediates>
+// <final>` where the final byte is in the ECMA-48 range 0x40..0x7e
+// (`@`..`~`) — see F-134. A hardcoded terminator subset is insufficient
+// because future styling layers may emit non-SGR CSI sequences (cursor
+// positioning, mode setting, function-key codes) that would otherwise
+// leak escape bytes into the stripped output and corrupt
+// locateGlyphCol's column index. Non-CSI escape forms (`ESC <byte>`)
+// are treated as two-byte sequences and discarded as a unit.
 func stripAnsi(s string) string {
 	b := strings.Builder{}
-	inEsc := false
+	const (
+		stPlain         = 0
+		stPostEsc       = 1 // saw ESC; next byte is either `[` (→ CSI) or a single-byte escape final
+		stCsiBody       = 2 // saw ESC [; consume params/intermediates until final 0x40..0x7e
+	)
+	state := stPlain
 	for _, r := range s {
-		if inEsc {
-			if r == 'm' || r == 'K' || r == 'H' || r == 'A' || r == 'B' || r == 'C' || r == 'D' || r == 'J' {
-				inEsc = false
+		switch state {
+		case stPostEsc:
+			if r == '[' {
+				state = stCsiBody
+			} else {
+				state = stPlain
 			}
-			continue
+		case stCsiBody:
+			if r >= 0x40 && r <= 0x7e {
+				state = stPlain
+			}
+		default:
+			if r == 0x1b {
+				state = stPostEsc
+				continue
+			}
+			b.WriteRune(r)
 		}
-		if r == 0x1b {
-			inEsc = true
-			continue
-		}
-		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// F-134: stripAnsi must handle the full ECMA-48 CSI final-byte range
+// (0x40..0x7e), not a hardcoded subset. This guards locateGlyphCol —
+// which the R15 line-198 renderer-truth assertion depends on — against
+// silent corruption when styling layers emit non-SGR CSI sequences
+// (cursor positioning, mode setting, function-key codes). Today
+// lipgloss only emits SGR (`m`), so the bug is latent — but the next
+// styling change could quietly skew glyph-column detection.
+//
+// Each case has the form `\x1b[<params><terminator>X` — if the
+// terminator is unrecognised, the literal `X` gets swallowed and the
+// stripped string is empty.
+func TestStripAnsi_HandlesFullCSIFinalByteRange(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"HVP_f", "\x1b[10;5fX"},
+		{"CHA_G", "\x1b[5GX"},
+		{"DECTCEM_show_h", "\x1b[?25hX"},
+		{"DECTCEM_hide_l", "\x1b[?25lX"},
+		{"function_key_tilde", "\x1b[2~X"},
+		{"DSR_n", "\x1b[6nX"},
+		{"DA_c", "\x1b[0cX"},
+		{"save_cursor_s", "\x1b[sX"},
+		{"restore_cursor_u", "\x1b[uX"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := stripAnsi(tc.in)
+			if got != "X" {
+				t.Errorf("stripAnsi(%q) = %q; want %q (escape sequence leaked through)", tc.in, got, "X")
+			}
+		})
+	}
 }

@@ -177,12 +177,14 @@ func TestIsRatioKey(t *testing.T) {
 	}
 }
 
-// T-104: dragging the divider to x=50 on a 100-wide terminal halves the
-// usable space → ratio ≈ 48/95 (clamped to RatioMax=0.80).
-// At termWidth=100 and x=50: detail = 100-50-2 = 48, usable = 95, ratio = 48/95 ≈ 0.505.
+// T-104 / F-133: dragging the divider to x=50 on a 100-wide terminal.
+// Forward math: usable = 95, detail content = usable - x = 45, ratio = 45/95.
+// (Pre-F-133 formula was `termWidth-x-2 = 48`, which encoded the off-by-3
+// inverse-math bug — the pin was updated when the formula was made the
+// exact inverse of `DetailContentWidth = usable - ListContentWidth`.)
 func TestRatioFromDragX_Mid(t *testing.T) {
 	r := RatioFromDragX(50, 100)
-	want := 48.0 / 95.0
+	want := 45.0 / 95.0
 	if math.Abs(r-want) > 1e-9 {
 		t.Errorf("RatioFromDragX(50,100) = %.4f, want %.4f", r, want)
 	}
@@ -212,6 +214,45 @@ func TestRatioFromDragX_NormalizedByWidth(t *testing.T) {
 	r2 := RatioFromDragX(100, 200)
 	if math.Abs(r1-r2) > 0.02 {
 		t.Errorf("expected similar ratios at proportional positions, got %.3f vs %.3f", r1, r2)
+	}
+}
+
+// F-133: pressing on the divider at its current physical X column must
+// re-return the current ratio (no step-snap). Mirrors the Y-axis pin.
+// The canonical divider X is sourced from the renderer-truth invariant
+// established by R15/T-160 (`Layout.ListContentWidth()`), NOT from the
+// inverse formula itself — deriving from the inverse would tautologically
+// agree with whatever the inverse computes.
+//
+// Tolerance RatioStep/2 = 0.025 matches the Y-axis test. Old formula
+// (`termWidth - x - 2`) drifts ~0.04 at termWidth=100, ratio=0.55 — well
+// outside tolerance.
+//
+// RatioMin (0.10) and RatioMax (0.80) are excluded: at the boundary,
+// ClampRatio rescues both formulas and the test cannot distinguish them.
+func TestRatioFromDragX_PressAtCurrentDividerX_KeepsRatio(t *testing.T) {
+	cases := []struct {
+		termWidth int
+		ratio     float64
+	}{
+		{100, 0.30},
+		{100, 0.50},
+		{100, 0.55},
+		{80, 0.30},
+		{80, 0.50},
+	}
+	for _, tc := range cases {
+		// Canonical divider X from renderer-truth: dividerX equals the
+		// list pane's content width (R15 AC line 198 / T-160).
+		l := NewLayout(tc.termWidth, 24, true, 0)
+		l.Orientation = OrientationRight
+		l.WidthRatio = tc.ratio
+		dividerX := l.ListContentWidth()
+		got := RatioFromDragX(dividerX, tc.termWidth)
+		if math.Abs(got-tc.ratio) > RatioStep/2+1e-9 {
+			t.Errorf("RatioFromDragX(%d, %d) = %.4f; want ≈%.4f (±%.3f) for ratio %.2f",
+				dividerX, tc.termWidth, got, tc.ratio, RatioStep/2, tc.ratio)
+		}
 	}
 }
 
