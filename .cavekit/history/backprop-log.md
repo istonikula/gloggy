@@ -1,5 +1,5 @@
 ---
-last_edited: "2026-04-19T20:05:00+03:00"
+last_edited: "2026-04-19T21:35:00+03:00"
 ---
 
 # Backpropagation Log
@@ -89,3 +89,25 @@ test, and links the fix commit. Audit trail for the iteration loop.
 - **Pattern category:** integration / dual-wiring-drift
 - **Fix commit (test + kit):** `e1e2f2b`
 - **Fix commit (impl):** `40554c3`
+
+---
+
+## #5 — F-201: kit language calls drag seam "shared row" but render is detail-top only (2026-04-19)
+
+- **Failure source:** `/ck:check` Tier 23 Pass 2 (inspector peer review)
+- **Failure description:** `cavekit-app-shell.md` R10 AC 10 (line 133), R15 description (line 190), and R15 ACs at lines 200/206/207 described the below-mode drag seam as "the horizontal border row between list and detail pane" or "shared border row". `DESIGN.md` mirrored the drift at §2 token table (line 75), §2 three-new-tokens paragraph (lines 91-94), §4.5 drag-handle seam bullet (lines 202-206), §5.x mouse-drag press-cell (lines 438-441), and §6 pane border matrix (line 539). In reality the render is two adjacent rows — the list pane's own bottom border (rendered by its `PaneStyle` in list-focus color) and the detail pane's own top border (rendered by `PaneStyle` + `WithDragSeamTop` at `internal/ui/appshell/panestyle.go:57-59`). Only the detail pane's top is overridden to `DragHandle`. `MouseRouter.Zone` and the paint both target the detail-pane top only. The inspector flagged the mismatch during /ck:check: the code is correct but the spec language misdescribes the physical composition, so a future reader could mistakenly "fix" the paint to cover both rows and break the R10 focus-indicator + R6 mouse-hit-zone contracts.
+- **Classification:** `wrong_criterion`
+- **Kit:** `cavekit-app-shell.md` → R10 AC 10; R15 description + ACs at lines 200/206/207
+- **Spec change:** All 5 kit locations rewritten from "shared/horizontal border row" → "detail pane's top border row" with explicit note that the list's bottom border is an adjacent, separate row in the list's focus-state color, NOT co-painted. R15 AC 11 (line 206) extended to mandate a pinning test asserting the list pane's bottom row does NOT carry `DragHandle` SGR. Companion edits in DESIGN.md §2 token table + §2 three-new-tokens paragraph + §4.5 drag-handle seam bullet + §5.x mouse-drag press-cell + §6 pane border matrix row.
+- **Regression tests:**
+  - `internal/ui/appshell/panestyle_test.go::TestPaneStyle_DragSeamOnlyOverridesDetailTop_NotListBottom` — 3 themes × asserts (a) detail pane top row contains `DragHandle` SGR via `WithDragSeamTop` AND (b) list pane bottom row rendered via `PaneStyle` does NOT contain `DragHandle` SGR. Pins the contract implicit in the current paint; a future "fix" making the seam a genuine shared row would fail this test and force re-evaluation against R10/R15.
+- **Verification:** Pinning test passes against current code (all 3 themes, 4/4 sub-tests). Full suite 601 passed in 11 packages (was 597; pinning test adds 4 sub-tests under the table-driven loop).
+- **Code change:** None — the code at `internal/ui/appshell/panestyle.go:57-59` (`WithDragSeamTop`) was already correct. This is a pure spec-language trace closing the gap between what the spec said and what the render physically did.
+- **Files touched:**
+  - `internal/ui/appshell/panestyle_test.go` (new pinning test)
+  - `context/kits/cavekit-app-shell.md` (R10 AC 10 + R15 description + R15 ACs at 200/206/207 + changelog entry)
+  - `DESIGN.md` (§2 table + §2 paragraph + §4.5 + §5.x + §6 table)
+  - `context/designs/design-changelog.md` (new entry for §2/§4.5/§6 language pass)
+- **Pattern category:** spec-reality-drift / language-precision
+- **Fix commit (test):** `5b334f3`
+- **Fix commit (kit + DESIGN):** `11c4e6a`
