@@ -225,21 +225,42 @@ func locateGlyphCol(t *testing.T, line string, glyph rune) int {
 	return -1
 }
 
+// stripAnsi removes ANSI escape sequences from s. The state machine
+// recognises the two-step CSI form `ESC [ <params/intermediates>
+// <final>` where the final byte is in the ECMA-48 range 0x40..0x7e
+// (`@`..`~`) — see F-134. A hardcoded terminator subset is insufficient
+// because future styling layers may emit non-SGR CSI sequences (cursor
+// positioning, mode setting, function-key codes) that would otherwise
+// leak escape bytes into the stripped output and corrupt
+// locateGlyphCol's column index. Non-CSI escape forms (`ESC <byte>`)
+// are treated as two-byte sequences and discarded as a unit.
 func stripAnsi(s string) string {
 	b := strings.Builder{}
-	inEsc := false
+	const (
+		stPlain         = 0
+		stPostEsc       = 1 // saw ESC; next byte is either `[` (→ CSI) or a single-byte escape final
+		stCsiBody       = 2 // saw ESC [; consume params/intermediates until final 0x40..0x7e
+	)
+	state := stPlain
 	for _, r := range s {
-		if inEsc {
-			if r == 'm' || r == 'K' || r == 'H' || r == 'A' || r == 'B' || r == 'C' || r == 'D' || r == 'J' {
-				inEsc = false
+		switch state {
+		case stPostEsc:
+			if r == '[' {
+				state = stCsiBody
+			} else {
+				state = stPlain
 			}
-			continue
+		case stCsiBody:
+			if r >= 0x40 && r <= 0x7e {
+				state = stPlain
+			}
+		default:
+			if r == 0x1b {
+				state = stPostEsc
+				continue
+			}
+			b.WriteRune(r)
 		}
-		if r == 0x1b {
-			inEsc = true
-			continue
-		}
-		b.WriteRune(r)
 	}
 	return b.String()
 }

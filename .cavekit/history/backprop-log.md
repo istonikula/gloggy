@@ -1,5 +1,5 @@
 ---
-last_edited: "2026-04-19T11:29:08+03:00"
+last_edited: "2026-04-19T11:35:46+03:00"
 ---
 
 # Backpropagation Log
@@ -47,4 +47,24 @@ test, and links the fix commit. Audit trail for the iteration loop.
   - `context/kits/cavekit-app-shell.md` (R15 inverse-math AC text + changelog entry)
 - **Pattern category:** test-fidelity / parallel-axis-coverage
 - **Fix commit (test):** `68d2548`
+- **Fix commit (impl + kit):** `fd5a26d`
+
+---
+
+## #3 — F-134: stripAnsi CSI terminator set incomplete (2026-04-19)
+
+- **Failure source:** `/ck:review` Pass 2 (Tier 20 branch review)
+- **Failure description:** `stripAnsi` at `internal/ui/appshell/mouse_test.go:228-245` exited escape mode only on terminators `{m, K, H, A, B, C, D, J}`. ECMA-48 defines the CSI final byte as the full range `0x40..0x7e`. The hardcoded subset omitted `f` (HVP), `G` (CHA), `n` (DSR), `c` (DA), `s/u` (save/restore cursor), `h/l` (set/reset mode), `~` (function-key terminator), and others. `stripAnsi` backs `locateGlyphCol`, which the R15 line-198 renderer-truth divider-col assertion depends on. Today lipgloss only emits SGR (`m`) so the bug was latent — but any future styling change emitting non-SGR CSI sequences would silently leak escape bytes into `[]rune(plain)` and corrupt `glyphCol`, giving false-positive divider-col assertions. Same pattern shape as F-132 / F-133: the test agreed with what it tested by accident, not by an enforceable invariant.
+- **Classification:** `incomplete_criterion`
+- **Kit:** `cavekit-app-shell.md` → R15 (renderer-truth AC, line 198)
+- **Spec change:** R15 line-198 AC text extended to mandate that any ANSI-stripping helper handle the full ECMA-48 CSI two-step form (`ESC [ <params/intermediates> <final-byte 0x40..0x7e>`).
+- **Regression tests:**
+  - `internal/ui/appshell/mouse_test.go::TestStripAnsi_HandlesFullCSIFinalByteRange` (9 sub-cases: HVP, CHA, DECTCEM show/hide, function-key tilde, DSR, DA, save/restore cursor)
+- **Verification:** Test fails 9/9 sub-cases against the hardcoded subset (escape sequences leak through, output is empty instead of `"X"`). First fix attempt (`r >= 0x40 && r <= 0x7e` directly in the original two-state machine) regressed save_cursor_s and restore_cursor_u — `[` (0x5b) was being mistaken for a final byte. Second fix introduces a three-state machine (`stPlain` / `stPostEsc` / `stCsiBody`) that consumes the `[` introducer as introducer, then scans to the actual final byte. All 9 sub-cases pass after the state-machine rewrite. Full suite: 574 passed (was 564).
+- **Code change:** `stripAnsi` rewritten as a three-state machine. Original two-state machine could not distinguish `[` (CSI introducer, also in 0x40..0x7e) from a final byte without explicit state tracking.
+- **Files touched:**
+  - `internal/ui/appshell/mouse_test.go` (state-machine rewrite + new regression test, both in same file since `stripAnsi` is test-only)
+  - `context/kits/cavekit-app-shell.md` (R15 line-198 AC text + changelog entry)
+- **Pattern category:** test-fidelity / latent-fragility-in-test-helper
+- **Fix commit (test):** `024d429`
 - **Fix commit (impl + kit):** `<pending>`
