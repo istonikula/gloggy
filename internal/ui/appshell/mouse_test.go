@@ -243,3 +243,39 @@ func stripAnsi(s string) string {
 	}
 	return b.String()
 }
+
+// F-134: stripAnsi must handle the full ECMA-48 CSI final-byte range
+// (0x40..0x7e), not a hardcoded subset. This guards locateGlyphCol —
+// which the R15 line-198 renderer-truth assertion depends on — against
+// silent corruption when styling layers emit non-SGR CSI sequences
+// (cursor positioning, mode setting, function-key codes). Today
+// lipgloss only emits SGR (`m`), so the bug is latent — but the next
+// styling change could quietly skew glyph-column detection.
+//
+// Each case has the form `\x1b[<params><terminator>X` — if the
+// terminator is unrecognised, the literal `X` gets swallowed and the
+// stripped string is empty.
+func TestStripAnsi_HandlesFullCSIFinalByteRange(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"HVP_f", "\x1b[10;5fX"},
+		{"CHA_G", "\x1b[5GX"},
+		{"DECTCEM_show_h", "\x1b[?25hX"},
+		{"DECTCEM_hide_l", "\x1b[?25lX"},
+		{"function_key_tilde", "\x1b[2~X"},
+		{"DSR_n", "\x1b[6nX"},
+		{"DA_c", "\x1b[0cX"},
+		{"save_cursor_s", "\x1b[sX"},
+		{"restore_cursor_u", "\x1b[uX"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := stripAnsi(tc.in)
+			if got != "X" {
+				t.Errorf("stripAnsi(%q) = %q; want %q (escape sequence leaked through)", tc.in, got, "X")
+			}
+		})
+	}
+}
