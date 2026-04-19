@@ -67,4 +67,4 @@ test, and links the fix commit. Audit trail for the iteration loop.
   - `context/kits/cavekit-app-shell.md` (R15 line-198 AC text + changelog entry)
 - **Pattern category:** test-fidelity / latent-fragility-in-test-helper
 - **Fix commit (test):** `024d429`
-- **Fix commit (impl + kit):** `<pending>`
+- **Fix commit (impl + kit):** `91df657`
