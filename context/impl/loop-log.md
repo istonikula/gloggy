@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T13:10:00+03:00"
+last_edited: "2026-04-19T19:45:00+03:00"
 ---
 # Loop Log
 
@@ -13,8 +13,9 @@ last_edited: "2026-04-19T13:10:00+03:00"
 - **T-174** (cross-orientation test): `TestDragSeam_RendersInDragHandle_AllThemes` in `appshell/mouse_test.go`, 3 themes × 2 orientations. Right path uses `LayoutModel.Render` + stripAnsi → locates `│` glyph column → extracts preceding SGR run via F-134-style 3-state CSI parser → asserts DragHandle SGR, NO DividerColor SGR, NO FocusBorder SGR. Below path exercises `PaneStyle + WithDragSeamTop` at the style layer (avoids circular import). AC 10 distinctness verified directly via `colorANSI` comparison.
 - Tests: 592 pass across 11 packages (from 574 baseline, +18 regression tests).
 - Commits: `c0dbdca` T-171, `be3b08f` T-172, `57f68fa` T-173, `7bf2e7c` T-174.
-- **T-175 DONE (programmatic fallback):** tui-mcp spawn harness broken at OS level — `posix_spawnp failed.` for every command including `/bin/echo`, `/usr/bin/true`, `/bin/bash`. Parallel to F-124 tui-mcp motion-gap pattern (harness limitation, not gloggy-side). Fell back to WCAG 2.x relative-luminance ordering as the objective proxy for the perceptual "mid-tone neutral" AC. Computed Y(DividerColor), Y(DragHandle), Y(FocusBorder) per theme and confirmed strict ordering Y(D) < Y(DH) < Y(F) with both gaps ≫ 0.02 perceptual threshold: tokyo-night 0.0569→0.1257→0.3669 (gaps 0.069, 0.241); catppuccin-mocha 0.0651→0.1735→0.4486 (gaps 0.108, 0.275); material-dark 0.0554→0.1653→0.4072 (gaps 0.110, 0.242). Pinned as `TestDragHandle_LuminanceOrdering_AllThemes` in `internal/theme/theme_test.go` (WCAG sRGB-to-linear + weighted sum). Tests: 596 pass across 11 packages (from 592, +4 for luminance subtests).
-- Commit: `T-175: programmatic luminance-ordering test (tui-mcp harness unavailable)` follows this entry.
+- **T-175 DONE (tui-mcp sign-off after harness fix):** Initial run failed with `posix_spawnp failed.` for every command. Root cause traced to node-pty's `spawn-helper` binary under `~/.npm/_npx/*/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper` losing its executable bit (`-rw-r--r--`) on a fresh npx-cache reinstall; `chmod +x` on it restored spawning immediately. (Not a gloggy-side issue. The `com.apple.provenance` xattr on the binary is benign metadata, not quarantine.) With tui-mcp operational, launched gloggy on `logs/tiny.log` under isolated `XDG_CONFIG_HOME=/tmp/gloggy-t175-cfg` for each theme × orientation. Captured screenshots of all 6 combinations: tokyo-night 140x35 right + 80x24 below, catppuccin-mocha 140x35 right + 80x24 below, material-dark 140x35 right + 80x24 below. Visual confirmation: the 1-cell `│` drag seam (right-mode) and shared top-border row (below-mode) both render in a mid-grey hue that is clearly brighter than the detail pane's unfocused DividerColor border and clearly dimmer than the list's focused FocusBorder in every theme. The perceptual "mid-tone neutral" AC holds across all three palettes. Belt-and-braces `TestDragHandle_LuminanceOrdering_AllThemes` in `internal/theme/theme_test.go` pins the objective WCAG-luminance invariant (Y(Divider) < Y(DragHandle) < Y(Focus), gaps ≫ 0.02) so future palette tuning cannot silently regress the ordering. Tests: 596 pass across 11 packages (from 592, +4 luminance subtests).
+- **node-pty spawn-helper lesson:** if tui-mcp returns `posix_spawnp failed.` after a cache clear, first check `ls -l ~/.npm/_npx/*/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper` — if it's not `-rwxr-xr-x`, `chmod +x` on it rather than rebuilding node-pty.
+- Commits: `aa1947c` (luminance test + tui-mcp-unavailable fallback impl-tracking), `T-175 sign-off: tui-mcp visual confirmation` (this commit).
 - Next: Tier 23 boundary gate (`/ck:check` or Codex tier-review) + merge to main.
 
 ### Iteration 44 — 2026-04-19 (Tier 22: housekeeping — M-001 dead clamp + drift)
