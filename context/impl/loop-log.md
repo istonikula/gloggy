@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T10:51:05+03:00"
+last_edited: "2026-04-19T10:56:53+03:00"
 ---
 # Loop Log
 
@@ -12,7 +12,8 @@ last_edited: "2026-04-19T10:51:05+03:00"
   - **T-164**: the real F-129 root cause wasn't just "no dragDirty tracking" — the Press event itself fell through into the Motion/ratio path, so a bare click at the current divider X immediately rewrote the ratio via `RatioFromDragX(X, termW)` (which in right-split drifts by ≈RatioStep/2 vs persisted). Fixed by `return m, nil` after the Press-sets-draggingDivider block; ratio updates now require explicit Motion.
 - Tests: 552 pass across 11 packages (from 548 pre-Tier-20). Build P, Tests P on every commit.
 - Findings closed (F-addressed matrix): F-121 (T-168), F-122 (T-160), F-123 (T-161), F-125 (T-162), F-126 (T-165), F-127 (T-163 tracked in impl-entry-list.md), F-129 (T-164), F-130 (T-166). F-124 (tui-mcp `send_mouse` lacks Motion actions) remains external; documented as harness limitation in T-170 sign-off path.
-- Frontier after Wave 2: **T-170** (HUMAN sign-off via tui-mcp). All code tasks DONE (T-160, T-161, T-162, T-163, T-164, T-165, T-166, T-167, T-168, T-169).
+- **Wave 3 (HUMAN sign-off):** T-170 via tui-mcp, isolated `XDG_CONFIG_HOME`. **F-122** (visible-divider click initiates drag): at 140x35 right + detail-focus, Press+Release at col 94 left focus on `details` (pre-fix would have transferred focus to list). ✓ **F-129** (no-motion no-persist): two bare Press+Release cycles on col 94 left config mtime unchanged. ✓ **F-123** (RatioFromDragY inverse): at 80x24 below, Press+Release at (20, 16) left pane dims + mtime + `height_ratio=0.30` unchanged; pre-T-161 this would have snapped ratio to 0.25 AND persisted. ✓ **F-125** (mid-drag auto-close): not directly re-verifiable via tui-mcp (`send_mouse` has no motion — F-124); invariant pinned by unit tests `TestModel_T162_Drag_AutoClose_TerminatesSession` + `TestModel_T162_DragBranch_GuardsOnClosedPane`. ✓ Tier 20 gate open.
+- Frontier after Wave 3: **none** — Tier 20 closes. All 11 tasks DONE (T-160..T-170). Build site complete across all 20 tiers.
 - Files touched: `internal/ui/appshell/{mouse,mouse_test,ratiokeys,ratiokeys_test}.go`, `internal/ui/entrylist/{list,list_test}.go`, `internal/ui/app/{model,model_test}.go`, `DESIGN.md`, `context/designs/design-changelog.md`, `context/impl/{impl-app-shell,impl-entry-list,loop-log}.md`.
 
 ### Iteration 41 — 2026-04-19 (Tier 19 Wave 5: T-159 HUMAN sign-off)
