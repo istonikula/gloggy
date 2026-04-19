@@ -47,7 +47,35 @@ func TestGetTheme_AllBuiltins(t *testing.T) {
 			if string(th.DragHandle) == string(th.FocusBorder) {
 				t.Errorf("DragHandle must be distinct from FocusBorder; got %s", th.DragHandle)
 			}
+			// T-176: BaseBg populated and != UnfocusedBg
+			// (config R4 AC 12 + AC 15).
+			if string(th.BaseBg) == "" {
+				t.Error("Tier 24 BaseBg token not populated")
+			}
+			if string(th.BaseBg) == string(th.UnfocusedBg) {
+				t.Errorf("BaseBg must be distinct from UnfocusedBg; got %s", th.BaseBg)
+			}
 		})
+	}
+}
+
+// T-176 (cavekit-config.md R4 AC 14): BaseBg values must be pairwise
+// distinct across the three bundled themes so the "at a glance they are
+// perceptibly different" property has objective grounding in the palette
+// data, not just in rendered luminance.
+func TestBaseBg_PairwiseDistinct_AllThemes(t *testing.T) {
+	names := BuiltinNames()
+	seen := make(map[string]string, len(names))
+	for _, name := range names {
+		th := GetTheme(name)
+		bg := string(th.BaseBg)
+		if bg == "" {
+			t.Fatalf("%s: BaseBg empty", name)
+		}
+		if other, dup := seen[bg]; dup {
+			t.Errorf("BaseBg collision: %s and %s both use %s", other, name, bg)
+		}
+		seen[bg] = name
 	}
 }
 

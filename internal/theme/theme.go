@@ -47,6 +47,11 @@ type Theme struct {
 	// drag seam (right-mode divider glyph; below-mode shared border row).
 	// Brighter than DividerColor, dimmer than FocusBorder; focus-neutral.
 	DragHandle lipgloss.Color
+
+	// BaseBg (Tier 24): primary pane background. Painted on all rendered
+	// pane surfaces wherever UnfocusedBg does not apply, so no pane falls
+	// through to the terminal default bg (see config R4 ACs 12-15).
+	BaseBg lipgloss.Color
 }
 
 // DefaultThemeName is the theme used when none is specified or an unknown name is given.
@@ -94,6 +99,7 @@ func tokyoNight() Theme {
 		DividerColor:    lipgloss.Color("#3b4261"),
 		UnfocusedBg:     lipgloss.Color("#16161e"),
 		DragHandle:      lipgloss.Color("#5a6475"),
+		BaseBg:          lipgloss.Color("#1a1b26"),
 	}
 }
 
@@ -119,6 +125,7 @@ func catppuccinMocha() Theme {
 		DividerColor:    lipgloss.Color("#313244"),
 		UnfocusedBg:     lipgloss.Color("#11111b"),
 		DragHandle:      lipgloss.Color("#6e7388"),
+		BaseBg:          lipgloss.Color("#1e1e2e"),
 	}
 }
 
@@ -144,5 +151,6 @@ func materialDark() Theme {
 		DividerColor:    lipgloss.Color("#37474f"),
 		UnfocusedBg:     lipgloss.Color("#0d0d0d"),
 		DragHandle:      lipgloss.Color("#65737e"),
+		BaseBg:          lipgloss.Color("#212121"),
 	}
 }
