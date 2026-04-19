@@ -41,3 +41,19 @@ func PaneStyle(th theme.Theme, state PaneVisualState) lipgloss.Style {
 			BorderForeground(th.FocusBorder)
 	}
 }
+
+// WithDragSeamTop overrides the top border foreground with theme.DragHandle,
+// preserving the left/right/bottom border colours from the focus-state base
+// style. Applied to the below-mode detail pane so the row shared with the
+// entry list renders as the draggable seam (T-173, Tier 23 kit revision;
+// cavekit-app-shell R10 new AC 10, config R4 new AC 9). Focus-neutral per
+// app-shell R15 — the seam colour does not shift when focus moves.
+//
+// This layers on top of PaneStyle rather than introducing a separate 1-row
+// strip (the Tier-23 task's alternate "option a") so the pane's internal
+// border arithmetic — `borderRows()`, `ContentHeight()`, `SetHeight()` —
+// stays invariant. The visible row painted at the top of the pane still
+// carries DragHandle's SGR, which is what T-174 asserts.
+func WithDragSeamTop(s lipgloss.Style, th theme.Theme) lipgloss.Style {
+	return s.BorderTopForeground(th.DragHandle)
+}

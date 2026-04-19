@@ -729,8 +729,10 @@ func (m Model) relayout() Model {
 	// T-123 (F-013, F-014): recompute pane vertical allocation on every
 	// relayout (open, ratio change, orientation flip). In right-split that
 	// means the full main-area slot; in below-mode it stays height_ratio.
+	// T-173: below-mode flag drives drag-seam top-border rendering.
 	m.pane = m.pane.
 		WithScrolloff(m.cfg.Config.Scrolloff).
+		WithBelowMode(m.resize.Orientation() == appshell.OrientationBelow).
 		SetHeight(appshell.DetailPaneVerticalRows(l)).
 		SetWidth(l.DetailContentWidth())
 	return m

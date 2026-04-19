@@ -39,6 +39,7 @@ type PaneModel struct {
 	search       SearchModel // T-114: attached by caller via WithSearch() to drive render
 	hiddenFields []string    // T-127 (F-020): field names suppressed from JSON render
 	Focused      bool        // set by app before rendering for focus indicator
+	belowMode    bool        // T-173: true when the pane is below the list (drag seam is the top border)
 }
 
 // NewPaneModel creates a PaneModel.
@@ -267,6 +268,18 @@ func (m PaneModel) ContentLines() []string {
 	return out
 }
 
+// WithBelowMode tells the pane whether it sits below the entry list (true)
+// or to its right (false). In below-mode the top border row is the drag
+// seam shared with the list — rendered in `theme.DragHandle` rather than
+// the focus-state border colour (T-173). In right-mode the pane's top
+// border is adjacent to the header, not to the list, so the seam rendering
+// stays off (the right-mode seam is the separate divider glyph from T-172).
+// Wired from `app/model.go` relayout().
+func (m PaneModel) WithBelowMode(below bool) PaneModel {
+	m.belowMode = below
+	return m
+}
+
 // WithSearch attaches a SearchModel to the pane for rendering (T-114).
 // Call this from the app before View() so the pane can render the prompt
 // row, match counter, and highlight matches. The SearchModel is not
@@ -474,6 +487,11 @@ func (m PaneModel) View() string {
 		state = appshell.PaneStateFocused
 	}
 	style := appshell.PaneStyle(m.th, state)
+	if m.belowMode {
+		// T-173: drag-seam top border in below-mode (cavekit-app-shell
+		// R10 AC 10 / R15 AC 15).
+		style = appshell.WithDragSeamTop(style, m.th)
+	}
 	if m.width > 0 {
 		// T-139 (F-103): single-owner border accounting. `m.width` is the
 		// CONTENT width from the layout (already post-border). lipgloss
