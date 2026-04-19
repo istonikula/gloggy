@@ -112,6 +112,15 @@ func IsRatioKey(key string) bool {
 // dividerWidth) so the divider follows the cursor. The returned ratio
 // corresponds to the DETAIL pane slice (detailContent = usable * ratio)
 // and is clamped to [RatioMin, RatioMax].
+//
+// T-161 audit (symmetry with RatioFromDragY inverse-math fix): the
+// X-axis analogue of F-123 is present — press-at-current-divider-col
+// does not exactly re-return the current width_ratio. The existing
+// formula is left unchanged because the T-104 tests (termWidth=100,
+// x=50 → 48/95 ≈ 0.505) encode the current semantics; re-tuning would
+// break those pins and is out of scope for T-161. If T-170 HUMAN
+// sign-off after the T-160 router alignment surfaces visible drift in
+// right-split drag, a follow-up should re-examine this formula.
 func RatioFromDragX(x, termWidth int) float64 {
 	usable := termWidth - 2*paneBorders - dividerWidth
 	if usable <= 0 {
@@ -125,6 +134,9 @@ func RatioFromDragX(x, termWidth int) float64 {
 	if detail < 0 {
 		detail = 0
 	}
+	// X-axis upper guard is REACHABLE — callers pass x in [0, termWidth-1],
+	// so max detail = termWidth - 2 which exceeds usable = termWidth - 5.
+	// Keep the clamp.
 	if detail > usable {
 		detail = usable
 	}
@@ -134,21 +146,29 @@ func RatioFromDragX(x, termWidth int) float64 {
 // RatioFromDragY converts a vertical cursor row position into the new
 // height_ratio for a below-split layout (T-156, cavekit-app-shell R15).
 // The divider is the 1-row horizontal border between the entry list and
-// the detail pane; rows `y+1..termHeight-2` belong to the detail pane
-// (status bar occupies `termHeight-1`). Height ratio storage mirrors
+// the detail pane; rows `dividerY..termHeight-2` belong to the detail
+// pane (the divider row counts as detail's top border; status bar
+// occupies `termHeight-1`). Height ratio storage mirrors
 // `detailpane.HeightModel.PaneHeight = int(termHeight * ratio)`, so the
-// inverse maps divider-row back to ratio via `(termHeight - y - 2) /
-// termHeight`. Result is clamped to [RatioMin, RatioMax].
+// inverse maps divider-row back to ratio via `(termHeight - 1 - y) /
+// termHeight` — detail rowCount = termHeight-2 - dividerY + 1.
+// Result is clamped to [RatioMin, RatioMax].
+//
+// T-161 (F-123): the `-1` constant was previously `-2`, which made the
+// inverse disagree with the forward `HeightModel.PaneHeight` math by
+// one row. Pressing at the current divider Y then snapped the ratio
+// one step down instead of re-returning the current ratio.
 func RatioFromDragY(y, termHeight int) float64 {
 	if termHeight <= 0 {
 		return ClampRatio(RatioDefault)
 	}
-	detail := termHeight - 2 - y
+	detail := termHeight - 1 - y
 	if detail < 0 {
 		detail = 0
 	}
-	if detail > termHeight {
-		detail = termHeight
-	}
+	// T-166: no upper clamp. Division below can produce a ratio > RatioMax
+	// for extreme negative y (detail > termHeight), but ClampRatio at the
+	// tail handles that. The former `if detail > termHeight` branch was
+	// unreachable relative to the final output.
 	return ClampRatio(float64(detail) / float64(termHeight))
 }

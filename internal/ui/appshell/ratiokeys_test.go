@@ -214,3 +214,36 @@ func TestRatioFromDragX_NormalizedByWidth(t *testing.T) {
 		t.Errorf("expected similar ratios at proportional positions, got %.3f vs %.3f", r1, r2)
 	}
 }
+
+// T-161 (F-123): pressing on the divider at its current physical Y row
+// must re-return the current ratio (no step-snap). Uses the forward
+// math from `detailpane.HeightModel.PaneHeight = int(termHeight*ratio)`
+// to compute the canonical divider Y for each preset, then asserts the
+// inverse brings us back within int-truncation tolerance (one-row drift
+// per termHeight). The old formula (`termHeight - 2 - y`) was off by a
+// full row, so press-at-current-Y would snap the ratio one RatioStep
+// down. Tolerance RatioStep/2 = 0.025 is tight enough to catch the bug
+// (old drift ≥ 0.042 at termHeight=24) while tolerating the floor-div
+// drift of the fixed formula (≤ 0.009 at the same termHeight).
+//
+// RatioMin (0.10) is excluded: at termHeight=24 both old and new
+// formulas clamp to RatioMin, so the test cannot distinguish them there.
+func TestRatioFromDragY_PressAtCurrentDividerY_KeepsRatio(t *testing.T) {
+	const termHeight = 24
+	presets := []float64{0.30, 0.50, 0.80}
+	for _, r := range presets {
+		paneHeight := int(float64(termHeight) * r)
+		if paneHeight < 1 {
+			paneHeight = 1
+		}
+		// Canonical divider Y: detail occupies rows dividerY..termHeight-2
+		// (divider row = detail's top border), so paneHeight = termHeight
+		// - 1 - dividerY, i.e. dividerY = termHeight - 1 - paneHeight.
+		dividerY := termHeight - 1 - paneHeight
+		got := RatioFromDragY(dividerY, termHeight)
+		if math.Abs(got-r) > RatioStep/2+1e-9 {
+			t.Errorf("RatioFromDragY(%d, %d) = %.4f; want ≈%.4f (±%.3f) for ratio %.2f",
+				dividerY, termHeight, got, r, RatioStep/2, r)
+		}
+	}
+}
