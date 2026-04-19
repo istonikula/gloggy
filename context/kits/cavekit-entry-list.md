@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T22:44:21+03:00"
+last_edited: "2026-04-19T10:18:34+03:00"
 ---
 
 # Cavekit: Entry List
@@ -116,6 +116,7 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] When the terminal Y coordinate falls outside the list's content area (on the header bar, status bar, the pane divider, or inside the detail pane), the click is NOT routed to the list at all — partitioning is owned by cavekit-app-shell R6
 - [ ] [auto] Double-click uses the same click-to-row resolver as single-click — double-clicking the Nth visible row opens the detail pane for the Nth visible row, not an offset row
 - [ ] [auto] Mouse scroll wheel scrolls the list (unchanged)
+- [ ] [auto] The list's click-to-row resolver MUST reject every terminal Y with no row when the layout-owned content-top-Y offset has not been injected (e.g. on a freshly constructed list model that has not received a `WindowSizeMsg`/`relayout` cycle). Defaulting to zero MUST NOT silently reintroduce the 2-row-offset bug — the list either requires the offset at construction (panic on unset) or tracks an explicit "wired" flag and returns "no row" until it is set. Verified by a unit test that constructs a list WITHOUT wiring the offset and asserts a y=0 click does NOT select row 0
 - [ ] [human, tui-mcp] Verify via tui-mcp first: launch the TUI on `logs/small.log`, take a `snapshot` to record the coordinates of visible rows 1, 2, 5, and the last row; use `send_mouse` to click each coordinate; after each click take another `snapshot` and confirm the cursor highlight lies on the same row that was clicked (no 1- or 2-row offset). Repeat with the detail pane open in below-mode and again in right-mode (per the user's HUMAN-sign-off-via-tui-mcp preference)
 **Dependencies:** cavekit-detail-pane (receives selection signal), cavekit-app-shell (R2 layout math — single owner of terminal-Y-to-row mapping, R6 mouse routing partitioning)
 
@@ -173,6 +174,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - See also: cavekit-app-shell.md (layout, mouse routing)
 
 ## Changelog
+
+### 2026-04-19 — Revision (R10 unset-contentTopY safety)
+- **Affected:** R10 (one new AC)
+- **Summary:** Tier 19 `/ck:check` flagged F-127: the T-158 single-owner click-row resolver stores its content-top-Y offset in `ListModel.contentTopY int` with a zero-value default. If a future refactor drops the `WithContentTopY(l.ListContentTopY())` wire in `app/model.go:177,666`, a y=0 header click silently maps back to row 0 — the exact 2-row-offset bug T-158 closed reappears with no test to catch it. New AC requires the list to reject clicks when the offset has not been injected (panic on unset OR explicit "wired" flag). Adds defensive lower bound to the single-owner contract.
+- **Driven by:** `/ck:check` run 2026-04-19 on Tier 19, finding F-127. Paired task T-163.
 
 ### 2026-04-18 — Revision (R10 click-row alignment bug)
 - **Affected:** R10

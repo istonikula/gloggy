@@ -1,6 +1,6 @@
 ---
 created: "2026-04-18T09:40:17+03:00"
-last_edited: "2026-04-19T01:15:00+03:00"
+last_edited: "2026-04-19T10:18:34+03:00"
 ---
 
 # Review Findings
@@ -200,3 +200,46 @@ Source: T-159 HUMAN sign-off executed via tui-mcp on `logs/small.log` at 140x35 
 - F-122 is the more consequential of the three — it's a real UX regression surface (clicking the visible divider doesn't drag) that has been masked by unit tests agreeing with the router's (incorrect) divider column. Fixing it is a small-scope follow-up tier.
 - F-123 fix is one constant + one test. Bundle with F-122 in the same follow-up.
 - F-124 is tooling-only; carry forward as a note in the sign-off convention.
+
+---
+
+## /ck:check run 2026-04-19 (post-Tier 19 — divider-coord alignment + drag state-machine hardening)
+
+Source: automated `/ck:check` after Tier 19 close (T-155..T-159 all DONE; 548/548 tests P). Surveyor verdict **REVISE**: 25/27 Tier-19 ACs MET, R15 AC 2 + AC 5 PARTIAL due to F-122 + F-123 which were deferred-during-loop but are real user-visible gaps. Inspector adds 5 new findings (F-125..F-130), re-confirms F-122 as P1 Tier-accept blocker, and withdraws F-131 after second audit.
+
+| Finding | Severity | File:line | Status | Addressed by |
+|---|---|---|---|---|
+| F-122: Router/renderer divider-col mismatch (re-confirmed P1) | P1 | `internal/ui/appshell/mouse.go:66-67` vs `internal/ui/app/model.go:178` + `internal/ui/entrylist/list.go:308` | NEW | T-160 |
+| F-123: `RatioFromDragY` off-by-one inverse of `PaneHeight` | P2 | `internal/ui/appshell/ratiokeys.go:146` | NEW | T-161 |
+| F-125: Drag state survives pane auto-close on terminal resize | P2 | `internal/ui/app/model.go:157-188, 498-521` | NEW | T-162 |
+| F-127: `rowForY` has no defensive lower bound when `contentTopY` unset | P3 | `internal/ui/entrylist/list.go:280-291` | NEW | T-163 |
+| F-129: Bare Press+Release on divider rewrites config (no-motion write amplification) | P3 | `internal/ui/app/model.go:502-506` | NEW | T-164 |
+| F-126: `RatioFromDragY/X` silently shadows persisted ratio when termHeight/Width ≤ 0 | P3 | `internal/ui/appshell/ratiokeys.go:117-119, 142-154` | NEW | T-165 |
+| F-130: Unreachable `if detail > termHeight` branch in `RatioFromDragY` (dead code) | P3 | `internal/ui/appshell/ratiokeys.go:149-151` | NEW | T-166 |
+| F-128: `|` at detail=0.50 flips across focus (both preset lists alias) | P3 | `internal/ui/appshell/ratiokeys.go:78-98` | DEFERRED | — (doc/kit tightening only; picked up later if user surfaces confusion) |
+| F-131: R12 AC 6 clamp wording | P3 | n/a | WITHDRAWN | — (inspector audit: wording is letter-correct) |
+| DESIGN VIOLATION: `DESIGN.md §5` shows 3-preset set | P3 | `DESIGN.md §5` | NEW | T-167 |
+| DESIGN VIOLATION: `DESIGN.md §9` authoritative keymap shows 3-preset set + no R15 mouse-drag row | P3 | `DESIGN.md §9` | NEW | T-167 |
+| F-121: R15 AC 4 below-mode text directionally inverted | P3 (kit-text) | `context/kits/cavekit-app-shell.md` R15 AC 4 | FIXED | T-168 (kit-text edit landed inline in this /ck:check — AC 4 now reads "dragging up grows the detail pane") |
+
+### Kit revisions in this run
+
+- **cavekit-app-shell.md R15** — 5 new ACs added:
+  - **Renderer-truth divider-col assertion** (F-122): the router's divider cell MUST coincide with Lipgloss's rendered `│` glyph; a test must render the layout, locate the glyph programmatically, and assert `MouseRouter.Zone(glyphX, midY) == ZoneDivider` across presets `{0.10, 0.30, 0.50, 0.80}` in both orientations at 140x35 and 80x24.
+  - **Inverse-math invariant** (F-123): when `RatioFromDragY/X` inverts `PaneHeight/Width = int(termDim * ratio)`, a Press on the currently rendered divider row/col MUST yield the current ratio unchanged.
+  - **Mid-drag auto-close termination** (F-125): if R7 auto-closes the pane mid-drag, drag state must die — subsequent Motion is swallowed, no ratio mutation, no config write on eventual Release.
+  - **No-motion-no-persist** (F-129): bare Press+Release with no intermediate Motion must not rewrite config.
+  - **Degenerate-dim guard** (F-126): drag helpers preserve current ratio when termWidth/Height ≤ 0 rather than jumping to `RatioDefault`.
+- **cavekit-app-shell.md R15 AC 4** — text flipped from "dragging down grows detail" to "dragging up grows" to match physical layout (closes F-121 kit-text inversion).
+- **cavekit-entry-list.md R10** — 1 new AC: list MUST reject clicks when `contentTopY` has not been injected — defensive lower bound on the single-owner resolver contract (closes F-127 regression vector).
+
+### Context carried forward for the next `/ck:make`
+
+- Tier 20 tasks T-160..T-170 address F-122, F-123, F-125, F-126, F-127, F-129, F-130, DESIGN §5/§9 sync, and F-121 placeholder. Execute T-160 first — P1 Tier-accept blocker; F-122 fix also anchors the renderer-truth test that prevents the whole "unit-tests agree with router" failure mode.
+- T-161 is a one-constant flip (+ Press-at-current-Y test) — parallelizable with T-160 (different files).
+- T-162 (mid-drag auto-close) and T-164 (no-motion no-save) and T-165 (degenerate-dim guard) are all `app/model.go` + `appshell/ratiokeys.go` touches — inline-sequence to avoid merge friction.
+- T-163 (unset-contentTopY safety) and T-166 (dead-code removal) are disjoint-file XS tasks; can parallelize.
+- T-167 (DESIGN.md §5 + §9) waits on T-155 being landed (it already is) — touch DESIGN.md after kit amendments so docs match code.
+- T-170 HUMAN gate: verify F-122 + F-123 + F-125 + F-129 behaviour via tui-mcp; F-124 (tui-mcp lacks Motion events) means motion-phase AC 2 continues to rely on unit-test evidence.
+- F-128 (`|` flips across focus at 0.50) is deferred — debatable UX (user may find the aliasing natural); bring back if confusion surfaces.
+- F-131 withdrawn after second audit; kept in the row above for traceability.

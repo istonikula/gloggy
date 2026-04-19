@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T22:44:21+03:00"
+last_edited: "2026-04-19T10:18:34+03:00"
 ---
 
 # Cavekit: App Shell
@@ -190,13 +190,18 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto] Pressing and holding mouse-button-1 on the divider cell initiates a drag
 - [ ] [auto] While dragging, mouse-move events update the active pane ratio live — `height_ratio` in below-mode, `width_ratio` in right-mode — proportional to cursor displacement along the drag axis
 - [ ] [auto] Releasing mouse-button-1 writes the final ratio to the config file exactly once per drag (not once per mouse-move frame)
-- [ ] [auto] Drag works in below-mode (horizontal divider, vertical drag axis): dragging down grows the detail pane, dragging up shrinks it
+- [ ] [auto] Drag works in below-mode (horizontal divider, vertical drag axis): dragging **up** grows the detail pane (the divider moves up, list shrinks, detail area grows), dragging **down** shrinks it — the detail pane is physically below the divider, so divider motion and detail size are inversely related
 - [ ] [auto] Drag works in right-mode (vertical divider, horizontal drag axis): dragging left grows the detail pane, dragging right shrinks it
 - [ ] [auto] Dragging does not change which pane has keyboard focus
 - [ ] [auto] Dragging past the `[0.10, 0.80]` clamp pins the ratio at the boundary; further cursor motion in the same direction is a no-op until the cursor re-enters the valid range
 - [ ] [auto] Starting a drag with the detail pane closed is a silent no-op — there is no divider cell to grab
+- [ ] [auto] The router's divider cell MUST coincide with the renderer's visible divider glyph — a test MUST render the layout, locate the visible divider glyph (`│` in right-split at mid-Y; the horizontal border row in below-mode), and assert `MouseRouter.Zone(glyphX, glyphY) == ZoneDivider` across all preset ratios {0.10, 0.30, 0.50, 0.80} in both orientations at 140x35 and 80x24. Synthetic unit tests that derive press coordinates from the router's own helpers are insufficient — they agree with the router by construction and cannot detect router/renderer drift
+- [ ] [auto] When `RatioFromDragY` / `RatioFromDragX` is inverted against the layout's forward ratio→size math (e.g. `HeightModel.PaneHeight = int(termHeight * ratio)`), a Press directly on the currently rendered divider row/col MUST yield the current ratio unchanged — no step-snap on Press-without-motion
+- [ ] [auto] If the detail pane auto-closes (R7) mid-drag — e.g. a terminal resize takes the pane's computed dimension below the minimum — the drag session MUST terminate silently: subsequent Motion events are swallowed, no ratio mutation occurs, and no config write fires on the eventual Release
+- [ ] [auto] A bare Press+Release on the divider cell with no intermediate Motion MUST NOT rewrite the config file — persistence fires only when the drag actually changed the ratio
+- [ ] [auto] When the terminal's active dimension is degenerate (termHeight or termWidth ≤ 0; this window exists briefly at startup before the first WindowSizeMsg) the drag helpers MUST preserve the current ratio rather than jumping to `RatioDefault` — no silent shadowing of a persisted value
 - [ ] [human, tui-mcp] Verify via tui-mcp first: launch the TUI on `logs/small.log`, open the detail pane, use `send_mouse` to emit a press-hold on the divider cell, a series of move events to the target coordinate, and a release; `snapshot` before and after and verify the divider moved, pane dimensions changed proportionally to the drag distance, and the config file reflects the new ratio. Repeat for both below-mode and right-mode. If `send_mouse` cannot reliably emit the button-hold + move + release sequence on this platform, record the limitation in a comment and fall back to direct human sign-off (per the user's HUMAN-sign-off-via-tui-mcp preference)
-**Dependencies:** cavekit-detail-pane (applies ratio change, R6), cavekit-config (live write-back, R6), R6 (mouse routing to the divider cell), R12 (shared clamp range and ratio storage)
+**Dependencies:** cavekit-detail-pane (applies ratio change, R6), cavekit-config (live write-back, R6), R6 (mouse routing to the divider cell), R7 (auto-close on minimum-dimension underflow), R12 (shared clamp range and ratio storage)
 
 ## Out of Scope
 
@@ -213,6 +218,11 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+### 2026-04-19 — Revision (R15 hardening from Tier 19 `/ck:check`)
+- **Affected:** R15 (5 new ACs, AC 4 text inverted to match physical layout)
+- **Summary:** Tier 19 HUMAN sign-off surfaced three real behavioural gaps that T-156 unit tests did not catch because the tests used the router's own coordinate helpers to synthesize press/motion events — agreeing with the router's model trivially. R15 expanded with: (a) **renderer-truth divider-col assertion** closing F-122 P1 (router's divider col and Lipgloss-rendered `│` col must match across all presets in both orientations), (b) **inverse-math invariant** closing F-123 P2 (`RatioFromDragY/X` must be an exact inverse of `PaneHeight/Width` forward math — Press on current divider yields current ratio, not a one-step snap), (c) **mid-drag auto-close termination** closing F-125 P2 (drag state must die when R7 auto-closes the pane mid-gesture — no ratio mutation, no config write), (d) **no-motion-no-persist** closing F-129 P3 (bare Press+Release on divider must not rewrite config), (e) **degenerate-dimension guard** closing F-126 P3 (startup termHeight/Width=0 window must not shadow persisted ratio with `RatioDefault`). AC 4 text flipped from "dragging down grows the detail pane" to "dragging up grows" — T-156's implementation is physically correct (detail is below the divider; divider-up = detail-grows), the prior kit text was a directional inversion logged as F-121.
+- **Driven by:** `/ck:check` run 2026-04-19 on Tier 19, findings F-121, F-122, F-123, F-125, F-126, F-129. Paired tasks T-160..T-164, T-168 (below).
 
 ### 2026-04-18 — Revision (R12 focus-aware keyboard resize + new R15 mouse drag + R6 drag delegation)
 - **Affected:** R6, R12 (rewritten), new R15
