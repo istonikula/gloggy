@@ -59,6 +59,57 @@ func TestGetTheme_AllBuiltins(t *testing.T) {
 	}
 }
 
+// T-177 (cavekit-config.md R4 AC 16): each theme constructor cites its
+// canonical upstream source via a named exported constant, discoverable
+// at test time. Each citation must contain an `https://` URL and a
+// canonical-identifier keyword (variant name, flavor, or legacy-palette
+// label). This is a code-review drift tripwire — if a contributor edits
+// a palette hex but forgets to update the citation, the source/value
+// pair is still locally correct; if they edit the citation but forget
+// the palette, the test still holds. The real drift guard is that every
+// hex now routes through a named palette field, so moving to a different
+// variant becomes a visible field-rename, not a silent hex edit.
+func TestTheme_CanonicalSourceCitations_Discoverable(t *testing.T) {
+	cases := []struct {
+		theme       string
+		source      string
+		keywordsAny []string
+	}{
+		{"tokyo-night", TokyoNightSource, []string{"night"}},
+		{"catppuccin-mocha", CatppuccinMochaSource, []string{"mocha"}},
+		{"material-dark", MaterialDarkSource, []string{"Astorino", "material"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.theme, func(t *testing.T) {
+			if tc.source == "" {
+				t.Fatal("citation constant empty")
+			}
+			if !strings.Contains(tc.source, "https://") {
+				t.Errorf("citation missing https:// URL: %q", tc.source)
+			}
+			matched := false
+			for _, kw := range tc.keywordsAny {
+				if strings.Contains(strings.ToLower(tc.source),
+					strings.ToLower(kw)) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				t.Errorf("citation missing canonical keyword %v: %q",
+					tc.keywordsAny, tc.source)
+			}
+			if got := Source(tc.theme); got != tc.source {
+				t.Errorf("Source(%q) = %q, want %q", tc.theme, got, tc.source)
+			}
+		})
+	}
+
+	if got := Source("nonexistent"); got != "" {
+		t.Errorf("Source(unknown) = %q, want empty", got)
+	}
+}
+
 // T-178 (cavekit-config.md R4 AC 17): catppuccin-mocha's FocusBorder
 // is the upstream Lavender accent (#b4befe), not Blue (#89b4fa). All
 // official catppuccin ports (neovim, lazygit, btop) use Lavender for
