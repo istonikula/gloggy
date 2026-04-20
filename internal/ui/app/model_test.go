@@ -1280,6 +1280,143 @@ func TestModel_J_FromList_WithPaneOpen_ReRendersPane(t *testing.T) {
 	}
 }
 
+// ---------- R14 (cavekit-entry-list): pane re-sync on tail-follow snap ----------
+
+// jsonEntry builds a minimal JSON entry whose Raw unmarshals cleanly so
+// the detail pane's RenderJSON path (not the raw fallback) runs. The
+// `msg` field is echoed into the rendered JSON so tests can assert the
+// pane content changed to match a new entry.
+func jsonEntry(line int, msg string) logsource.Entry {
+	return logsource.Entry{
+		LineNumber: line,
+		IsJSON:     true,
+		Level:      "INFO",
+		Msg:        msg,
+		Raw:        []byte(`{"level":"INFO","msg":"` + msg + `"}`),
+	}
+}
+
+// cavekit-entry-list R14 (AC: selection signal on tail-follow snap):
+// when a tail append snaps the cursor to the new last entry AND the
+// detail pane is open, the pane must re-render with that new entry in
+// the same frame — no keypress required. Before this AC was added, the
+// cursor advanced but the pane kept showing the previous entry.
+func TestModel_TailFollow_TailMsg_PaneResyncsOnAppend(t *testing.T) {
+	m := newModel()
+	m = resize(m, 120, 30)
+
+	initial := []logsource.Entry{
+		jsonEntry(1, "alpha-msg"),
+		jsonEntry(2, "beta-msg"),
+		jsonEntry(3, "gamma-msg"),
+	}
+	m = m.SetEntries(initial)
+
+	m = key(m, "G")
+	if m.list.Cursor() != 2 {
+		t.Fatalf("precondition: cursor at last entry, got %d", m.list.Cursor())
+	}
+	m = key(m, "enter")
+	if !m.pane.IsOpen() {
+		t.Fatal("precondition: pane open after Enter")
+	}
+	if !containsSubstring(m.pane.View(), "gamma-msg") {
+		t.Fatalf("precondition: pane shows gamma-msg; got: %q", m.pane.View())
+	}
+
+	appended := jsonEntry(4, "delta-unique")
+	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entry: appended}))
+
+	if m.list.Cursor() != 3 {
+		t.Errorf("cursor should snap to new last entry (3), got %d", m.list.Cursor())
+	}
+	if !m.pane.IsOpen() {
+		t.Error("pane should still be open after append")
+	}
+	post := m.pane.View()
+	if !containsSubstring(post, "delta-unique") {
+		t.Errorf("pane must re-render with appended entry (delta-unique); got: %q", post)
+	}
+	if containsSubstring(post, "gamma-msg") {
+		t.Errorf("pane must not keep rendering previous entry (gamma-msg); got: %q", post)
+	}
+}
+
+// cavekit-entry-list R14 symmetry: same re-sync invariant for
+// background-load batches (EntryBatchMsg). Tests the same code path as
+// TailMsg but via the LoadFileStreamMsg wrapper used during non-follow
+// file load.
+func TestModel_TailFollow_BatchMsg_PaneResyncsOnAppend(t *testing.T) {
+	m := newModel()
+	m = resize(m, 120, 30)
+
+	initial := []logsource.Entry{
+		jsonEntry(1, "alpha-msg"),
+		jsonEntry(2, "beta-msg"),
+	}
+	m = m.SetEntries(initial)
+
+	m = key(m, "G")
+	m = key(m, "enter")
+	if !m.pane.IsOpen() || m.list.Cursor() != 1 {
+		t.Fatalf("precondition: cursor=%d pane=%v", m.list.Cursor(), m.pane.IsOpen())
+	}
+
+	batch := logsource.EntryBatchMsg{Entries: []logsource.Entry{
+		jsonEntry(3, "charlie-msg"),
+		jsonEntry(4, "delta-unique"),
+	}}
+	m = send(m, logsource.NewLoadFileStreamMsgForTest(batch))
+
+	if m.list.Cursor() != 3 {
+		t.Errorf("cursor should snap to new last entry (3), got %d", m.list.Cursor())
+	}
+	post := m.pane.View()
+	if !containsSubstring(post, "delta-unique") {
+		t.Errorf("pane must re-render with last appended entry (delta-unique); got: %q", post)
+	}
+	if containsSubstring(post, "beta-msg") {
+		t.Errorf("pane must not keep rendering pre-append entry (beta-msg); got: %q", post)
+	}
+}
+
+// cavekit-entry-list R14: signal must fire only when cursor actually
+// moved. With the cursor NOT at the last entry (follow disengaged), an
+// append must NOT re-render the pane — otherwise every tail event
+// silently clobbers the user's pane selection while they are reading a
+// historical entry.
+func TestModel_TailFollow_NotAtTail_PaneNotResynced(t *testing.T) {
+	m := newModel()
+	m = resize(m, 120, 30)
+
+	initial := []logsource.Entry{
+		jsonEntry(1, "alpha-msg"),
+		jsonEntry(2, "beta-msg"),
+		jsonEntry(3, "gamma-msg"),
+	}
+	m = m.SetEntries(initial)
+
+	// Cursor starts at 0 — NOT at tail. Open pane on alpha.
+	m = key(m, "enter")
+	if !m.pane.IsOpen() || !containsSubstring(m.pane.View(), "alpha-msg") {
+		t.Fatalf("precondition: pane open on alpha; got: %q", m.pane.View())
+	}
+
+	appended := jsonEntry(4, "delta-unique")
+	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entry: appended}))
+
+	if m.list.Cursor() != 0 {
+		t.Errorf("cursor must NOT move when pre-append cursor < tail, got %d", m.list.Cursor())
+	}
+	post := m.pane.View()
+	if !containsSubstring(post, "alpha-msg") {
+		t.Errorf("pane must still show alpha-msg (user's non-tail selection preserved); got: %q", post)
+	}
+	if containsSubstring(post, "delta-unique") {
+		t.Errorf("pane must NOT render appended entry (delta-unique) when follow disengaged; got: %q", post)
+	}
+}
+
 // ---------- T-127 (F-020): hidden-fields wiring ----------
 
 // T-127 (F-020): openPane wires `visibility.HiddenFields()` into the pane

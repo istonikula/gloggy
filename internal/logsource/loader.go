@@ -113,3 +113,13 @@ func drainOne(ch <-chan tea.Msg) tea.Cmd {
 		return LoadFileStreamMsg{inner: msg, ch: ch}
 	}
 }
+
+// NewLoadFileStreamMsgForTest constructs a LoadFileStreamMsg carrying the
+// given inner message (typically an EntryBatchMsg, LoadProgressMsg, or
+// LoadDoneMsg) for tests that drive the load-stream code path without a
+// real file read. The returned message's Next() cmd reads from a nil
+// channel and will block forever — callers should ignore the tea.Cmd
+// returned from Update.
+func NewLoadFileStreamMsgForTest(inner tea.Msg) LoadFileStreamMsg {
+	return LoadFileStreamMsg{inner: inner}
+}

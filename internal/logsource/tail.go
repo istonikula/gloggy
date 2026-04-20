@@ -157,3 +157,12 @@ func drainTail(ch <-chan tea.Msg) tea.Cmd {
 		return TailStreamMsg{inner: msg, ch: ch}
 	}
 }
+
+// NewTailStreamMsgForTest constructs a TailStreamMsg carrying the given
+// inner message (typically a TailMsg or TailStopMsg) for tests that drive
+// the tail-stream code path without a real fsnotify watcher. The returned
+// message's Next() cmd reads from a nil channel and will block forever —
+// callers should ignore the tea.Cmd returned from Update.
+func NewTailStreamMsgForTest(inner tea.Msg) TailStreamMsg {
+	return TailStreamMsg{inner: inner}
+}
