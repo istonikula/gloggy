@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-20T20:19:44+03:00"
+last_edited: "2026-04-20T20:48:01+03:00"
 ---
 
 # Cavekit Overview: gloggy
@@ -12,7 +12,7 @@ A terminal UI tool for interactively analyzing JSONL log files during local deve
 | Domain         | File                        | Reqs | Status | Description                                              |
 |----------------|-----------------------------|------|--------|----------------------------------------------------------|
 | log-source     | cavekit-log-source.md       | 8    | DRAFT  | File/stdin reading, line classification, JSONL parsing   |
-| entry-list     | cavekit-entry-list.md       | 11   | DRAFT  | Compact scrollable list with two-level cursor and marks  |
+| entry-list     | cavekit-entry-list.md       | 14   | DRAFT  | Compact scrollable list with two-level cursor and marks  |
 | detail-pane    | cavekit-detail-pane.md      | 10   | DRAFT  | Pretty-printed JSON detail view with in-pane search      |
 | filter-engine  | cavekit-filter-engine.md    | 7    | DRAFT  | Include/exclude filter model and filter panel overlay    |
 | config         | cavekit-config.md           | 7    | DRAFT  | TOML config with themes, field visibility, live writes   |
@@ -62,8 +62,8 @@ Note: right-split orientation introduces a vertical divider and horizontal mouse
 ## Coverage Summary
 
 - **Total domains:** 6
-- **Total requirements:** 58 (2026-04-18: +1 new app-shell R15; resize kit revision: app-shell R12/R15, entry-list R10)
-- **Total acceptance criteria:** 292 (2026-04-20: +2 log-source R8 AC4/AC5 from backprop #6; was 290)
+- **Total requirements:** 59 (2026-04-20: +1 new entry-list R14 tail-follow from backprop #7; was 58)
+- **Total acceptance criteria:** 299 (2026-04-20: +7 entry-list R14 from backprop #7; was 292)
 
 ## Verification Conventions
 

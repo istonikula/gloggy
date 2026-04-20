@@ -1,5 +1,5 @@
 ---
-last_edited: "2026-04-20T20:19:44+03:00"
+last_edited: "2026-04-20T20:48:01+03:00"
 ---
 
 # Backpropagation Log
@@ -141,3 +141,34 @@ test, and links the fix commit. Audit trail for the iteration loop.
 - **Pattern category:** integration (logsource lifecycle vs. UI lifecycle; Scanner EOF semantics)
 - **Fix commit (tests):** `30f743b`
 - **Fix commit (impl + harness):** `f98c116`
+
+---
+
+## #7 — Entrylist viewport stays frozen when new lines are appended at the tail (2026-04-20)
+
+- **Failure source:** user report via `/ck:revise --trace` ("with big enough log file that fills the screen and I navigate to the last line, when new lines are appended it is not shown any other way than the line counter on the top bar, then when I move the cursor the newly appended lines start appearing")
+- **Failure description:** `gloggy -f <file>` on a file that overflows the viewport. User presses `G` to reach the tail. New lines appended to the file produce `TailMsg`s that reach the model (header entry count updates), but `entrylist.ListModel.AppendEntries` only bumps `TotalEntries` — it never touches `Cursor` or `Offset`. So the cursor is left mid-document, the viewport doesn't move, and the user sees nothing change in the list pane. Any cursor nudge (`j`/`k`) triggers a viewport recompute that finally reveals the new entries. No AC in R1–R13 covered viewport response to external entry arrival; R12 only legislated viewport during user-initiated navigation.
+- **Classification:** `missing_requirement` (R1–R13 had no rule for `AppendEntries` cursor/viewport semantics)
+- **Kit:** `cavekit-entry-list.md` → new R14 (Tail-Follow on Append)
+- **Spec change:** Added R14 legislating `less +F`-style tail-follow: if pre-append Cursor == TotalEntries-1, advance cursor to new last and run `followCursor` so the viewport scrolls with R12 scrolloff at the bottom edge; otherwise leave cursor and offset untouched. Empty-list first-append stays at Cursor=0/Offset=0. The existing header `[FOLLOW]` badge — previously lit for the entire session whenever `-f` was passed — is now wired to `followMode && IsAtTail()` at View time, giving users a live indicator of whether the list is auto-advancing. Any upward nav naturally pauses follow (cursor leaves last row → badge dark); `G` re-engages it.
+- **Regression tests (all in `internal/ui/entrylist/list_test.go`):**
+  - `TestAppendEntries_TailFollow_AdvancesCursorAndViewport` — 20 entries, `G`, append 5, assert Cursor==24 AND Offset covers the last row AND Offset changed. Fails on pre-fix (Cursor stays at 19).
+  - `TestAppendEntries_NotAtTail_NoFollow` — mid-list cursor, append 5, assert Cursor + Offset unchanged. Passes both pre- and post-fix (defensive — prevents over-correction that would drag the cursor on every tail append regardless of position).
+  - `TestAppendEntries_EmptyList_FirstAppend` — empty list + append 5, assert Cursor=0/Offset=0. Anchors the empty-state behavior.
+  - `TestIsAtTail_ReflectsCursorAtLast` + `TestIsAtTail_EmptyIsFalse` — direct unit tests for the `IsAtTail()` accessor that drives the header badge.
+  - `TestAppendEntries_PauseWithK_ResumeWithG` — end-to-end flow: G (follow) → append (advance) → k (pause) → append (no advance) → G (resume) → append (advance). Fails pre-fix at the second append (cursor never moved off 19 in the first place).
+- **Verification:** 3 of 6 tests fail before fix (compile-stub + 2 pre-existing passes). After fix all 6 pass. Full suite 630/630 (was 624; +6 new). HUMAN sign-off via tui-mcp on `/tmp/r14-live.jsonl` at 140x32: initial startup shows `[FOLLOW]` lit at entry 40 (last). External append of 5 lines → viewport shifts from rows 13-40 to 18-45, `[FOLLOW]` still on, no keypress sent. Press `k` → `[FOLLOW]` disappears, cursor at 44. External append of 5 more → header counts 50 but viewport unchanged at 18-45. Press `G` → `[FOLLOW]` returns, viewport jumps to 23-50, cursor at 50. External append of 3 more → viewport follows to 26-53, `[FOLLOW]` still lit.
+- **Code change:**
+  - `internal/ui/entrylist/list.go` — `AppendEntries` now computes `wasAtTail := oldLen > 0 && Cursor == oldLen-1` before extending `m.entries`; if true, advances Cursor to new last and runs `followCursor`. New `IsAtTail()` accessor returns `TotalEntries > 0 && Cursor == TotalEntries-1`.
+  - `internal/ui/app/model.go:640-644` — render-time header chain extended with `.WithFollow(m.followMode && m.list.IsAtTail())`. The one-time constructor-side `.WithFollow(followMode)` on line 124 is now redundant but harmless; the render-time call always overrides.
+- **Files touched:**
+  - `internal/ui/entrylist/list.go` (AppendEntries + IsAtTail)
+  - `internal/ui/entrylist/list_test.go` (6 new tests)
+  - `internal/ui/app/model.go` (render-time header wire)
+  - `internal/ui/entrylist/CLAUDE.md` (R14 reference)
+  - `context/kits/cavekit-entry-list.md` (R14 + changelog)
+  - `context/kits/cavekit-overview.md` (R count 58→59, AC count 292→299, entry-list domain count 11→14)
+  - `.cavekit/history/backprop-log.md` (this entry)
+- **Pattern category:** integration (external event source → UI state update: `TailMsg`/`EntryBatchMsg` → `AppendEntries` cursor/viewport response). **Second `integration` entry in a row** (#6 also `integration`). **Watch at #8**: if the next trace is also `integration`, escalate to a cross-kit rule at the brainstorming layer covering "external arrival → UI state invariants" across all kits.
+- **Fix commit (tests):** `9e984ca`
+- **Fix commit (impl):** `14cd09a`

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T10:18:34+03:00"
+last_edited: "2026-04-20T20:48:01+03:00"
 ---
 
 # Cavekit: Entry List
@@ -158,6 +158,18 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [human] On `logs/small.log`, pressing `/` then typing a substring of a known log message visibly highlights the matching rows, shows `(cur/total)`, and `n`/`N` scrolls the cursor onto each match with scrolloff context preserved
 **Dependencies:** cavekit-config (`SearchHighlight` theme token), cavekit-app-shell (R13 cross-pane `/` routing — routes `/` to list when list focused and detail not focused), R12 (scrolloff-respecting cursor move)
 
+### R14: Tail-Follow on Append
+**Description:** When `AppendEntries` delivers new entries, tail-follow semantics apply: if the cursor was on the last entry before the append, the cursor advances to the new last entry and the viewport scrolls so the new last entry is visible with R12 scrolloff at the bottom edge. If the cursor was NOT at the last entry, neither cursor nor viewport moves — the user's navigation context is preserved. Applies to both background load (`EntryBatchMsg`) and tail mode (`TailMsg`). Mirrors `less +F`. While tail mode is active AND the cursor is on the last entry, a `FOLLOW` indicator is rendered in the header; any upward cursor move (`k`, wheel up, `Ctrl-u`, `g`, level-prev, mark-prev, search-prev) clears it, and the user re-engages follow by pressing `G` to land back on the last entry.
+**Acceptance Criteria:**
+- [ ] [auto] When AppendEntries is called and Cursor == TotalEntries-1 before the call, afterwards Cursor == new TotalEntries-1
+- [ ] [auto] When AppendEntries is called and Cursor == TotalEntries-1 before the call, afterwards the viewport offset is adjusted so the new last entry is visible with R12 scrolloff at the bottom edge
+- [ ] [auto] When AppendEntries is called and Cursor < TotalEntries-1 before the call, Cursor is unchanged afterwards
+- [ ] [auto] When AppendEntries is called and Cursor < TotalEntries-1 before the call, the viewport Offset is unchanged afterwards
+- [ ] [auto] On an empty list (TotalEntries == 0), the first append leaves Cursor at 0 and Offset at 0
+- [ ] [auto] `IsAtTail()` reports true iff TotalEntries > 0 and Cursor == TotalEntries-1; the app wires `header.WithFollow(followMode && IsAtTail())` at every render so the `[FOLLOW]` badge tracks cursor state in real time
+- [ ] [human, tui-mcp] On a file under `logs/` with `gloggy -f`: initial tail-mode startup lands cursor on the last entry with `[FOLLOW]` visible in the header. Append lines externally and verify via `snapshot` that the viewport advances and new entries are visible without any keypress. Press `k` to leave the tail — `[FOLLOW]` disappears. Append again and verify the viewport does NOT advance (but header counts update). Press `G` — `[FOLLOW]` returns and subsequent appends follow again
+**Dependencies:** R12 (scrolloff — viewport adjustment uses the same `followCursor` path), cavekit-log-source R8 (tail emission), cavekit-app-shell R3 (header hosts the `[FOLLOW]` badge)
+
 ## Out of Scope
 
 - Detail pane rendering (handled by detail-pane)
@@ -174,6 +186,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - See also: cavekit-app-shell.md (layout, mouse routing)
 
 ## Changelog
+
+### 2026-04-20 — Revision (R14 tail-follow on append)
+- **Affected:** new R14
+- **Summary:** Added R14 to legislate `less +F`-style tail-follow behavior in the entry list. `AppendEntries` was previously stateless with respect to cursor/viewport — TotalEntries bumped, but Cursor and Offset never moved. With the cursor at the last entry in tail mode, incoming entries were invisible (the viewport stayed put) until the user nudged the cursor. R14 rules: follow iff pre-append Cursor == TotalEntries-1; any upward nav disengages follow; `G` re-engages it. Reuses R12 `followCursor` for bottom-edge scrolloff. Header `[FOLLOW]` badge wired to `followMode && IsAtTail()` at View time so it tracks cursor state live, giving users a visible indicator of when the list is auto-advancing and when it has paused. Verified end-to-end via tui-mcp: initial startup, paused-by-`k`, and resumed-by-`G` all exercised with external appends.
+- **Driven by:** User report after the Tier 25 tail-emission fix: "with big enough log file that fills the screen and I navigate to the last line, when new lines are appended it is not shown any other way than the line counter on the top bar, then when I move the cursor the newly appended lines start appearing". Backprop-log entry #7. Paired with test + fix commits on branch `fix-r14-tail-follow-viewport`.
 
 ### 2026-04-19 — Revision (R10 unset-contentTopY safety)
 - **Affected:** R10 (one new AC)
