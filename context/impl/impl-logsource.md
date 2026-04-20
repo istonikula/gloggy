@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T21:49:00Z"
+last_edited: "2026-04-20T20:19:44+03:00"
 ---
 # Implementation Tracking: log-source
 
@@ -20,3 +20,9 @@ Build site: context/plans/build-site.md
 | T-028 | DONE | logsource/tail.go — TailFile() with fsnotify; IsTailableFromStdin()=false; continuing line numbers |
 | T-070 | DONE | scanner.Err() checked in scanEntries, streamEntries, TailFile skip+event loops |
 | T-073 | DONE | TailFile accepts context.Context; goroutine exits on ctx.Done(); test verifies cleanup |
+| T-backprop-R8 | DONE | Backprop 2026-04-20: tail.go rewritten with persistent *os.File + fresh bufio.Reader per drain + `pending` buffer; model.go Init() passes startLineNum=0. Locks R8 AC1 (continuous emission across Write events), AC4 (initial content emit), AC5 (UI-level e2e). See .cavekit/history/backprop-log.md #1 |
+
+## Revision Log
+| Date | Commit | Issue | Cavekit Update | Plan Update |
+|------|--------|-------|----------------|-------------|
+| 2026-04-20 | 30f743b, f98c116 | Follow mode silent after first Write event; initial content not emitted; line 1 lost | R8 AC1 tightened, AC4 + AC5 added | T-backprop-R8 |

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-18T22:44:21+03:00"
+last_edited: "2026-04-20T20:19:44+03:00"
 ---
 
 # Cavekit Overview: gloggy
@@ -63,7 +63,7 @@ Note: right-split orientation introduces a vertical divider and horizontal mouse
 
 - **Total domains:** 6
 - **Total requirements:** 58 (2026-04-18: +1 new app-shell R15; resize kit revision: app-shell R12/R15, entry-list R10)
-- **Total acceptance criteria:** 290 (2026-04-18: +7 R7 + +7 R13; was 276)
+- **Total acceptance criteria:** 292 (2026-04-20: +2 log-source R8 AC4/AC5 from backprop #6; was 290)
 
 ## Verification Conventions
 

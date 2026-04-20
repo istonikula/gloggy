@@ -1,5 +1,5 @@
 ---
-last_edited: "2026-04-19T21:35:00+03:00"
+last_edited: "2026-04-20T20:19:44+03:00"
 ---
 
 # Backpropagation Log
@@ -111,3 +111,33 @@ test, and links the fix commit. Audit trail for the iteration loop.
 - **Pattern category:** spec-reality-drift / language-precision
 - **Fix commit (test):** `5b334f3`
 - **Fix commit (kit + DESIGN):** `11c4e6a`
+
+---
+
+## #6 — Tail/follow mode silent after first Write event; initial content never emitted (2026-04-20)
+
+- **Failure source:** user report via `/ck:revise --trace` ("tail/follow mode doesn't work — initial entries appear to render but subsequent appends are invisible")
+- **Failure description:** `gloggy -f <file>` on a non-empty file renders nothing on startup; the first filesystem Write event dumps the entire existing content (minus line 1) in one burst, which looked to the user like a normal initial load; every subsequent append produces zero new entries. Two superimposed bugs: (a) `internal/logsource/tail.go` used a single long-lived `bufio.Scanner`; once `scanner.Scan()` returns false on EOF after the first drain, the Scanner is terminal and never emits again, so the 2nd/Nth Write events are swallowed. (b) `internal/ui/app/model.go:146` called `TailFile(ctx, sourceName, 1)` in follow mode, which skipped line 1 permanently AND deferred emission of lines 2..N until the first Write arrived. Unit + integration tests existed (`tail_test.go::TestTailFile_DetectsNewLines`, `tests/integration/tail_test.go::TestTailMode_NewEntriesAppear`) but both used a single append batch with `startLineNum == initialLines`, masking both bugs.
+- **Classification:** `incomplete_criterion` (R8 AC1 — only required emission after one batch, not continuously) + `missing_criterion` (R8 AC4 — no coverage of initial content emission; R8 AC5 — no UI-level end-to-end assertion)
+- **Kit:** `cavekit-log-source.md` → R8 (Tail Mode)
+- **Spec change:** R8 description rewritten from "newly appended lines emitted" to "combined initial-emit + live-append mode, emission persists for the entire session". AC1 tightened to require emission across 1st, 2nd, and Nth Write events (explicit anti-EOF-deaf clause). AC4 added: "initial content emitted starting from line 1 before any subsequent append events". AC5 added: "entries reach `app.Model.entries` via Init/Update path, not just the logsource channel — at least one test drives the model directly across multiple appends".
+- **Regression tests:**
+  - `internal/logsource/tail_test.go::TestTailFile_MultipleAppendBatches` — 5-line file + 2 separate append batches, both drained and line numbers monotonic. Fails on the Scanner impl (2nd batch never arrives).
+  - `internal/logsource/tail_test.go::TestTailFile_EmitsInitialContent` — 5-line file + `startLineNum=0`, no appends, assert all 5 emitted. Fails on the Scanner impl (nothing emitted until Write).
+  - `internal/ui/app/tail_e2e_test.go::TestTailE2E_EntryListReceivesMultipleAppends` — drives `app.Model` via `Init`/`Update` across initial + 2 append batches; asserts `m.entries` grows correctly. Fails on the Scanner impl (hangs at 2nd batch).
+- **Verification:** All three tests fail before fix (timeouts / panic after 30s). All three pass after fix. Full suite 624/624. Manual verification via `tui-mcp`: launched `gloggy -f` on a 3-line seed file, confirmed 3 initial entries render immediately, then appended three separate batches (2 + 2 + 1 lines) and verified each batch appeared in the entrylist without restart. Final header shows "0/8 entries" across the session.
+- **Code change:**
+  - `internal/logsource/tail.go` rewritten: persistent `*os.File` across Write events; fresh `bufio.Reader` created per drain (sidesteps `bufio.Reader`'s sticky `io.EOF`); `pending` buffer carries trailing bytes without a newline across Write events so logger half-flushes don't emit truncated entries; initial drain runs before `watcher.Add` to avoid a race on Writes that land between `os.Open` and `Add`.
+  - `internal/ui/app/model.go:146` changed `TailFile(ctx, sourceName, 1)` → `TailFile(ctx, sourceName, 0)` so follow mode emits existing content on startup.
+  - `internal/ui/app/tail_e2e_test.go` pump harness rewritten as a single-goroutine cmd-chain driver — the naive two-goroutine harness abandoned in-flight blocking `tea.Cmd` calls and lost the channel msg they eventually produced.
+- **Files touched:**
+  - `internal/logsource/tail.go` (TailFile rewrite)
+  - `internal/ui/app/model.go` (Init startLineNum flip)
+  - `internal/logsource/tail_test.go` (two new unit regression tests)
+  - `internal/ui/app/tail_e2e_test.go` (new e2e regression test + harness)
+  - `context/kits/cavekit-log-source.md` (R8 description + AC1 tightening + AC4/AC5 additions + changelog)
+  - `context/impl/impl-logsource.md` (T-backprop-R8 row + revision log table)
+  - `.cavekit/history/backprop-log.md` (this entry)
+- **Pattern category:** integration (logsource lifecycle vs. UI lifecycle; Scanner EOF semantics)
+- **Fix commit (tests):** `30f743b`
+- **Fix commit (impl + harness):** `f98c116`

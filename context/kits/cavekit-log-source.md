@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-15T00:00:00Z"
+last_edited: "2026-04-20T20:19:44+03:00"
 ---
 
 # Cavekit: Log Source
@@ -70,11 +70,13 @@ Reading log data from a single file or stdin, classifying each line as structure
 **Dependencies:** none
 
 ### R8: Tail Mode
-**Description:** When invoked with the tail flag on a file, newly appended lines are detected and emitted as entries in real time. Tail mode is not available for stdin.
+**Description:** When invoked with the tail flag on a file, tail mode is a combined "initial emit + live append" mode: existing file content is emitted as entries on startup, and newly appended lines are detected and emitted as entries in real time for the duration of the session. Tail mode is not available for stdin.
 **Acceptance Criteria:**
-- [ ] [auto] With tail mode on a file, lines appended after initial load are emitted as new entries
-- [ ] [auto] Tail-mode entries carry correct line numbers continuing from the last initially loaded line
+- [ ] [auto] With tail mode on a file, lines appended by each filesystem write event after the watcher starts are emitted as new entries. Emission continues for the entire session — the 1st, 2nd, and Nth append batches must all produce entries (the watcher must not go deaf after any intermediate EOF)
+- [ ] [auto] Tail-mode entries carry correct line numbers continuing monotonically from line 1 (for initial content) through every subsequent append
 - [ ] [auto] Tail mode is not activated when reading from stdin, regardless of flags
+- [ ] [auto] When tail mode starts on a non-empty file, all existing lines are emitted as entries (starting from line 1) before any subsequent append events are processed. No line is skipped
+- [ ] [auto] Tail-mode entries reach the entry-list render path (`app.Model.entries`), not just the logsource emission channel. At least one test drives the model via `Init`/`Update` and asserts entry-list state grows after multiple append events
 **Dependencies:** R1, R6
 
 ## Out of Scope
@@ -93,3 +95,8 @@ Reading log data from a single file or stdin, classifying each line as structure
 - See also: cavekit-app-shell.md (invokes loading, displays progress/tail status)
 
 ## Changelog
+
+### 2026-04-20 — Backprop trace (single-failure)
+- **Affected:** R8 (AC1 tightened; AC4 + AC5 added; Description expanded)
+- **Summary:** Tail mode was user-visibly broken — follow mode on a non-empty file showed nothing until the first append, then dumped all initial content (minus line 1) in a single burst, then went silent for every subsequent append. Root cause: long-lived `bufio.Scanner` goes EOF-deaf, plus `app.Init()` passed `startLineNum=1` so line 1 was always lost and initial content was never emitted until a Write event. R8 AC1 only asserted "appended lines emitted" in a single-batch test; it did not require emission to survive multiple Write events or that initial content be emitted on startup. AC5 adds an end-to-end assertion that tail entries reach `app.Model.entries`, not just the logsource channel.
+- **Commits:** 30f743b (failing regression tests), f98c116 (fix + kit-referenced harness rewrite)
