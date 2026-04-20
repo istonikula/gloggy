@@ -68,8 +68,28 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 		var pending []byte
 		lineNum := 0
 
+		// drain reads all currently-available bytes from f and accumulates
+		// the resulting entries into a single batch, emitting one TailMsg
+		// at end-of-drain (cavekit-log-source.md R8 batched emission). This
+		// keeps cavekit-entry-list.md R14 tail-follow to one cursor snap
+		// per filesystem event — without batching, `gloggy -f bigfile`
+		// would snap the cursor N times during the initial drain, visible
+		// as a per-row scroll animation.
 		drain := func() error {
 			reader := bufio.NewReaderSize(f, 512*1024)
+			var batch []Entry
+			flush := func() error {
+				if len(batch) == 0 {
+					return nil
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case ch <- TailMsg{Entries: batch}:
+				}
+				batch = nil
+				return nil
+			}
 			for {
 				chunk, err := reader.ReadBytes('\n')
 				pending = append(pending, chunk...)
@@ -87,15 +107,11 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 						default:
 							e = NewRawEntry(lineCopy, lineNum)
 						}
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case ch <- TailMsg{Entries: []Entry{e}}:
-						}
+						batch = append(batch, e)
 					}
 				}
 				if errors.Is(err, io.EOF) {
-					return nil
+					return flush()
 				}
 				if err != nil {
 					return err
