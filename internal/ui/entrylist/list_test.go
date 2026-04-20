@@ -555,3 +555,132 @@ func TestListModel_T163_RowForY_Rejects_When_ContentTopY_Unset(t *testing.T) {
 		t.Errorf("after WithContentTopY(2), rowForY(5) = %d, want 3", got)
 	}
 }
+
+// R14 AC1+AC2: cursor on last entry => AppendEntries advances cursor to new
+// last and scrolls viewport (scrolloff at bottom edge applies).
+func TestAppendEntries_TailFollow_AdvancesCursorAndViewport(t *testing.T) {
+	const height = 10
+	m := defaultListModel(height).SetEntries(makeEntries(20))
+	// Land cursor on the last entry.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	if m.scroll.Cursor != 19 {
+		t.Fatalf("setup: cursor=%d, want 19", m.scroll.Cursor)
+	}
+
+	before := m.scroll.Offset
+	m = m.AppendEntries(makeEntries(5))
+
+	if m.scroll.Cursor != 24 {
+		t.Errorf("cursor after follow-append = %d, want 24 (new last)", m.scroll.Cursor)
+	}
+	// The last entry must be inside the viewport: Offset <= 24 < Offset+Height.
+	if m.scroll.Offset > 24 || 24 >= m.scroll.Offset+height {
+		t.Errorf("offset=%d with height=%d does not include cursor 24", m.scroll.Offset, height)
+	}
+	if m.scroll.Offset == before {
+		t.Errorf("offset did not advance (before=%d, after=%d)", before, m.scroll.Offset)
+	}
+}
+
+// R14 AC3+AC4: cursor not on last entry => AppendEntries leaves cursor and
+// offset untouched.
+func TestAppendEntries_NotAtTail_NoFollow(t *testing.T) {
+	const height = 10
+	m := defaultListModel(height).SetEntries(makeEntries(20))
+	// Move cursor into the middle via j presses (3 times), which will sit at
+	// cursor=3 with offset 0. (Cursor is definitely not on the last entry.)
+	for i := 0; i < 3; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	}
+	wantCursor := m.scroll.Cursor
+	wantOffset := m.scroll.Offset
+	if wantCursor >= m.scroll.TotalEntries-1 {
+		t.Fatalf("setup: cursor at tail; expected mid-list; cursor=%d total=%d", wantCursor, m.scroll.TotalEntries)
+	}
+
+	m = m.AppendEntries(makeEntries(5))
+
+	if m.scroll.Cursor != wantCursor {
+		t.Errorf("cursor moved: was %d, now %d (must not change when not at tail)", wantCursor, m.scroll.Cursor)
+	}
+	if m.scroll.Offset != wantOffset {
+		t.Errorf("offset moved: was %d, now %d (must not change when not at tail)", wantOffset, m.scroll.Offset)
+	}
+}
+
+// R14 AC5: empty list => first append leaves Cursor=0, Offset=0.
+func TestAppendEntries_EmptyList_FirstAppend(t *testing.T) {
+	m := defaultListModel(10)
+	if m.scroll.TotalEntries != 0 {
+		t.Fatalf("setup: total=%d, want 0", m.scroll.TotalEntries)
+	}
+	m = m.AppendEntries(makeEntries(5))
+	if m.scroll.Cursor != 0 {
+		t.Errorf("cursor after empty-first-append = %d, want 0", m.scroll.Cursor)
+	}
+	if m.scroll.Offset != 0 {
+		t.Errorf("offset after empty-first-append = %d, want 0", m.scroll.Offset)
+	}
+}
+
+// R14 AC6: IsAtTail reflects cursor==last; k breaks it, G restores it.
+func TestIsAtTail_ReflectsCursorAtLast(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(20))
+	if m.IsAtTail() {
+		t.Error("IsAtTail on fresh list (cursor=0) should be false")
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	if !m.IsAtTail() {
+		t.Error("IsAtTail after G should be true")
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	if m.IsAtTail() {
+		t.Error("IsAtTail after k should be false")
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	if !m.IsAtTail() {
+		t.Error("IsAtTail after return-to-tail (G) should be true again")
+	}
+}
+
+// R14 AC6 edge: empty list is not "at tail".
+func TestIsAtTail_EmptyIsFalse(t *testing.T) {
+	m := defaultListModel(10)
+	if m.IsAtTail() {
+		t.Error("IsAtTail on empty list must be false")
+	}
+}
+
+// R14 combined: after k, subsequent appends must NOT advance viewport even if
+// the user had been following. Restoring tail via G must re-engage.
+func TestAppendEntries_PauseWithK_ResumeWithG(t *testing.T) {
+	const height = 10
+	m := defaultListModel(height).SetEntries(makeEntries(20))
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	m = m.AppendEntries(makeEntries(3)) // following: advances
+	if m.scroll.Cursor != 22 {
+		t.Fatalf("setup: cursor=%d, want 22", m.scroll.Cursor)
+	}
+
+	// User presses k to pause.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	pausedCursor := m.scroll.Cursor
+	pausedOffset := m.scroll.Offset
+
+	// Appends arrive while paused — no follow.
+	m = m.AppendEntries(makeEntries(3))
+	if m.scroll.Cursor != pausedCursor {
+		t.Errorf("paused: cursor moved %d -> %d", pausedCursor, m.scroll.Cursor)
+	}
+	if m.scroll.Offset != pausedOffset {
+		t.Errorf("paused: offset moved %d -> %d", pausedOffset, m.scroll.Offset)
+	}
+
+	// User presses G to resume.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	m = m.AppendEntries(makeEntries(3))
+	wantLast := 20 + 3 + 3 + 3 - 1
+	if m.scroll.Cursor != wantLast {
+		t.Errorf("resumed: cursor=%d, want %d", m.scroll.Cursor, wantLast)
+	}
+}

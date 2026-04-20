@@ -137,6 +137,11 @@ func (m ListModel) AppendEntries(entries []logsource.Entry) ListModel {
 // Cursor returns the current cursor index into entries.
 func (m ListModel) Cursor() int { return m.scroll.Cursor }
 
+// IsAtTail reports whether the cursor is currently on the last entry (R14).
+// STUB (pre-fix): always returns false so the regression tests observably fail
+// until the follow logic lands. Replace with the real implementation.
+func (m ListModel) IsAtTail() bool { return false }
+
 // CursorPosition returns 1-based cursor position within visible set, or 0 when empty.
 func (m ListModel) CursorPosition() int {
 	vis := m.visibleEntries()
