@@ -1,5 +1,5 @@
 ---
-last_edited: "2026-04-20T20:48:01+03:00"
+last_edited: "2026-04-20T21:07:43+03:00"
 ---
 
 # Backpropagation Log
@@ -172,3 +172,38 @@ test, and links the fix commit. Audit trail for the iteration loop.
 - **Pattern category:** integration (external event source → UI state update: `TailMsg`/`EntryBatchMsg` → `AppendEntries` cursor/viewport response). **Second `integration` entry in a row** (#6 also `integration`). **Watch at #8**: if the next trace is also `integration`, escalate to a cross-kit rule at the brainstorming layer covering "external arrival → UI state invariants" across all kits.
 - **Fix commit (tests):** `9e984ca`
 - **Fix commit (impl):** `14cd09a`
+
+---
+
+## #8 — Detail pane stalls on previous entry when tail-follow snaps cursor (2026-04-20)
+
+- **Failure source:** user report via `/ck:revise --trace` ("when on last line (and thus in follow mode), if the details pane is also open, when new line comes in, the cursor is moved onto that, but details pane content is not updated")
+- **Failure description:** After #7 landed R14 tail-follow cursor+viewport snap, a second silent gap surfaced: with the detail pane open on the last entry and the user in tail-follow mode, an incoming `TailMsg` advanced the list cursor to the newly appended entry (R14 cursor snap), but the detail pane kept rendering the PRIOR entry. Pressing any navigation key (`j`/`k`/etc.) immediately re-synced the pane via `SelectionMsg`; the stall was purely "same-frame with append" and invisible to the header's entry counter. Root cause: `entrylist.ListModel.AppendEntries` moved the cursor internally but did not emit `SelectionMsg` (the signal R10 defines for cursor-change re-rendering). The app's `TailStreamMsg`/`LoadFileStreamMsg` handlers (`internal/ui/app/model.go:219-257`) called `AppendEntries` and updated the header, but had no awareness of whether the cursor had moved and no re-wiring of `m.pane.Open(entry)` on tail-follow snap. The pane's live-preview invariant from `cavekit-detail-pane.md` R1 ("With the pane open and the list focused, pressing j/k moves the list cursor and the detail pane re-renders with the new selection") silently broke whenever the cursor moved via tail-follow rather than keyboard input.
+- **Classification:** `missing_criterion` (R14 specified the cursor snap but no AC tied it to the R10 selection signal, leaving dependent UI consumers out of sync)
+- **Kit:** `cavekit-entry-list.md` → R14 (two new ACs appended)
+- **Spec change:** Added two ACs to R14. (1) [auto] Tail-follow cursor snap delivers the R10 selection signal to dependent consumers — detail pane re-renders in the same frame, fires exactly once per snap, only when the cursor actually moved, and applies symmetrically to `TailMsg` and `EntryBatchMsg`. (2) [human, tui-mcp] Sign-off: on `logs/small.log` with `gloggy -f`, open the pane on the last entry, append a line externally, verify via `snapshot` that the pane's content updates to the new entry in the same frame that the cursor advances; repeat in both below- and right-orientations.
+- **Regression tests (all in `internal/ui/app/model_test.go`):**
+  - `TestModel_TailFollow_TailMsg_PaneResyncsOnAppend` — opens pane on last entry (`gamma-msg`), sends `TailStreamMsg` wrapping a `TailMsg` for a new entry (`delta-unique`), asserts cursor advanced AND `pane.View()` contains `delta-unique` AND no longer contains `gamma-msg`. Fails pre-fix (pane still shows `gamma-msg`).
+  - `TestModel_TailFollow_BatchMsg_PaneResyncsOnAppend` — symmetric coverage for `LoadFileStreamMsg`/`EntryBatchMsg` path; opens pane at entry 1 (last of 2), sends a 2-entry batch, asserts pane re-renders with last appended entry. Fails pre-fix.
+  - `TestModel_TailFollow_NotAtTail_PaneNotResynced` — cursor starts at entry 0 (not tail), pane opens on alpha, tail append arrives, asserts cursor does NOT move AND pane still shows `alpha-msg` AND does NOT render `delta-unique`. Passes both pre- and post-fix (defensive pin — prevents an over-correction that would clobber the user's pane selection on every tail event regardless of cursor position).
+  - Two new exported test helpers added to support construction of the wrapper messages from outside `logsource`:
+    - `logsource.NewTailStreamMsgForTest(inner tea.Msg) TailStreamMsg`
+    - `logsource.NewLoadFileStreamMsgForTest(inner tea.Msg) LoadFileStreamMsg`
+- **Verification:** 2 of 3 new tests fail before fix (`TailMsg` + `BatchMsg` paths — pane keeps previous entry content). `NotAtTail` test passes pre- and post-fix. All 3 pass after fix. Full suite 633/633 across 11 packages (was 630; +3 new tests).
+- **Code change:**
+  - `internal/ui/app/model.go` — new `appendToList(entries)` helper captures `prevCursor := m.list.Cursor()`, delegates to `m.list.AppendEntries(entries)`, then if `pane.IsOpen() && Cursor != prevCursor` calls `m.pane.Open(entry)` with current scrolloff + hiddenFields so the re-render honours config just like the `entrylist.SelectionMsg` handler does. Both `TailStreamMsg`/`TailMsg` and `LoadFileStreamMsg`/`EntryBatchMsg` branches switched from inline `m.list = m.list.AppendEntries(...)` to `m = m.appendToList(...)`. Single-call-site for the R14→R10→detail-pane wiring so a future second append path cannot silently bypass the re-sync.
+  - `internal/logsource/tail.go` — new exported constructor `NewTailStreamMsgForTest` (creates a `TailStreamMsg{inner: inner}` with nil channel) so app-level tests can drive the tail-stream code path without a real fsnotify watcher.
+  - `internal/logsource/loader.go` — parallel `NewLoadFileStreamMsgForTest` for the batch-load path.
+- **Files touched:**
+  - `internal/ui/app/model.go` (appendToList helper + two call-site swaps)
+  - `internal/ui/app/model_test.go` (3 new tests + `jsonEntry` helper)
+  - `internal/logsource/tail.go` (test-only exported constructor)
+  - `internal/logsource/loader.go` (test-only exported constructor)
+  - `context/kits/cavekit-entry-list.md` (R14 + 2 new ACs + changelog)
+  - `context/kits/cavekit-overview.md` (AC count 299→301)
+  - `context/impl/impl-entry-list.md` (T-backprop-R14-signal row)
+  - `.cavekit/history/backprop-log.md` (this entry)
+- **Pattern category:** integration (kit-to-kit signal propagation: R14 cursor snap → R10 selection signal → detail-pane R1 live-preview). **Third consecutive `integration` entry** — #6 (external logsource → UI append), #7 (append → cursor/viewport snap), #8 (cursor snap → dependent pane re-render). All three describe the same abstract failure shape: an external/internal state change moves one UI invariant but the next-hop invariant in the chain isn't notified. **Escalation**: recommend a cross-kit rule at the brainstorming / sketch layer, e.g. an addition to `cavekit-overview.md` Cross-Reference Map or a new shared-conventions section, asserting "every kit that mutates UI state on an external signal must enumerate the dependent-consumer re-render contract, or explicitly document why no consumer depends on the mutated state." Would have caught #7 (entry-list didn't enumerate "detail pane re-renders on tail-follow snap") and #8 (still didn't after #7 was drafted).
+- **Fix commit (tests):** (next commit)
+- **Fix commit (impl):** (next commit)
+- **Fix commit (kit + log):** (this commit)

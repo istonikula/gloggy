@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-20T20:48:01+03:00"
+last_edited: "2026-04-20T21:07:43+03:00"
 ---
 
 # Cavekit: Entry List
@@ -167,6 +167,8 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] When AppendEntries is called and Cursor < TotalEntries-1 before the call, the viewport Offset is unchanged afterwards
 - [ ] [auto] On an empty list (TotalEntries == 0), the first append leaves Cursor at 0 and Offset at 0
 - [ ] [auto] `IsAtTail()` reports true iff TotalEntries > 0 and Cursor == TotalEntries-1; the app wires `header.WithFollow(followMode && IsAtTail())` at every render so the `[FOLLOW]` badge tracks cursor state in real time
+- [ ] [auto] When tail-follow snaps the cursor on AppendEntries (pre-append Cursor == TotalEntries-1), the entry-selection signal (R10) is delivered for the new last entry — i.e. any consumer that re-renders on selection (detail pane R1 live-preview) shows the newly appended entry without requiring a subsequent keypress. The signal fires exactly once per snap, and only when the cursor actually moved (no spurious re-renders when Cursor < TotalEntries-1 and the cursor is unchanged). Applies symmetrically to tail mode (`TailMsg`) and background load (`EntryBatchMsg`).
+- [ ] [human, tui-mcp] On `logs/small.log` with `gloggy -f`: open the detail pane on the last entry (Enter), append a line externally — verify via `snapshot` that the detail pane content updates to the appended entry (not the previous one) in the same frame that the cursor advances. Repeat in both below- and right-orientations.
 - [ ] [human, tui-mcp] On a file under `logs/` with `gloggy -f`: initial tail-mode startup lands cursor on the last entry with `[FOLLOW]` visible in the header. Append lines externally and verify via `snapshot` that the viewport advances and new entries are visible without any keypress. Press `k` to leave the tail — `[FOLLOW]` disappears. Append again and verify the viewport does NOT advance (but header counts update). Press `G` — `[FOLLOW]` returns and subsequent appends follow again
 **Dependencies:** R12 (scrolloff — viewport adjustment uses the same `followCursor` path), cavekit-log-source R8 (tail emission), cavekit-app-shell R3 (header hosts the `[FOLLOW]` badge)
 
@@ -186,6 +188,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - See also: cavekit-app-shell.md (layout, mouse routing)
 
 ## Changelog
+
+### 2026-04-20 — Revision (R14 selection signal on tail-follow snap)
+- **Affected:** R14 (two new ACs)
+- **Summary:** R14 specified cursor + viewport snap on AppendEntries but omitted the selection signal. Consequence: with the detail pane open and cursor on the last entry, an incoming tail/batch append advanced the cursor but the pane kept rendering the previous entry until the user pressed a key — silently violating detail-pane R1's live-preview invariant ("With the pane open and the list focused, pressing j/k moves the list cursor and the detail pane re-renders with the new selection"). New ACs tie the R10 selection signal to every tail-follow cursor snap (fire exactly once, only when cursor moved, symmetric across `TailMsg` and `EntryBatchMsg`), plus a tui-mcp sign-off that the pane content tracks the newly appended entry in the same frame.
+- **Driven by:** User report after branch `fix-r14-tail-follow-viewport` landed the cursor+viewport snap: "when on last line (and thus in follow mode), if the details pane is also open, when new line comes in, the cursor is moved onto that, but details pane content is not updated". Backprop-log entry #8.
 
 ### 2026-04-20 — Revision (R14 tail-follow on append)
 - **Affected:** new R14
