@@ -486,6 +486,12 @@ func (m PaneModel) View() string {
 	if m.Focused {
 		state = appshell.PaneStateFocused
 	}
+	// F-203: re-assert pane bg after every per-token `\x1b[0m` so JSON-
+	// key / string / number / boolean / null syntax-highlight styles in
+	// `render.go` do not punch out the outer pane Background. This
+	// generalizes the cursor-row fix (`paintCursorRow`, T-141 F-105) to the
+	// non-cursor rows that previously went bare through the outer wrap.
+	body = appshell.RepaintBg(body, appshell.PaneBg(m.th, state))
 	style := appshell.PaneStyle(m.th, state)
 	if m.belowMode {
 		// T-173: drag-seam top border in below-mode (cavekit-app-shell

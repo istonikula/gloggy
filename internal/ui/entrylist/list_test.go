@@ -286,6 +286,52 @@ func TestView_BaseBg_ThemesProduceDistinctSGR_UnderTrueColor(t *testing.T) {
 	}
 }
 
+// Regression for F-203 (two-tone row bug, Tier 24 follow-up): the default
+// (non-cursor, non-match) row path in `RenderCompactRow` styles the level
+// segment with `lipgloss.NewStyle().Foreground(levelColor)` and nothing
+// else. That emits a full `\x1b[0m` reset after the level — which, when
+// the outer `PaneStyle` paints `BaseBg`, punches a hole through the pane's
+// bg: TIME+LEVEL render on BaseBg, LOGGER+MSG fall back to terminal default.
+//
+// `applyPaneStyle` now calls `appshell.RepaintBg` to re-assert `BaseBg`
+// after every inner reset. This test pins the user-observed invariant
+// directly: the `\x1b[0m` emitted after the level token must be
+// immediately followed by the BaseBg reassert sequence so logger+message
+// inherit BaseBg and not terminal default.
+func TestView_LevelTokenReset_FollowedByBaseBg(t *testing.T) {
+	th := theme.GetTheme("tokyo-night")
+	m := NewListModel(th, config.DefaultConfig(), 60, 8).SetEntries(makeEntries(3))
+	m.Focused = true
+	out := m.View()
+
+	baseBgOpen := bgColorANSI(th.BaseBg)
+	if baseBgOpen == "" {
+		t.Fatal("empty BaseBg SGR probe — is TrueColor forced in init()?")
+	}
+
+	// `RenderCompactRow` emits the level as `…\x1b[38;2;lvlFgm<pad>INFO <pad>\x1b[0m…`.
+	// Find the INFO token and scan forward for the very next `\x1b[0m` — that
+	// is the level segment's close. It must be followed by the BaseBg open.
+	idx := strings.Index(out, "INFO")
+	if idx < 0 {
+		t.Fatal("INFO token missing from view output — test premise invalid")
+	}
+	tail := out[idx:]
+	reset := strings.Index(tail, "\x1b[0m")
+	if reset < 0 {
+		t.Fatal("no reset after INFO — test premise invalid")
+	}
+	after := tail[reset+len("\x1b[0m"):]
+	if !strings.HasPrefix(after, baseBgOpen) {
+		previewEnd := 60
+		if previewEnd > len(after) {
+			previewEnd = len(after)
+		}
+		t.Fatalf("reset after INFO not followed by BaseBg reassert %q\nsaw: %q",
+			baseBgOpen, after[:previewEnd])
+	}
+}
+
 // bgColorANSI mirrors the appshell test helper — renders a probe with
 // background color c and returns the SGR prefix. Local copy so this test
 // doesn't cross package boundaries.

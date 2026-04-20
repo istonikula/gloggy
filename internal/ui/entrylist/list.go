@@ -744,6 +744,12 @@ func (m ListModel) applyPaneStyle(content string) string {
 	if m.Focused || m.Alone {
 		state = appshell.PaneStateFocused
 	}
+	// F-203: re-assert pane bg after every per-token `\x1b[0m` so syntax-
+	// highlight Foreground styles (level badges) do not punch out the outer
+	// pane Background. Without this, each row rendered through
+	// `RenderCompactRow` shows BaseBg up to the level segment's close reset,
+	// then falls through to the terminal default for logger + message.
+	content = appshell.RepaintBg(content, appshell.PaneBg(m.th, state))
 	style := appshell.PaneStyle(m.th, state)
 	if m.width > 0 {
 		style = style.Width(m.width).MaxWidth(m.width + 2)
