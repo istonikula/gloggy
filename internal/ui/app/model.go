@@ -222,7 +222,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch inner := inner.(type) {
 		case logsource.EntryBatchMsg:
 			m.entries = append(m.entries, inner.Entries...)
-			m.list = m.list.AppendEntries(inner.Entries)
+			m = m.appendToList(inner.Entries)
 			m.loading = m.loading.Update(len(m.entries))
 			if len(m.filterSet.GetEnabled()) == 0 {
 				m.cachedVisibleCount = len(m.entries)
@@ -248,7 +248,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch inner := inner.(type) {
 		case logsource.TailMsg:
 			m.entries = append(m.entries, inner.Entry)
-			m.list = m.list.AppendEntries([]logsource.Entry{inner.Entry})
+			m = m.appendToList([]logsource.Entry{inner.Entry})
 			m.header = m.header.WithCounts(len(m.entries), m.visibleCount())
 			cmd = msg.Next()
 		case logsource.TailStopMsg:
@@ -702,6 +702,29 @@ func (m Model) SetEntries(entries []logsource.Entry) Model {
 	m.cachedVisibleCount = len(entries)
 	m.list = m.list.SetEntries(entries)
 	m.header = m.header.WithCounts(len(entries), len(entries))
+	return m
+}
+
+// appendToList forwards new entries to the list and, when the list's
+// tail-follow snap moved the cursor (cavekit-entry-list R14), re-syncs
+// the detail pane to the newly selected entry in the same frame. Without
+// this sync, the cursor advances to the appended entry but the pane
+// keeps rendering the previous selection until the user presses a key —
+// silently breaking the live-preview invariant (cavekit-detail-pane R1).
+// Pane re-sync runs only when the cursor actually moved, so appends that
+// leave the cursor in place (user scrolled away from tail) do not
+// clobber the user's pane selection.
+func (m Model) appendToList(entries []logsource.Entry) Model {
+	prevCursor := m.list.Cursor()
+	m.list = m.list.AppendEntries(entries)
+	if m.pane.IsOpen() && m.list.Cursor() != prevCursor {
+		if entry, ok := m.list.SelectedEntry(); ok {
+			m.pane = m.pane.
+				WithScrolloff(m.cfg.Config.Scrolloff).
+				WithHiddenFields(m.visibility.HiddenFields()).
+				Open(entry)
+		}
+	}
 	return m
 }
 
