@@ -47,7 +47,99 @@ func TestGetTheme_AllBuiltins(t *testing.T) {
 			if string(th.DragHandle) == string(th.FocusBorder) {
 				t.Errorf("DragHandle must be distinct from FocusBorder; got %s", th.DragHandle)
 			}
+			// T-176: BaseBg populated and != UnfocusedBg
+			// (config R4 AC 12 + AC 15).
+			if string(th.BaseBg) == "" {
+				t.Error("Tier 24 BaseBg token not populated")
+			}
+			if string(th.BaseBg) == string(th.UnfocusedBg) {
+				t.Errorf("BaseBg must be distinct from UnfocusedBg; got %s", th.BaseBg)
+			}
 		})
+	}
+}
+
+// T-177 (cavekit-config.md R4 AC 16): each theme constructor cites its
+// canonical upstream source via a named exported constant, discoverable
+// at test time. Each citation must contain an `https://` URL and a
+// canonical-identifier keyword (variant name, flavor, or legacy-palette
+// label). This is a code-review drift tripwire — if a contributor edits
+// a palette hex but forgets to update the citation, the source/value
+// pair is still locally correct; if they edit the citation but forget
+// the palette, the test still holds. The real drift guard is that every
+// hex now routes through a named palette field, so moving to a different
+// variant becomes a visible field-rename, not a silent hex edit.
+func TestTheme_CanonicalSourceCitations_Discoverable(t *testing.T) {
+	cases := []struct {
+		theme       string
+		source      string
+		keywordsAny []string
+	}{
+		{"tokyo-night", TokyoNightSource, []string{"night"}},
+		{"catppuccin-mocha", CatppuccinMochaSource, []string{"mocha"}},
+		{"material-dark", MaterialDarkSource, []string{"Astorino", "material"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.theme, func(t *testing.T) {
+			if tc.source == "" {
+				t.Fatal("citation constant empty")
+			}
+			if !strings.Contains(tc.source, "https://") {
+				t.Errorf("citation missing https:// URL: %q", tc.source)
+			}
+			matched := false
+			for _, kw := range tc.keywordsAny {
+				if strings.Contains(strings.ToLower(tc.source),
+					strings.ToLower(kw)) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				t.Errorf("citation missing canonical keyword %v: %q",
+					tc.keywordsAny, tc.source)
+			}
+			if got := Source(tc.theme); got != tc.source {
+				t.Errorf("Source(%q) = %q, want %q", tc.theme, got, tc.source)
+			}
+		})
+	}
+
+	if got := Source("nonexistent"); got != "" {
+		t.Errorf("Source(unknown) = %q, want empty", got)
+	}
+}
+
+// T-178 (cavekit-config.md R4 AC 17): catppuccin-mocha's FocusBorder
+// is the upstream Lavender accent (#b4befe), not Blue (#89b4fa). All
+// official catppuccin ports (neovim, lazygit, btop) use Lavender for
+// active borders — matching the canonical identity.
+func TestCatppuccinMocha_FocusBorder_IsLavender(t *testing.T) {
+	th := GetTheme("catppuccin-mocha")
+	const want = "#b4befe"
+	if string(th.FocusBorder) != want {
+		t.Errorf("catppuccin-mocha FocusBorder = %s, want %s (upstream Lavender)",
+			th.FocusBorder, want)
+	}
+}
+
+// T-176 (cavekit-config.md R4 AC 14): BaseBg values must be pairwise
+// distinct across the three bundled themes so the "at a glance they are
+// perceptibly different" property has objective grounding in the palette
+// data, not just in rendered luminance.
+func TestBaseBg_PairwiseDistinct_AllThemes(t *testing.T) {
+	names := BuiltinNames()
+	seen := make(map[string]string, len(names))
+	for _, name := range names {
+		th := GetTheme(name)
+		bg := string(th.BaseBg)
+		if bg == "" {
+			t.Fatalf("%s: BaseBg empty", name)
+		}
+		if other, dup := seen[bg]; dup {
+			t.Errorf("BaseBg collision: %s and %s both use %s", other, name, bg)
+		}
+		seen[bg] = name
 	}
 }
 

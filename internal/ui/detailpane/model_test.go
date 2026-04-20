@@ -34,6 +34,73 @@ func defaultPane(height int) PaneModel {
 	return NewPaneModel(theme.GetTheme("tokyo-night"), height)
 }
 
+// Regression for F-203 (two-tone detail-pane bug, Tier 24 follow-up):
+// `render.go` styles each JSON token (key, string, number, boolean, null)
+// with `lipgloss.NewStyle().Foreground(...)` only — no Background. Every
+// token ends in `\x1b[0m` which, when the outer `PaneStyle` paints
+// `BaseBg`, punches a hole through the pane bg: the screenshot showed
+// BaseBg up through the quoted key and terminal-default bg starting at
+// the `:` separator.
+//
+// `PaneModel.View` now calls `appshell.RepaintBg` to re-assert BaseBg
+// after every inner reset. This test pins the user-observed invariant
+// directly: the `\x1b[0m` emitted after the `"time"` key must be
+// immediately followed by the BaseBg reassert sequence so the subsequent
+// `": "` separator and value inherit BaseBg.
+func TestPaneModel_View_KeyTokenReset_FollowedByBaseBg(t *testing.T) {
+	th := theme.GetTheme("tokyo-night")
+	m := NewPaneModel(th, 20)
+	m.Focused = true
+	m = m.SetWidth(60).Open(logsource.Entry{
+		IsJSON:     true,
+		LineNumber: 1,
+		Time:       time.Now(),
+		Level:      "INFO",
+		Msg:        "hello",
+		Raw: []byte(`{"time":"2026-04-14T23:39:10.868Z",` +
+			`"level":"INFO","msg":"hello","count":42,"active":true,"data":null}`),
+	})
+	out := m.View()
+
+	baseBgOpen := bgColorANSI(th.BaseBg)
+	if baseBgOpen == "" {
+		t.Fatal("empty BaseBg SGR probe — is TrueColor forced in init()?")
+	}
+
+	// Find the first `"time"` key token — its trailing `\x1b[0m` is the one
+	// that historically "punched out" the pane bg before the `": "` separator.
+	idx := strings.Index(out, "\"time\"")
+	if idx < 0 {
+		t.Fatal("`\"time\"` key missing from view output — test premise invalid")
+	}
+	tail := out[idx:]
+	reset := strings.Index(tail, "\x1b[0m")
+	if reset < 0 {
+		t.Fatal("no reset after `\"time\"` — test premise invalid")
+	}
+	after := tail[reset+len("\x1b[0m"):]
+	if !strings.HasPrefix(after, baseBgOpen) {
+		previewEnd := 60
+		if previewEnd > len(after) {
+			previewEnd = len(after)
+		}
+		t.Fatalf("reset after `\"time\"` not followed by BaseBg reassert %q\nsaw: %q",
+			baseBgOpen, after[:previewEnd])
+	}
+}
+
+// bgColorANSI is the detailpane-local mirror of the entrylist helper:
+// renders a bg probe and returns the opening SGR sequence. Package-local
+// so the test doesn't depend on another test package's helpers.
+func bgColorANSI(c lipgloss.Color) string {
+	rendered := lipgloss.NewStyle().Background(c).Render("x")
+	end := strings.Index(rendered, "x")
+	if end <= 0 {
+		return ""
+	}
+	return rendered[:end]
+}
+
 // T-041: R1.1 — Enter on entry opens detail pane (caller opens via Open(); here we test Open sets state).
 func TestPaneModel_Open_SetsOpen(t *testing.T) {
 	m := defaultPane(10).Open(testEntry())

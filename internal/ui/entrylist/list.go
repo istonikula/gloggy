@@ -732,12 +732,29 @@ func (m ListModel) View() string {
 // applyPaneStyle wraps the rendered list in the DESIGN.md §4 pane style
 // matrix (T-100/T-101). Focused or alone panes get FocusBorder borders;
 // unfocused-but-visible panes get DividerColor borders + UnfocusedBg + Faint.
+//
+// Width is pinned to m.width (content width, post-border) so the pane
+// background paint (T-179, config R4 AC 13) covers the full pane body —
+// padded row tails AND empty rows — instead of only the text cells.
+// Without Width set, lipgloss paints Background only on glyph cells and
+// the pane body falls through to the terminal default, which is what
+// defeated the first T-179 attempt.
 func (m ListModel) applyPaneStyle(content string) string {
 	state := appshell.PaneStateUnfocused
 	if m.Focused || m.Alone {
 		state = appshell.PaneStateFocused
 	}
-	return appshell.PaneStyle(m.th, state).Render(content)
+	// F-203: re-assert pane bg after every per-token `\x1b[0m` so syntax-
+	// highlight Foreground styles (level badges) do not punch out the outer
+	// pane Background. Without this, each row rendered through
+	// `RenderCompactRow` shows BaseBg up to the level segment's close reset,
+	// then falls through to the terminal default for logger + message.
+	content = appshell.RepaintBg(content, appshell.PaneBg(m.th, state))
+	style := appshell.PaneStyle(m.th, state)
+	if m.width > 0 {
+		style = style.Width(m.width).MaxWidth(m.width + 2)
+	}
+	return style.Render(content)
 }
 
 // RenderedRowCount returns how many entry rows were rendered in the last View() call.

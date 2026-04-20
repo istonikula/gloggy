@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -237,6 +238,110 @@ func TestView_VisualState_Unfocused_DiffersFromFocused_AndHasBg(t *testing.T) {
 	if strings.Contains(fLines[0], "48;") {
 		t.Errorf("focused border line must not have UnfocusedBg: %q", fLines[0])
 	}
+}
+
+// Regression for F-202 (color-profile-collapse, Tier 24): a previous
+// T-180 sign-off concluded themes were perceptually distinct based on
+// tui-mcp screenshots. That conclusion was wrong — the tui-mcp PTY
+// environment downgraded termenv's color profile (stdout not detected
+// as a true TTY), which caused lipgloss to downsample every theme's
+// TrueColor BaseBg hex to the same xterm-256 palette slot (`48;5;232m`).
+// All three themes rendered identical dark bg in the screenshots.
+//
+// This test runs under the test-package `init()` that forces
+// `termenv.TrueColor`, so we're asserting the RENDERER-LEVEL outcome:
+// when the color profile IS TrueColor, do the three bundled themes
+// produce DISTINCT BaseBg SGR in the real `View()` output path?
+//
+// Why this test exists: the tui-mcp visual verification is unreliable
+// for fine-grained bg distinction because the harness environment is
+// not guaranteed to have TrueColor. Users in real terminals with
+// COLORTERM=truecolor should see the distinctness (and `main.go`'s
+// `forceTrueColorIfSupported()` guards that path). This test is the
+// objective floor: in a TrueColor profile, themes MUST NOT collapse.
+//
+// cavekit-config.md R4 AC 19 (cross-theme perceptibly-distinct).
+func TestView_BaseBg_ThemesProduceDistinctSGR_UnderTrueColor(t *testing.T) {
+	names := []string{"tokyo-night", "catppuccin-mocha", "material-dark"}
+	seen := map[string]string{} // baseBgSGR -> theme name
+
+	for _, name := range names {
+		th := theme.GetTheme(name)
+		m := NewListModel(th, config.DefaultConfig(), 60, 8).SetEntries(makeEntries(3))
+		m.Focused = true
+		out := m.View()
+
+		baseBgSGR := bgColorANSI(th.BaseBg)
+		if baseBgSGR == "" {
+			t.Fatalf("%s: empty BaseBg SGR probe — is TrueColor forced in init()?", name)
+		}
+		if !strings.Contains(out, baseBgSGR) {
+			t.Errorf("%s: View() output missing BaseBg SGR %q", name, baseBgSGR)
+		}
+		if prev, clash := seen[baseBgSGR]; clash {
+			t.Errorf("%s and %s collapse to the same BaseBg SGR %q — profile downsampling likely active",
+				prev, name, baseBgSGR)
+		}
+		seen[baseBgSGR] = name
+	}
+}
+
+// Regression for F-203 (two-tone row bug, Tier 24 follow-up): the default
+// (non-cursor, non-match) row path in `RenderCompactRow` styles the level
+// segment with `lipgloss.NewStyle().Foreground(levelColor)` and nothing
+// else. That emits a full `\x1b[0m` reset after the level — which, when
+// the outer `PaneStyle` paints `BaseBg`, punches a hole through the pane's
+// bg: TIME+LEVEL render on BaseBg, LOGGER+MSG fall back to terminal default.
+//
+// `applyPaneStyle` now calls `appshell.RepaintBg` to re-assert `BaseBg`
+// after every inner reset. This test pins the user-observed invariant
+// directly: the `\x1b[0m` emitted after the level token must be
+// immediately followed by the BaseBg reassert sequence so logger+message
+// inherit BaseBg and not terminal default.
+func TestView_LevelTokenReset_FollowedByBaseBg(t *testing.T) {
+	th := theme.GetTheme("tokyo-night")
+	m := NewListModel(th, config.DefaultConfig(), 60, 8).SetEntries(makeEntries(3))
+	m.Focused = true
+	out := m.View()
+
+	baseBgOpen := bgColorANSI(th.BaseBg)
+	if baseBgOpen == "" {
+		t.Fatal("empty BaseBg SGR probe — is TrueColor forced in init()?")
+	}
+
+	// `RenderCompactRow` emits the level as `…\x1b[38;2;lvlFgm<pad>INFO <pad>\x1b[0m…`.
+	// Find the INFO token and scan forward for the very next `\x1b[0m` — that
+	// is the level segment's close. It must be followed by the BaseBg open.
+	idx := strings.Index(out, "INFO")
+	if idx < 0 {
+		t.Fatal("INFO token missing from view output — test premise invalid")
+	}
+	tail := out[idx:]
+	reset := strings.Index(tail, "\x1b[0m")
+	if reset < 0 {
+		t.Fatal("no reset after INFO — test premise invalid")
+	}
+	after := tail[reset+len("\x1b[0m"):]
+	if !strings.HasPrefix(after, baseBgOpen) {
+		previewEnd := 60
+		if previewEnd > len(after) {
+			previewEnd = len(after)
+		}
+		t.Fatalf("reset after INFO not followed by BaseBg reassert %q\nsaw: %q",
+			baseBgOpen, after[:previewEnd])
+	}
+}
+
+// bgColorANSI mirrors the appshell test helper — renders a probe with
+// background color c and returns the SGR prefix. Local copy so this test
+// doesn't cross package boundaries.
+func bgColorANSI(c lipgloss.Color) string {
+	rendered := lipgloss.NewStyle().Background(c).Render("x")
+	end := strings.Index(rendered, "x")
+	if end <= 0 {
+		return ""
+	}
+	return rendered[:end]
 }
 
 // T-101: when the pane is alone (no other pane visible), it uses the

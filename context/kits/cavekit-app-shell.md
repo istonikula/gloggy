@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-19T21:30:00+03:00"
+last_edited: "2026-04-19T19:42:23Z"
 ---
 
 # Cavekit: App Shell
@@ -119,7 +119,7 @@ The top-level application entry point, layout management, domain wiring, mouse r
 **Dependencies:** cavekit-entry-list (marks), `keyhints.WithNotice` (R4 status-bar notice contract)
 
 ### R10: Pane Visual-State Matrix
-**Description:** Every focusable pane renders in one of three visual states — focused, unfocused-but-visible, or alone — per the matrix in DESIGN.md §4 (authoritative). The focused pane uses FocusBorder borders and full-contrast foreground; an unfocused visible pane uses DividerColor borders, an UnfocusedBg background tint, and a foreground blend toward Dim; a pane that is the only visible pane uses the focused treatment. The visual state must not alter the pane's rendered dimensions (no post-render border wrapping that adds rows or columns).
+**Description:** Every focusable pane renders in one of three visual states — focused, unfocused-but-visible, or alone — per the matrix in DESIGN.md §4 (authoritative). The focused pane uses FocusBorder borders and full-contrast foreground; an unfocused visible pane uses DividerColor borders, an UnfocusedBg background tint, and a foreground blend toward Dim; a pane that is the only visible pane uses the focused treatment. Pane backgrounds render `theme.BaseBg` (see cavekit-config.md R4). The visual state must not alter the pane's rendered dimensions (no post-render border wrapping that adds rows or columns).
 **Acceptance Criteria:**
 - [ ] [auto] When the detail pane is open and focused, it has a visual indicator distinguishing it from the unfocused entry list (e.g. highlighted border or title)
 - [ ] [auto] The focus indicator does not change the rendered width or height of any pane
@@ -131,7 +131,7 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - [ ] [auto][cross-kit] The cursor row in the entry list is always rendered, even when the entry list is unfocused; intensity and bold vary with focus (full enforcement depends on cavekit-entry-list revision)
 - [ ] [auto] The detail pane top border is visible in both below and right orientations
 - [ ] [auto] The pane-resize drag seam (R15) renders in `DragHandle` color independent of focus: in right-mode the 1-cell `│` divider glyph; in below-mode the detail pane's top border row (the row that physically sits at the detail pane's top edge; the list pane's own bottom border is an adjacent, separate row rendered in the list's focus-state color, NOT shared with or co-painted as part of the seam)
-**Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-config (DividerColor, UnfocusedBg, FocusBorder, DragHandle tokens)
+**Dependencies:** cavekit-entry-list, cavekit-detail-pane, cavekit-config (DividerColor, UnfocusedBg, FocusBorder, DragHandle, BaseBg tokens)
 
 ### R11: Focus Cycle and Dismissal
 **Description:** `Tab` cycles focus among the visible panes. Opening a pane does NOT itself transfer focus — focus transfers occur only on explicit actions: Tab (this requirement), mouse click on a pane (R6), or the cross-pane `/` activation (R13). This keeps the detail pane usable as a live preview while the user keeps navigating the entry list. When the filter panel or help overlay is open, Tab-cycling is paused and the overlay holds focus. `Esc` is context-sensitive: first close any open overlay; otherwise if the detail pane is open, close it and return focus to the entry list; otherwise clear transient state on the focused pane (e.g. an active search). Esc on entry-list focus with the detail pane open also closes the pane (the list doesn't need to be Tab'd to the pane first to dismiss it). A mouse click on a pane focuses that pane. Tab never closes a pane — closing is always explicit via Esc or a domain-specific dismissal key.
@@ -222,6 +222,8 @@ The top-level application entry point, layout management, domain wiring, mouse r
 - See also: cavekit-config.md (theme for header/status bar styling)
 
 ## Changelog
+
+- 2026-04-19: Noted BaseBg cross-ref from cavekit-config R4 revision — pane rendering uses theme.BaseBg.
 
 ### 2026-04-19 — Revision (R10/R15 drag-seam language: detail-top, not shared row — F-201)
 - **Affected:** R10 AC 10; R15 description, ACs at lines 200/206/207

@@ -6,13 +6,33 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/ui/app"
 )
 
+// forceTrueColorIfSupported honours COLORTERM=truecolor / 24bit by forcing
+// lipgloss onto the TrueColor profile. Without this, termenv's default
+// detection can return a downsampled profile (256-color or Ascii) when
+// stdout is wrapped by a non-canonical PTY (e.g. a test harness or an MCP
+// TUI driver). In that state every theme's `BaseBg` hex collapses to the
+// same xterm-256 palette slot and the three bundled themes render as
+// visually identical — which is what defeated the first T-179 verification.
+// Real-world terminals that support TrueColor advertise it via COLORTERM,
+// so this is a no-op on terminals that don't, and correct on the ones that
+// do. Closes the observability half of F-202.
+func forceTrueColorIfSupported() {
+	switch os.Getenv("COLORTERM") {
+	case "truecolor", "24bit":
+		lipgloss.SetColorProfile(termenv.TrueColor)
+	}
+}
+
 func main() {
+	forceTrueColorIfSupported()
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
