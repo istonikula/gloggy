@@ -1,5 +1,5 @@
 ---
-last_edited: "2026-04-20T21:07:43+03:00"
+last_edited: "2026-04-20T21:40:35+03:00"
 ---
 
 # Backpropagation Log
@@ -204,6 +204,48 @@ test, and links the fix commit. Audit trail for the iteration loop.
   - `context/impl/impl-entry-list.md` (T-backprop-R14-signal row)
   - `.cavekit/history/backprop-log.md` (this entry)
 - **Pattern category:** integration (kit-to-kit signal propagation: R14 cursor snap → R10 selection signal → detail-pane R1 live-preview). **Third consecutive `integration` entry** — #6 (external logsource → UI append), #7 (append → cursor/viewport snap), #8 (cursor snap → dependent pane re-render). All three describe the same abstract failure shape: an external/internal state change moves one UI invariant but the next-hop invariant in the chain isn't notified. **Escalation**: recommend a cross-kit rule at the brainstorming / sketch layer, e.g. an addition to `cavekit-overview.md` Cross-Reference Map or a new shared-conventions section, asserting "every kit that mutates UI state on an external signal must enumerate the dependent-consumer re-render contract, or explicitly document why no consumer depends on the mutated state." Would have caught #7 (entry-list didn't enumerate "detail pane re-renders on tail-follow snap") and #8 (still didn't after #7 was drafted).
-- **Fix commit (tests):** (next commit)
-- **Fix commit (impl):** (next commit)
+- **Fix commit (tests):** `1df0d48`
+- **Fix commit (impl):** `6c84060`
+- **Fix commit (kit + log):** `a3c04f3`
+
+---
+
+## #9 — `gloggy -f bigfile` animates a row-by-row scroll to tail instead of instant jump (2026-04-20)
+
+- **Failure source:** user report via `/ck:revise --trace` ("is it necessary that when file is opened with -f it scrolls until the end is reached, if scroll is stopped by moving cursor and then G is pressed is starts scrolling again until end instead of just going there directly, the scrolling can be problematic with big files")
+- **Failure description:** Opening a large file with `gloggy -f` showed a visible row-by-row scroll animation as the cursor/viewport advanced through the file instead of an instant jump to the tail (`less +F`-style). The same animation appeared after the user paused follow with `k` and then pressed `G` during append pressure — `G` jumped to the currently-known tail, but backlogged tail messages kept arriving and each advanced the cursor by one row, producing a second visible scroll animation. Root cause: `internal/logsource/tail.go` `drain()` emitted one `TailMsg{Entry}` per line. For an N-line initial drain this produced N `TailStreamMsg` → N `app.Model` Update cycles → N cavekit-entry-list.md R14 cursor snaps, each snap visible as one frame. The LoadFile path (used for non-follow open) already batched at `batchSize=100 || flushInterval=10ms`, which is why non-follow `gloggy bigfile` did NOT animate — the bug was specific to TailFile's per-line emission.
+- **Classification:** `missing_criterion` (cavekit-log-source.md R8 specified WHAT is emitted — every line, continuously, with monotonic numbers — but said nothing about emission GRANULARITY. Per-line emission satisfied every current AC while producing the UX regression)
+- **Kit:** `cavekit-log-source.md` → R8 (Description expanded; 3 new ACs). Defensive mirror on `cavekit-entry-list.md` → R14 (1 new AC)
+- **Spec change:**
+  - R8 Description expanded to prescribe batched-per-event emission explicitly, with a comment tying it to R14 cursor-snap count.
+  - R8 AC: "Initial drain emits exactly one batch: for a seed file of N lines with startLineNum=0, the first TailMsg carries `len(Entries) == N`" (auto)
+  - R8 AC: "Live append emits exactly one batch per Write event: a single `os.File.Write` that delivers K newline-terminated lines produces ONE TailMsg with `len(Entries) == K`" (auto)
+  - R8 AC: "[human, tui-mcp] On `logs/big.log` with `gloggy -f`: startup lands the viewport at the tail with NO visible scroll animation — first rendered frame already shows the last entries. `k`-then-`G` under append pressure jumps directly in one frame. Verify at both small (80x24) and large (140x35) geometry."
+  - R14 AC: "AppendEntries([]Entry) called with K ≥ 1 entries produces EXACTLY ONE cursor snap, ONE viewport adjustment, and ONE selection-signal delivery — never K — regardless of K" (auto, defensive). Locks the consumer side so a consumer-side refactor can't silently split one append into K.
+- **Regression tests (`internal/logsource/tail_test.go`):**
+  - `TestTailFile_InitialDrainEmitsSingleBatch` — seeds a 50-line file, calls `TailFile(startLineNum=0)`, reads the first `TailStreamMsg`, asserts `len(Unwrap().(TailMsg).Entries) == 50`. Pre-fix: got 1. Post-fix: got 50.
+  - `TestTailFile_LiveAppendEmitsSingleBatch` — empty seed, tail started with watcher warmup, writes 20 lines in one `os.File.Write`, asserts first post-warmup TailMsg has `len(Entries) == 20`. Pre-fix: got 1. Post-fix: got 20.
+- **Verification:** Both tests fail before fix (batch of 1 vs expected 50/20). All pass after fix. Full suite 635/635 across 11 packages (was 633 from trace #8; +2 new tests). tui-mcp `[human]` AC on `logs/big.log` **pending** — to be performed at next sign-off session.
+- **Code change:**
+  - `internal/logsource/tail.go` — `TailMsg` shape changed from `{Entry Entry}` to `{Entries []Entry}`. `drain()` now allocates a local `batch []Entry`, accumulates entries as they're parsed, and flushes exactly once at end-of-drain via a closure `flush()` that sends `ch <- TailMsg{Entries: batch}` only when non-empty (empty-drain is a no-op — prevents a spurious zero-entry message on the watcher's initial no-change event).
+  - `internal/ui/app/model.go` — `logsource.TailMsg` case in `Update` now does `m.entries = append(m.entries, inner.Entries...)` and `m = m.appendToList(inner.Entries)` (forwards the full slice to the helper introduced in #8, preserving the single-call-site invariant).
+  - `internal/logsource/tail_test.go` — existing drain loops (in `TestTailFile_DetectsNewLines`, `TestTailFile_MultipleAppendBatches`, `TestTailFile_EmitsInitialContent`) updated to iterate `tm.Entries...` instead of reading `tm.Entry`. Behaviour unchanged.
+  - `internal/ui/app/model_test.go` — 2 `TailMsg{Entry: appended}` test constructions updated to `TailMsg{Entries: []Entry{appended}}`.
+- **Files touched:**
+  - `internal/logsource/tail.go` (TailMsg shape + drain batching)
+  - `internal/logsource/tail_test.go` (existing loop updates + 2 new tests)
+  - `internal/ui/app/model.go` (TailMsg case reads Entries)
+  - `internal/ui/app/model_test.go` (2 test construction updates)
+  - `context/kits/cavekit-log-source.md` (R8 Description + 3 ACs + changelog)
+  - `context/kits/cavekit-entry-list.md` (R14 defensive AC + changelog)
+  - `context/kits/cavekit-overview.md` (AC count 301→305)
+  - `context/impl/impl-logsource.md` (T-backprop-R8-batching row + revision log)
+  - `context/impl/impl-entry-list.md` (T-backprop-R14-batch row)
+  - `.cavekit/history/backprop-log.md` (this entry)
+- **Pattern category:** integration (domain-boundary emission-granularity contract: log-source R8 emits → entry-list R14 snaps — spec fixed WHAT per line but not HOW MANY MESSAGES per event). **4th CONSECUTIVE `integration` entry** — #6 (external logsource → UI append), #7 (append → cursor/viewport snap), #8 (cursor snap → dependent pane re-render), #9 (emission granularity → cursor snap count). **ESCALATION TRIGGERED** (3-in-a-row threshold exceeded at #8; now 4-in-a-row). Cross-kit amendment recommended at the brainstorming / sketch layer:
+  - Every kit that emits events toward the UI SHOULD specify the **granularity** contract (one-event-per-external-trigger vs one-event-per-atomic-fact) alongside the content contract. R8 previously specified content (every line, monotonic numbers, continuous across Writes) without granularity — this pattern of omission underlies #7, #8, and #9.
+  - Proposal: add a "Granularity & Coalescing" shared-conventions subsection to `cavekit-overview.md` requiring every cross-domain message type to state its emission rate and batching rule. The Draft phase (`/ck:sketch`) should prompt for this explicitly when a kit introduces a new message type.
+  - Would have caught #7 (R8 didn't specify "entries reach the UI render path"), #8 (R14 didn't specify "selection signal accompanies cursor snap"), #9 (R8 didn't specify "one TailMsg per filesystem event").
+- **Fix commit (tests):** `aff713a`
+- **Fix commit (impl):** `b175dc8`
 - **Fix commit (kit + log):** (this commit)

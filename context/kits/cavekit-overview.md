@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-20T21:07:43+03:00"
+last_edited: "2026-04-20T21:40:35+03:00"
 ---
 
 # Cavekit Overview: gloggy
@@ -63,7 +63,7 @@ Note: right-split orientation introduces a vertical divider and horizontal mouse
 
 - **Total domains:** 6
 - **Total requirements:** 59 (2026-04-20: +1 new entry-list R14 tail-follow from backprop #7; was 58)
-- **Total acceptance criteria:** 301 (2026-04-20: +2 entry-list R14 selection-signal-on-snap ACs from backprop #8; was 299)
+- **Total acceptance criteria:** 305 (2026-04-20: +3 log-source R8 batched-emission ACs and +1 entry-list R14 one-snap-per-batch defensive AC from backprop #9; was 301)
 
 ## Verification Conventions
 

@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-20T21:07:43+03:00"
+last_edited: "2026-04-20T21:40:35+03:00"
 ---
 
 # Cavekit: Entry List
@@ -170,7 +170,8 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - [ ] [auto] When tail-follow snaps the cursor on AppendEntries (pre-append Cursor == TotalEntries-1), the entry-selection signal (R10) is delivered for the new last entry — i.e. any consumer that re-renders on selection (detail pane R1 live-preview) shows the newly appended entry without requiring a subsequent keypress. The signal fires exactly once per snap, and only when the cursor actually moved (no spurious re-renders when Cursor < TotalEntries-1 and the cursor is unchanged). Applies symmetrically to tail mode (`TailMsg`) and background load (`EntryBatchMsg`).
 - [ ] [human, tui-mcp] On `logs/small.log` with `gloggy -f`: open the detail pane on the last entry (Enter), append a line externally — verify via `snapshot` that the detail pane content updates to the appended entry (not the previous one) in the same frame that the cursor advances. Repeat in both below- and right-orientations.
 - [ ] [human, tui-mcp] On a file under `logs/` with `gloggy -f`: initial tail-mode startup lands cursor on the last entry with `[FOLLOW]` visible in the header. Append lines externally and verify via `snapshot` that the viewport advances and new entries are visible without any keypress. Press `k` to leave the tail — `[FOLLOW]` disappears. Append again and verify the viewport does NOT advance (but header counts update). Press `G` — `[FOLLOW]` returns and subsequent appends follow again
-**Dependencies:** R12 (scrolloff — viewport adjustment uses the same `followCursor` path), cavekit-log-source R8 (tail emission), cavekit-app-shell R3 (header hosts the `[FOLLOW]` badge)
+- [ ] [auto] `AppendEntries([]Entry)` called with K ≥ 1 entries produces EXACTLY ONE cursor snap, ONE viewport adjustment, and ONE selection-signal delivery — never K — regardless of K. Defensive pin: if cavekit-log-source.md R8's batched-emission contract is ever weakened (per-line TailMsgs reappear), this AC ensures the entry-list side would still coalesce — but the upstream contract is the primary defense; this AC catches regressions from the consumer side
+**Dependencies:** R12 (scrolloff — viewport adjustment uses the same `followCursor` path), cavekit-log-source R8 (tail emission — batched per filesystem event), cavekit-app-shell R3 (header hosts the `[FOLLOW]` badge)
 
 ## Out of Scope
 
@@ -188,6 +189,11 @@ The primary scrollable list of log entries displayed in a compact format. Covers
 - See also: cavekit-app-shell.md (layout, mouse routing)
 
 ## Changelog
+
+### 2026-04-20 — Revision (R14 defensive one-snap-per-batch mirror)
+- **Affected:** R14 (one new AC; Dependencies clarified)
+- **Summary:** Added a defensive AC pinning the consumer side of the batched-emission contract: `AppendEntries([]Entry)` with K ≥ 1 entries produces exactly one cursor snap / one viewport adjustment / one selection-signal delivery, regardless of K. Primary defense remains on the upstream cavekit-log-source.md R8 batched-emission contract (one TailMsg per filesystem event); this AC catches regressions from the consumer side if a future refactor splits a single AppendEntries call into K calls. Dependencies clarified to note R8's batched-per-event contract.
+- **Driven by:** Backprop trace #9 paired with cavekit-log-source.md R8 batched-emission amendment. User report: `gloggy -f bigfile` showed a visible row-by-row scroll animation to tail on startup, driven by per-line TailMsg emission causing N R14 cursor snaps.
 
 ### 2026-04-20 — Revision (R14 selection signal on tail-follow snap)
 - **Affected:** R14 (two new ACs)

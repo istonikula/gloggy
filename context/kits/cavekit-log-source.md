@@ -1,6 +1,6 @@
 ---
 created: "2026-04-15T00:00:00Z"
-last_edited: "2026-04-20T20:19:44+03:00"
+last_edited: "2026-04-20T21:40:35+03:00"
 ---
 
 # Cavekit: Log Source
@@ -70,13 +70,16 @@ Reading log data from a single file or stdin, classifying each line as structure
 **Dependencies:** none
 
 ### R8: Tail Mode
-**Description:** When invoked with the tail flag on a file, tail mode is a combined "initial emit + live append" mode: existing file content is emitted as entries on startup, and newly appended lines are detected and emitted as entries in real time for the duration of the session. Tail mode is not available for stdin.
+**Description:** When invoked with the tail flag on a file, tail mode is a combined "initial emit + live append" mode: existing file content is emitted as entries on startup, and newly appended lines are detected and emitted as entries in real time for the duration of the session. Tail mode is not available for stdin. Emission is **batched per filesystem event**: each drain (including the initial pre-watcher drain of existing content) delivers all lines made available by that event as a single cohesive batch of entries — NOT one message per line. Batching preserves `less +F`-style instant jump-to-tail on startup and on `G` re-engage; per-line emission would cause cavekit-entry-list.md R14 tail-follow to snap the cursor N times for an N-line drain, visible as a row-by-row scroll animation that makes `gloggy -f bigfile` unusable for large files.
 **Acceptance Criteria:**
 - [ ] [auto] With tail mode on a file, lines appended by each filesystem write event after the watcher starts are emitted as new entries. Emission continues for the entire session — the 1st, 2nd, and Nth append batches must all produce entries (the watcher must not go deaf after any intermediate EOF)
 - [ ] [auto] Tail-mode entries carry correct line numbers continuing monotonically from line 1 (for initial content) through every subsequent append
 - [ ] [auto] Tail mode is not activated when reading from stdin, regardless of flags
 - [ ] [auto] When tail mode starts on a non-empty file, all existing lines are emitted as entries (starting from line 1) before any subsequent append events are processed. No line is skipped
 - [ ] [auto] Tail-mode entries reach the entry-list render path (`app.Model.entries`), not just the logsource emission channel. At least one test drives the model via `Init`/`Update` and asserts entry-list state grows after multiple append events
+- [ ] [auto] Initial drain emits exactly one batch: for a seed file of N lines with startLineNum=0, the first TailMsg carries `len(Entries) == N`, not N separate TailMsgs of one entry each. Verified by reading the first message from `TailFile` and asserting `len(tm.Entries) == N` for N ≥ 50
+- [ ] [auto] Live append emits exactly one batch per Write event: a single `os.File.Write` that delivers K newline-terminated lines produces ONE TailMsg with `len(Entries) == K`, not K TailMsgs of one entry each
+- [ ] [human, tui-mcp] On `logs/big.log` with `gloggy -f`: startup lands the viewport at the tail with NO visible scroll animation — the first rendered frame already shows the last entries. After `k` to leave follow and `G` to re-engage under append pressure, `G` jumps directly to the current tail in a single frame (no intermediate animation). Verify at both small (80x24) and large (140x35) geometry
 **Dependencies:** R1, R6
 
 ## Out of Scope
@@ -95,6 +98,11 @@ Reading log data from a single file or stdin, classifying each line as structure
 - See also: cavekit-app-shell.md (invokes loading, displays progress/tail status)
 
 ## Changelog
+
+### 2026-04-20 — Revision (R8 batched emission)
+- **Affected:** R8 (Description expanded; 3 new ACs — batched initial drain, batched live append, tui-mcp no-animation sign-off)
+- **Summary:** R8 previously specified that tail mode emits every line with correct numbering across every Write event, but said nothing about emission **granularity**. The implementation emitted one `TailMsg` per line — satisfying every AC while causing a user-visible scroll animation on `gloggy -f bigfile` (N cursor snaps during the initial drain of an N-line file). Revised R8 requires batched emission: one `TailMsg{Entries: []Entry}` per drain event (initial pre-watcher drain AND each subsequent Write event), grouping all lines made available by that event into a single message. This locks cavekit-entry-list.md R14 tail-follow to one cursor/viewport snap per event — startup is an instant jump, not a scroll animation.
+- **Driven by:** User report via `/ck:revise --trace`: "is it necessary that when file is opened with -f it scrolls until the end is reached, if scroll is stopped by moving cursor and then G is pressed is starts scrolling again until end instead of just going there directly, the scrolling can be problematic with big files". Backprop-log entry #9.
 
 ### 2026-04-20 — Backprop trace (single-failure)
 - **Affected:** R8 (AC1 tightened; AC4 + AC5 added; Description expanded)
