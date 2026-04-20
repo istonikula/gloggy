@@ -143,7 +143,10 @@ func (m Model) Init() tea.Cmd {
 		return nil
 	}
 	if m.followMode {
-		return logsource.TailFile(m.tailCtx, m.sourceName, 1)
+		// cavekit-log-source.md R8 AC4: startLineNum=0 means "emit everything",
+		// so follow mode opens with the existing file contents visible, then
+		// streams appends as they arrive.
+		return logsource.TailFile(m.tailCtx, m.sourceName, 0)
 	}
 	return logsource.LoadFile(m.sourceName)
 }

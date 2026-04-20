@@ -21,7 +21,6 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "e2e.jsonl")
 
-	// Seed file with 5 initial lines.
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -35,45 +34,62 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 	m := New(path, true, "", testCfg())
 	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	cmd := m.Init()
-	if cmd == nil {
+	// Command-chain driver: a dedicated goroutine runs whichever tea.Cmd is
+	// currently "active", forwards its produced msg through msgChan, then
+	// parks until the test hands it the next cmd via nextCmdChan. This
+	// mirrors how tea.Program serialises cmd → msg → update without
+	// needing the real scheduler. Critically, the goroutine holds a single
+	// in-flight cmd call — we never abandon a blocking cmd, which is what
+	// loses messages in a naive harness.
+	initialCmd := m.Init()
+	if initialCmd == nil {
 		t.Fatal("Init() returned nil cmd in follow mode")
 	}
 
-	// Watcher warmup.
+	msgChan := make(chan tea.Msg, 128)
+	nextCmdChan := make(chan tea.Cmd, 16)
+	stop := make(chan struct{})
+	defer close(stop)
+
+	go func() {
+		current := initialCmd
+		for {
+			if current == nil {
+				select {
+				case c := <-nextCmdChan:
+					current = c
+				case <-stop:
+					return
+				}
+				continue
+			}
+			msg := current()
+			select {
+			case msgChan <- msg:
+			case <-stop:
+				return
+			}
+			current = nil
+		}
+	}()
+
+	// Give the tail goroutine a moment to do its initial drain + arm the watcher.
 	time.Sleep(150 * time.Millisecond)
 
-	// pump runs the Bubble Tea command → msg → update loop until the model's
-	// m.entries count reaches `want`, or until timeout. It mirrors what
-	// tea.Program does internally, minus the scheduler.
-	pump := func(initialCmd tea.Cmd, want int, label string) {
-		deadline := time.Now().Add(5 * time.Second)
-		currentCmd := initialCmd
+	pump := func(want int, label string) {
+		deadline := time.Now().Add(8 * time.Second)
 		for len(m.entries) < want {
 			if time.Now().After(deadline) {
 				t.Fatalf("%s: timed out (entries=%d, want=%d)", label, len(m.entries), want)
 			}
-			if currentCmd == nil {
-				time.Sleep(20 * time.Millisecond)
-				continue
-			}
-			// Run the command in a goroutine with a short timeout so a command
-			// that blocks on a channel doesn't stall the test.
-			ch := make(chan tea.Msg, 1)
-			go func(c tea.Cmd) { ch <- c() }(currentCmd)
 			select {
-			case msg := <-ch:
-				var next tea.Cmd
+			case msg := <-msgChan:
 				updated, nextCmd := m.Update(msg)
 				m = updated.(Model)
-				next = nextCmd
-				currentCmd = next
-			case <-time.After(500 * time.Millisecond):
-				// No message yet — keep polling; don't re-queue the blocked cmd
-				// because another goroutine is already waiting on it. Spin.
-				// To avoid spinning forever, we bail via the outer deadline.
-				// Drop currentCmd to nil so we re-enter the sleep branch above.
-				currentCmd = nil
+				if nextCmd != nil {
+					nextCmdChan <- nextCmd
+				}
+			case <-time.After(100 * time.Millisecond):
 			}
 		}
 	}
@@ -89,18 +105,18 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 		f.Close()
 	}
 
-	// Batch 0: initial content must be visible without any appends.
-	pump(cmd, initialLines, "initial content")
+	// Phase 0: initial content must be visible without any appends.
+	pump(initialLines, "initial content")
 
-	// Batch 1.
+	// Phase 1: first append.
 	appendBatch(3, 1)
-	pump(nil, initialLines+3, "batch 1")
+	pump(initialLines+3, "batch 1")
 
-	// Batch 2 — the regression case.
+	// Phase 2: second append — the regression case.
 	appendBatch(3, 2)
-	pump(nil, initialLines+6, "batch 2")
+	pump(initialLines+6, "batch 2")
 
-	// Line numbers must be monotonic from 1.
+	// Line numbers must be monotonic from 1 and match append ordering.
 	for i, e := range m.entries {
 		if e.LineNumber != i+1 {
 			t.Errorf("entry %d: LineNumber=%d, want %d", i, e.LineNumber, i+1)
