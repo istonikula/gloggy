@@ -126,10 +126,19 @@ func (m ListModel) SetEntries(entries []logsource.Entry) ListModel {
 // so no extension is needed here.
 func (m ListModel) AppendEntries(entries []logsource.Entry) ListModel {
 	oldLen := len(m.entries)
+	// R14 tail-follow: follow iff cursor was on the last entry before the
+	// append (mirrors `less +F`). Empty list is not "at tail" — first append
+	// leaves Cursor=0/Offset=0 so the user sees entries from the top.
+	wasAtTail := oldLen > 0 && m.scroll.Cursor == oldLen-1
+
 	m.entries = append(m.entries, entries...)
 	m.scroll.TotalEntries = len(m.entries)
 	if m.filtered == nil && m.search.IsActive() && m.search.Query() != "" {
 		m.search = m.search.ExtendMatches(entries, oldLen, m.width, m.cfg)
+	}
+	if wasAtTail && m.scroll.TotalEntries > 0 {
+		m.scroll.Cursor = m.scroll.TotalEntries - 1
+		m.scroll = followCursor(m.scroll)
 	}
 	return m
 }
@@ -138,9 +147,15 @@ func (m ListModel) AppendEntries(entries []logsource.Entry) ListModel {
 func (m ListModel) Cursor() int { return m.scroll.Cursor }
 
 // IsAtTail reports whether the cursor is currently on the last entry (R14).
-// STUB (pre-fix): always returns false so the regression tests observably fail
-// until the follow logic lands. Replace with the real implementation.
-func (m ListModel) IsAtTail() bool { return false }
+// Empty lists are not at tail. The header consumes this to drive the FOLLOW
+// badge in tail mode — badge on iff tailMode && IsAtTail().
+func (m ListModel) IsAtTail() bool {
+	total := m.scroll.TotalEntries
+	if total == 0 {
+		return false
+	}
+	return m.scroll.Cursor == total-1
+}
 
 // CursorPosition returns 1-based cursor position within visible set, or 0 when empty.
 func (m ListModel) CursorPosition() int {

@@ -637,7 +637,12 @@ func (m Model) View() string {
 		return m.help.View()
 	}
 
-	header := m.header.WithCursorPos(m.list.CursorPosition()).View()
+	// R14: FOLLOW badge lights when tail mode is active AND cursor is on the
+	// last entry. Upward nav off the last row clears it; `G` restores it.
+	header := m.header.
+		WithCursorPos(m.list.CursorPosition()).
+		WithFollow(m.followMode && m.list.IsAtTail()).
+		View()
 
 	// T-100/T-101: set per-pane focus + alone state before View() so each
 	// pane applies the DESIGN.md §4 visual matrix.
