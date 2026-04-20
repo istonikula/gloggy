@@ -247,8 +247,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		switch inner := inner.(type) {
 		case logsource.TailMsg:
-			m.entries = append(m.entries, inner.Entry)
-			m = m.appendToList([]logsource.Entry{inner.Entry})
+			m.entries = append(m.entries, inner.Entries...)
+			m = m.appendToList(inner.Entries)
 			m.header = m.header.WithCounts(len(m.entries), m.visibleCount())
 			cmd = msg.Next()
 		case logsource.TailStopMsg:

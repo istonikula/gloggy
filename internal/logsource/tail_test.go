@@ -67,7 +67,7 @@ func TestTailFile_DetectsNewLines(t *testing.T) {
 		switch m := raw.(type) {
 		case TailStreamMsg:
 			if tm, ok := m.Unwrap().(TailMsg); ok {
-				tailEntries = append(tailEntries, tm.Entry)
+				tailEntries = append(tailEntries, tm.Entries...)
 			}
 			nextCmd := m.Next()
 			cmd = func() interface{} { return nextCmd() }
@@ -136,7 +136,7 @@ func TestTailFile_MultipleAppendBatches(t *testing.T) {
 			switch m := raw.(type) {
 			case TailStreamMsg:
 				if tm, ok := m.Unwrap().(TailMsg); ok {
-					got = append(got, tm.Entry)
+					got = append(got, tm.Entries...)
 				}
 				nextCmd := m.Next()
 				cmd = func() interface{} { return nextCmd() }
@@ -201,7 +201,7 @@ func TestTailFile_EmitsInitialContent(t *testing.T) {
 		switch m := raw.(type) {
 		case TailStreamMsg:
 			if tm, ok := m.Unwrap().(TailMsg); ok {
-				got = append(got, tm.Entry)
+				got = append(got, tm.Entries...)
 			}
 			nextCmd := m.Next()
 			cmd = func() interface{} { return nextCmd() }
@@ -261,5 +261,118 @@ func TestTailFile_CancelCleansUp(t *testing.T) {
 		// OK — goroutine cleaned up.
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout: TailFile goroutine did not clean up after cancel")
+	}
+}
+
+// Backprop #9 — cavekit-log-source.md R8 batched emission: each drain event
+// (initial pre-watcher drain OR a single filesystem Write event) must emit
+// ONE TailMsg containing all the entries it made available, not one TailMsg
+// per line. Per-line emission causes cavekit-entry-list.md R14 tail-follow
+// to snap N times for an N-line drain, visible as a row-by-row scroll
+// animation on `gloggy -f bigfile` startup.
+//
+// Pre-fix: drain emits one TailMsg per line, so the first TailMsg carries
+// Entries of length 1. Post-fix: the first TailMsg carries all emitted
+// entries (length N).
+func TestTailFile_InitialDrainEmitsSingleBatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "batch_initial.jsonl")
+
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const seedLines = 50
+	for i := 1; i <= seedLines; i++ {
+		fmt.Fprintf(f, `{"msg":"seed %d"}`+"\n", i)
+	}
+	f.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tailCmd := TailFile(ctx, path, 0)
+
+	// First message from the initial drain MUST contain every seeded line
+	// in a single batch. A timeout wrapper avoids hanging the test if the
+	// implementation stops emitting early.
+	type result struct {
+		msg interface{}
+		err error
+	}
+	out := make(chan result, 1)
+	go func() {
+		out <- result{msg: tailCmd(), err: nil}
+	}()
+
+	select {
+	case r := <-out:
+		tsm, ok := r.msg.(TailStreamMsg)
+		if !ok {
+			t.Fatalf("first message: want TailStreamMsg, got %T", r.msg)
+		}
+		tm, ok := tsm.Unwrap().(TailMsg)
+		if !ok {
+			t.Fatalf("first message inner: want TailMsg, got %T", tsm.Unwrap())
+		}
+		if len(tm.Entries) != seedLines {
+			t.Errorf("initial drain should emit ONE batch of %d entries, got a batch of %d (per-line emission regresses to N cursor snaps on `gloggy -f` startup)",
+				seedLines, len(tm.Entries))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for initial tail drain")
+	}
+}
+
+// Backprop #9 — same invariant for live appends. A single os.File Write
+// that delivers K newline-terminated lines must produce ONE TailMsg with
+// Entries of length K, not K single-entry TailMsgs.
+func TestTailFile_LiveAppendEmitsSingleBatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "batch_append.jsonl")
+
+	// Empty seed, start tail, append K lines as one Write event.
+	if err := os.WriteFile(path, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tailCmd := TailFile(ctx, path, 0)
+	cmd := func() interface{} { return tailCmd() }
+
+	// Watcher warmup — ensures Add() has registered before the Write.
+	time.Sleep(150 * time.Millisecond)
+
+	const appendK = 20
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= appendK; i++ {
+		fmt.Fprintf(f, `{"msg":"appended %d"}`+"\n", i)
+	}
+	f.Close()
+
+	// Read the first TailMsg and assert it contains all K entries.
+	type result struct{ msg interface{} }
+	out := make(chan result, 1)
+	go func() { out <- result{msg: cmd()} }()
+
+	select {
+	case r := <-out:
+		tsm, ok := r.msg.(TailStreamMsg)
+		if !ok {
+			t.Fatalf("first message: want TailStreamMsg, got %T", r.msg)
+		}
+		tm, ok := tsm.Unwrap().(TailMsg)
+		if !ok {
+			t.Fatalf("first message inner: want TailMsg, got %T", tsm.Unwrap())
+		}
+		if len(tm.Entries) != appendK {
+			t.Errorf("single Write of %d lines should emit ONE batch of %d entries, got a batch of %d",
+				appendK, appendK, len(tm.Entries))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for tail append")
 	}
 }

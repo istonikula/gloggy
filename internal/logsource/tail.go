@@ -12,8 +12,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TailMsg carries a single entry appended to a tailed file.
-type TailMsg struct{ Entry Entry }
+// TailMsg carries a batch of entries made available by a single filesystem
+// Write event (or by the initial pre-watcher drain of existing content).
+// Emission is batched per event: if a Write delivers K newline-terminated
+// lines, they are grouped into one TailMsg with Entries of length K, rather
+// than K separate TailMsgs of one entry each (cavekit-log-source.md R8).
+// Batched emission keeps cavekit-entry-list.md R14 tail-follow to a single
+// cursor/viewport snap per event — without it, opening `gloggy -f` on a
+// large file shows a visible row-by-row scroll animation as each per-line
+// message triggers its own snap.
+type TailMsg struct{ Entries []Entry }
 
 // TailStopMsg signals that the tail watcher stopped.
 type TailStopMsg struct{ Err error }
@@ -82,7 +90,7 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 						select {
 						case <-ctx.Done():
 							return ctx.Err()
-						case ch <- TailMsg{Entry: e}:
+						case ch <- TailMsg{Entries: []Entry{e}}:
 						}
 					}
 				}

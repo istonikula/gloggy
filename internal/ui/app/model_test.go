@@ -1325,7 +1325,7 @@ func TestModel_TailFollow_TailMsg_PaneResyncsOnAppend(t *testing.T) {
 	}
 
 	appended := jsonEntry(4, "delta-unique")
-	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entry: appended}))
+	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entries: []logsource.Entry{appended}}))
 
 	if m.list.Cursor() != 3 {
 		t.Errorf("cursor should snap to new last entry (3), got %d", m.list.Cursor())
@@ -1403,7 +1403,7 @@ func TestModel_TailFollow_NotAtTail_PaneNotResynced(t *testing.T) {
 	}
 
 	appended := jsonEntry(4, "delta-unique")
-	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entry: appended}))
+	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entries: []logsource.Entry{appended}}))
 
 	if m.list.Cursor() != 0 {
 		t.Errorf("cursor must NOT move when pre-append cursor < tail, got %d", m.list.Cursor())
