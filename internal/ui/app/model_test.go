@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -92,27 +94,23 @@ func TestModel_View_NoPanic_WithEntries(t *testing.T) {
 // Fix: activate loading in New() when a non-empty file path is given.
 func TestModel_WithFilePath_LoadingIsActive(t *testing.T) {
 	m := New("testfile.log", false, "", testCfg())
-	if !m.loading.IsActive() {
-		t.Error("BUG: loading should be active when model is created with a file path, but is not")
-	}
+	assert.True(t, m.loading.IsActive(),
+		"BUG: loading should be active when model is created with a file path, but is not")
 }
 
 // TestModel_StdinMode_LoadingNotActive verifies that stdin mode (empty sourceName)
 // does not activate the loading indicator.
 func TestModel_StdinMode_LoadingNotActive(t *testing.T) {
 	m := newModel() // empty sourceName
-	if m.loading.IsActive() {
-		t.Error("loading should NOT be active for stdin mode")
-	}
+	assert.False(t, m.loading.IsActive(), "loading should NOT be active for stdin mode")
 }
 
 // TestModel_FollowMode_LoadingNotActive verifies that follow/tail mode does not
 // activate the loading indicator (tail is streaming, not batch loading).
 func TestModel_FollowMode_LoadingNotActive(t *testing.T) {
 	m := New("app.log", true, "", testCfg())
-	if m.loading.IsActive() {
-		t.Error("loading should NOT be active for follow mode (it is a streaming tail, not a batch load)")
-	}
+	assert.False(t, m.loading.IsActive(),
+		"loading should NOT be active for follow mode (it is a streaming tail, not a batch load)")
 }
 
 // ---------- BUG #1: relayout() discards list Update result ----------
@@ -133,9 +131,7 @@ func TestModel_Relayout_ListViewportShrinksWhenPaneOpens(t *testing.T) {
 	m = m.SetEntries(entries)
 
 	renderedBefore := m.list.RenderedRowCount()
-	if renderedBefore == 0 {
-		t.Fatal("expected non-zero rendered rows before opening pane")
-	}
+	require.NotZero(t, renderedBefore, "expected non-zero rendered rows before opening pane")
 
 	// Open the detail pane — this calls relayout(), which should shrink the list viewport.
 	m = m.openPane(entries[0])
@@ -144,13 +140,10 @@ func TestModel_Relayout_ListViewportShrinksWhenPaneOpens(t *testing.T) {
 
 	// BUG: renderedAfter == renderedBefore because relayout discards the list update.
 	// After the fix, the list viewport is reduced by the pane height, so renderedAfter < renderedBefore.
-	if renderedAfter >= renderedBefore {
-		t.Errorf(
-			"BUG: rendered row count did not decrease after pane opened "+
-				"(relayout discards list update); before=%d after=%d",
-			renderedBefore, renderedAfter,
-		)
-	}
+	assert.Lessf(t, renderedAfter, renderedBefore,
+		"BUG: rendered row count did not decrease after pane opened "+
+			"(relayout discards list update); before=%d after=%d",
+		renderedBefore, renderedAfter)
 }
 
 // ---------- BUG #3: visibleCount() correctness ----------
@@ -166,9 +159,8 @@ func TestModel_VisibleCount_NoFilter_EqualsAllEntries(t *testing.T) {
 	entries := makeEntries(10)
 	m = m.SetEntries(entries)
 
-	if got := m.visibleCount(); got != len(entries) {
-		t.Errorf("visibleCount with no filter: got %d, want %d", got, len(entries))
-	}
+	assert.Equalf(t, len(entries), m.visibleCount(),
+		"visibleCount with no filter: got %d, want %d", m.visibleCount(), len(entries))
 }
 
 // ---------- quit ----------
@@ -179,13 +171,10 @@ func TestModel_Q_EmitsQuitCmd(t *testing.T) {
 	m = resize(m, 80, 24)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd from 'q' key")
-	}
+	require.NotNil(t, cmd, "expected non-nil cmd from 'q' key")
 	msg := cmd()
-	if _, ok := msg.(tea.QuitMsg); !ok {
-		t.Errorf("expected tea.QuitMsg, got %T", msg)
-	}
+	_, ok := msg.(tea.QuitMsg)
+	assert.Truef(t, ok, "expected tea.QuitMsg, got %T", msg)
 }
 
 // ---------- focus transitions ----------
@@ -197,9 +186,8 @@ func TestModel_F_OpensFocusOnFilterPanel(t *testing.T) {
 	m = resize(m, 80, 24)
 	m = key(m, "f")
 
-	if m.focus != appshell.FocusFilterPanel {
-		t.Errorf("focus after 'f': got %v, want FocusFilterPanel", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusFilterPanel, m.focus,
+		"focus after 'f': got %v, want FocusFilterPanel", m.focus)
 }
 
 // TestModel_Enter_OpensDetailPane verifies pressing Enter when entries exist
@@ -212,12 +200,9 @@ func TestModel_Enter_OpensDetailPane(t *testing.T) {
 
 	m = key(m, "enter")
 
-	if !m.pane.IsOpen() {
-		t.Error("pane should be open after Enter")
-	}
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after Enter: got %v, want FocusEntryList (pane open does NOT transfer focus)", m.focus)
-	}
+	assert.True(t, m.pane.IsOpen(), "pane should be open after Enter")
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after Enter: got %v, want FocusEntryList (pane open does NOT transfer focus)", m.focus)
 }
 
 // TestModel_Enter_NoEntries_DoesNotOpenPane verifies Enter with no entries
@@ -229,9 +214,7 @@ func TestModel_Enter_NoEntries_DoesNotOpenPane(t *testing.T) {
 
 	m = key(m, "enter")
 
-	if m.pane.IsOpen() {
-		t.Error("pane should NOT open when there are no entries")
-	}
+	assert.False(t, m.pane.IsOpen(), "pane should NOT open when there are no entries")
 }
 
 // TestModel_BlurredMsg_ReturnsFocusToList verifies that detailpane.BlurredMsg
@@ -248,15 +231,12 @@ func TestModel_BlurredMsg_ReturnsFocusToList(t *testing.T) {
 	// Tab to the pane to mirror the path where BlurredMsg originates.
 	m = key(m, "tab")
 
-	if m.focus != appshell.FocusDetailPane {
-		t.Fatal("expected FocusDetailPane before sending BlurredMsg")
-	}
+	require.Equal(t, appshell.FocusDetailPane, m.focus, "expected FocusDetailPane before sending BlurredMsg")
 
 	m = send(m, detailpane.BlurredMsg{})
 
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after BlurredMsg: got %v, want FocusEntryList", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after BlurredMsg: got %v, want FocusEntryList", m.focus)
 }
 
 // TestModel_EscInPane_EmitsBlurredMsg verifies Esc from within the detail pane
@@ -272,19 +252,15 @@ func TestModel_EscInPane_EmitsBlurredMsg(t *testing.T) {
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 
-	if cmd == nil {
-		t.Fatal("Esc in detail pane should return a non-nil cmd")
-	}
+	require.NotNil(t, cmd, "Esc in detail pane should return a non-nil cmd")
 	blurMsg := cmd()
-	if _, ok := blurMsg.(detailpane.BlurredMsg); !ok {
-		t.Fatalf("expected detailpane.BlurredMsg from Esc, got %T", blurMsg)
-	}
+	_, ok := blurMsg.(detailpane.BlurredMsg)
+	require.Truef(t, ok, "expected detailpane.BlurredMsg from Esc, got %T", blurMsg)
 
 	// Deliver the BlurredMsg to the parent model to complete the focus handoff.
 	m = send(m, blurMsg)
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after BlurredMsg: got %v, want FocusEntryList", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after BlurredMsg: got %v, want FocusEntryList", m.focus)
 }
 
 // ---------- help overlay ----------
@@ -300,16 +276,13 @@ func TestModel_HelpOverlay_InterceptsKeys(t *testing.T) {
 
 	// Open help overlay.
 	m = key(m, "?")
-	if !m.help.IsOpen() {
-		t.Fatal("help overlay should be open after '?'")
-	}
+	require.True(t, m.help.IsOpen(), "help overlay should be open after '?'")
 
 	// Press 'j' — should be intercepted by the overlay and NOT move the cursor.
 	m = key(m, "j")
-	if m.list.Cursor() != cursorBefore {
-		t.Errorf("cursor moved while help overlay was open: before=%d after=%d",
-			cursorBefore, m.list.Cursor())
-	}
+	assert.Equalf(t, cursorBefore, m.list.Cursor(),
+		"cursor moved while help overlay was open: before=%d after=%d",
+		cursorBefore, m.list.Cursor())
 }
 
 // ---------- loading stream ----------
@@ -324,9 +297,7 @@ func TestModel_LoadDone_LoadingBecomesInactive(t *testing.T) {
 
 	m = send(m, logsource.LoadDoneMsg{})
 
-	if m.loading.IsActive() {
-		t.Error("loading should be inactive after LoadDoneMsg")
-	}
+	assert.False(t, m.loading.IsActive(), "loading should be inactive after LoadDoneMsg")
 }
 
 // ---------- window resize ----------
@@ -337,12 +308,8 @@ func TestModel_WindowSizeMsg_UpdatesDimensions(t *testing.T) {
 	m := newModel()
 	m = resize(m, 120, 40)
 
-	if m.resize.Width() != 120 {
-		t.Errorf("resize.Width(): got %d, want 120", m.resize.Width())
-	}
-	if m.resize.Height() != 40 {
-		t.Errorf("resize.Height(): got %d, want 40", m.resize.Height())
-	}
+	assert.Equalf(t, 120, m.resize.Width(), "resize.Width(): got %d, want 120", m.resize.Width())
+	assert.Equalf(t, 40, m.resize.Height(), "resize.Height(): got %d, want 40", m.resize.Height())
 }
 
 // ---------- entry list integration ----------
@@ -358,9 +325,8 @@ func TestModel_SetEntries_UpdatesHeaderCounts(t *testing.T) {
 
 	// With no filter, total == visible == 7. The header View() should contain "7".
 	headerView := m.header.View()
-	if !containsCount(headerView, 7) {
-		t.Errorf("header should show count 7 after SetEntries; got: %q", headerView)
-	}
+	assert.Truef(t, containsCount(headerView, 7),
+		"header should show count 7 after SetEntries; got: %q", headerView)
 }
 
 // TestModel_OpenDetailPane_ViaMsg verifies OpenDetailPaneMsg (double-click path)
@@ -373,13 +339,10 @@ func TestModel_OpenDetailPane_ViaMsg(t *testing.T) {
 
 	m = send(m, entrylist.OpenDetailPaneMsg{Entry: entries[1]})
 
-	if !m.pane.IsOpen() {
-		t.Error("pane should be open after OpenDetailPaneMsg")
-	}
+	assert.True(t, m.pane.IsOpen(), "pane should be open after OpenDetailPaneMsg")
 	// T-126 (F-017): opening the pane does NOT transfer focus.
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus: got %v, want FocusEntryList (pane open does not steal focus)", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus: got %v, want FocusEntryList (pane open does not steal focus)", m.focus)
 }
 
 // ---------- T-096: Tab focus cycle ----------
@@ -394,12 +357,9 @@ func TestModel_Tab_CyclesListToDetails(t *testing.T) {
 	m = key(m, "enter") // open pane (focus stays on list per T-126)
 
 	m = key(m, "tab")
-	if m.focus != appshell.FocusDetailPane {
-		t.Errorf("Tab from list with pane open: got %v, want FocusDetailPane", m.focus)
-	}
-	if !m.pane.IsOpen() {
-		t.Error("Tab must not close the pane")
-	}
+	assert.Equalf(t, appshell.FocusDetailPane, m.focus,
+		"Tab from list with pane open: got %v, want FocusDetailPane", m.focus)
+	assert.True(t, m.pane.IsOpen(), "Tab must not close the pane")
 }
 
 // TestModel_Tab_WrapsDetailsToList verifies Tab wraps details → list.
@@ -411,17 +371,13 @@ func TestModel_Tab_WrapsDetailsToList(t *testing.T) {
 	m = m.SetEntries(makeEntries(3))
 	m = key(m, "enter") // open pane (focus stays on list per T-126)
 	m = key(m, "tab")   // list → details
-	if m.focus != appshell.FocusDetailPane {
-		t.Fatalf("precondition: Tab from list with pane open should focus details, got %v", m.focus)
-	}
+	require.Equalf(t, appshell.FocusDetailPane, m.focus,
+		"precondition: Tab from list with pane open should focus details, got %v", m.focus)
 
 	m = key(m, "tab") // details → list (wrap)
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("Tab from details: got %v, want FocusEntryList", m.focus)
-	}
-	if !m.pane.IsOpen() {
-		t.Error("Tab must not close the pane")
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"Tab from details: got %v, want FocusEntryList", m.focus)
+	assert.True(t, m.pane.IsOpen(), "Tab must not close the pane")
 }
 
 // TestModel_Tab_NoOpSinglePane verifies Tab is a no-op when the detail pane
@@ -432,9 +388,8 @@ func TestModel_Tab_NoOpSinglePane(t *testing.T) {
 	m = m.SetEntries(makeEntries(3))
 
 	m = key(m, "tab")
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("Tab with only list visible: got %v, want FocusEntryList", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"Tab with only list visible: got %v, want FocusEntryList", m.focus)
 }
 
 // TestModel_Tab_InertWhenFilterPanelFocused verifies Tab does not cycle focus
@@ -446,9 +401,8 @@ func TestModel_Tab_InertWhenFilterPanelFocused(t *testing.T) {
 	m = key(m, "f") // focus = FocusFilterPanel
 
 	m = key(m, "tab")
-	if m.focus != appshell.FocusFilterPanel {
-		t.Errorf("Tab while filter panel focused must be inert, got %v", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusFilterPanel, m.focus,
+		"Tab while filter panel focused must be inert, got %v", m.focus)
 }
 
 // ---------- T-097: Esc priority 3 (list transient clear) ----------
@@ -462,15 +416,11 @@ func TestModel_Esc_OnList_NoTransient_NoOp(t *testing.T) {
 
 	cursorBefore := m.list.Cursor()
 	m = key(m, "esc")
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after Esc on list: got %v, want FocusEntryList", m.focus)
-	}
-	if m.list.Cursor() != cursorBefore {
-		t.Errorf("cursor changed unexpectedly: before=%d after=%d", cursorBefore, m.list.Cursor())
-	}
-	if m.pane.IsOpen() {
-		t.Error("Esc on list must not open pane")
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after Esc on list: got %v, want FocusEntryList", m.focus)
+	assert.Equalf(t, cursorBefore, m.list.Cursor(),
+		"cursor changed unexpectedly: before=%d after=%d", cursorBefore, m.list.Cursor())
+	assert.False(t, m.pane.IsOpen(), "Esc on list must not open pane")
 }
 
 // ---------- T-091: detail pane auto-close on minimum underflow ----------
@@ -485,28 +435,20 @@ func TestModel_AutoClose_RightSplit_BelowMinWidth(t *testing.T) {
 	entries := makeEntries(5)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if !m.pane.IsOpen() {
-		t.Fatal("precondition: pane should be open after openPane")
-	}
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: orientation should be right at termWidth=200, got %v", m.resize.Orientation())
-	}
+	require.True(t, m.pane.IsOpen(), "precondition: pane should be open after openPane")
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: orientation should be right at termWidth=200, got %v", m.resize.Orientation())
 
 	// Shrink while keeping right-split: detailW drops below MinDetailWidth.
 	m = resize(m, 100, 24)
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: orientation should stay right at termWidth=100, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: orientation should stay right at termWidth=100, got %v", m.resize.Orientation())
 
-	if m.pane.IsOpen() {
-		t.Errorf("expected auto-close at termWidth=100 (detailW=%d), pane still open", m.layout.Layout().DetailContentWidth())
-	}
-	if !m.keyhints.HasNotice() {
-		t.Error("expected status notice after auto-close")
-	}
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after auto-close: got %v, want FocusEntryList", m.focus)
-	}
+	assert.Falsef(t, m.pane.IsOpen(),
+		"expected auto-close at termWidth=100 (detailW=%d), pane still open", m.layout.Layout().DetailContentWidth())
+	assert.True(t, m.keyhints.HasNotice(), "expected status notice after auto-close")
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after auto-close: got %v, want FocusEntryList", m.focus)
 }
 
 // TestModel_AutoClose_NoticeClearedOnMsg verifies the noticeClearMsg resets
@@ -518,14 +460,10 @@ func TestModel_AutoClose_NoticeClearedOnMsg(t *testing.T) {
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
 	m = resize(m, 100, 24)
-	if !m.keyhints.HasNotice() {
-		t.Fatal("precondition: notice should be set after auto-close")
-	}
+	require.True(t, m.keyhints.HasNotice(), "precondition: notice should be set after auto-close")
 
 	m = send(m, noticeClearMsg{})
-	if m.keyhints.HasNotice() {
-		t.Error("notice should be cleared after noticeClearMsg")
-	}
+	assert.False(t, m.keyhints.HasNotice(), "notice should be cleared after noticeClearMsg")
 }
 
 // TestModel_AutoClose_AboveMin_KeepsPaneOpen verifies a resize that stays
@@ -539,12 +477,9 @@ func TestModel_AutoClose_AboveMin_KeepsPaneOpen(t *testing.T) {
 
 	m = resize(m, 180, 24)
 
-	if !m.pane.IsOpen() {
-		t.Errorf("pane should remain open at termWidth=180 (detailW=%d)", m.layout.Layout().DetailContentWidth())
-	}
-	if m.keyhints.HasNotice() {
-		t.Error("notice should not be set when pane stays open")
-	}
+	assert.Truef(t, m.pane.IsOpen(),
+		"pane should remain open at termWidth=180 (detailW=%d)", m.layout.Layout().DetailContentWidth())
+	assert.False(t, m.keyhints.HasNotice(), "notice should not be set when pane stays open")
 }
 
 // ---------- T-104: mouse drag on divider resizes detail pane width ----------
@@ -557,9 +492,8 @@ func TestModel_DividerDrag_UpdatesWidthRatio(t *testing.T) {
 	entries := makeEntries(5)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right orientation, got %v", m.resize.Orientation())
 	before := m.cfg.Config.DetailPane.WidthRatio
 
 	// Press on the divider column to start the drag session.
@@ -567,22 +501,18 @@ func TestModel_DividerDrag_UpdatesWidthRatio(t *testing.T) {
 	l := m.layout.Layout()
 	divider := l.ListContentWidth()
 	m = send(m, tea.MouseMsg{X: divider, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if !m.draggingDivider {
-		t.Fatalf("precondition: expected draggingDivider=true after Press on divider column %d", divider)
-	}
+	require.Truef(t, m.draggingDivider,
+		"precondition: expected draggingDivider=true after Press on divider column %d", divider)
 
 	// Motion to a column 20 cells to the left → detail grows → ratio rises.
 	m = send(m, tea.MouseMsg{X: divider - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 	after := m.cfg.Config.DetailPane.WidthRatio
-	if after <= before {
-		t.Errorf("drag-left should increase width_ratio: before=%.3f after=%.3f", before, after)
-	}
+	assert.Greaterf(t, after, before,
+		"drag-left should increase width_ratio: before=%.3f after=%.3f", before, after)
 
 	// Release ends the drag session.
 	m = send(m, tea.MouseMsg{X: divider - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
-	if m.draggingDivider {
-		t.Errorf("expected draggingDivider=false after Release")
-	}
+	assert.False(t, m.draggingDivider, "expected draggingDivider=false after Release")
 }
 
 // ---------- T-095: click-to-focus on panes ----------
@@ -596,9 +526,8 @@ func TestModel_Click_DetailZone_TransfersFocusToDetail(t *testing.T) {
 	entries := makeEntries(5)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right orientation at width 200, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right orientation at width 200, got %v", m.resize.Orientation())
 
 	// Move focus to the list first.
 	m.focus = appshell.FocusEntryList
@@ -612,9 +541,8 @@ func TestModel_Click_DetailZone_TransfersFocusToDetail(t *testing.T) {
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	})
-	if m.focus != appshell.FocusDetailPane {
-		t.Errorf("click in detail zone (x=%d): focus = %v, want FocusDetailPane", detailX, m.focus)
-	}
+	assert.Equalf(t, appshell.FocusDetailPane, m.focus,
+		"click in detail zone (x=%d): focus = %v, want FocusDetailPane", detailX, m.focus)
 }
 
 // TestModel_Click_ListZone_TransfersFocusToList verifies that clicking inside
@@ -630,9 +558,8 @@ func TestModel_Click_ListZone_TransfersFocusToList(t *testing.T) {
 	// verify that clicking the list zone returns focus to the list.
 	m.focus = appshell.FocusDetailPane
 	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
-	if m.focus != appshell.FocusDetailPane {
-		t.Fatalf("precondition: focus should be detail, got %v", m.focus)
-	}
+	require.Equalf(t, appshell.FocusDetailPane, m.focus,
+		"precondition: focus should be detail, got %v", m.focus)
 
 	// Click well inside the list area.
 	m = send(m, tea.MouseMsg{
@@ -640,9 +567,8 @@ func TestModel_Click_ListZone_TransfersFocusToList(t *testing.T) {
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	})
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("click in list zone: focus = %v, want FocusEntryList", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"click in list zone: focus = %v, want FocusEntryList", m.focus)
 }
 
 // TestModel_Click_DetailZone_PaneClosed_NoFocusTransfer verifies that
@@ -660,9 +586,8 @@ func TestModel_Click_DetailZone_PaneClosed_NoFocusTransfer(t *testing.T) {
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	})
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("click with pane closed: focus = %v, want FocusEntryList", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"click with pane closed: focus = %v, want FocusEntryList", m.focus)
 }
 
 // ---------- T-099: ratio live write-back to config ----------
@@ -684,28 +609,24 @@ func TestModel_RatioKey_PersistsToConfigFile(t *testing.T) {
 	m.focus = appshell.FocusDetailPane
 	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
 
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right orientation, got %v", m.resize.Orientation())
 	beforeWidth := m.cfg.Config.DetailPane.WidthRatio
 	beforeHeight := m.cfg.Config.DetailPane.HeightRatio
 
 	m = key(m, "+") // increment width_ratio in right-split
-	if m.cfg.Config.DetailPane.WidthRatio == beforeWidth {
-		t.Fatalf("'+' did not change in-memory width_ratio: %.3f", m.cfg.Config.DetailPane.WidthRatio)
-	}
+	require.NotEqualf(t, beforeWidth, m.cfg.Config.DetailPane.WidthRatio,
+		"'+' did not change in-memory width_ratio: %.3f", m.cfg.Config.DetailPane.WidthRatio)
 
 	// Reload from disk and verify width_ratio persisted.
 	reloaded := config.Load(cfgPath)
-	if reloaded.Config.DetailPane.WidthRatio != m.cfg.Config.DetailPane.WidthRatio {
-		t.Errorf("disk width_ratio: got %.3f, want %.3f",
-			reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
-	}
+	assert.Equalf(t, m.cfg.Config.DetailPane.WidthRatio, reloaded.Config.DetailPane.WidthRatio,
+		"disk width_ratio: got %.3f, want %.3f",
+		reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
 	// height_ratio must NOT have been clobbered.
-	if reloaded.Config.DetailPane.HeightRatio != beforeHeight {
-		t.Errorf("disk height_ratio mutated: got %.3f, want %.3f (untouched)",
-			reloaded.Config.DetailPane.HeightRatio, beforeHeight)
-	}
+	assert.Equalf(t, beforeHeight, reloaded.Config.DetailPane.HeightRatio,
+		"disk height_ratio mutated: got %.3f, want %.3f (untouched)",
+		reloaded.Config.DetailPane.HeightRatio, beforeHeight)
 	_ = m
 }
 
@@ -720,25 +641,21 @@ func TestModel_DividerDragRelease_PersistsWidthRatio(t *testing.T) {
 	m = resize(m, 200, 24)
 	m = m.SetEntries(makeEntries(3))
 	m = m.openPane(makeEntries(3)[0])
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right orientation, got %v", m.resize.Orientation())
 
 	l := m.layout.Layout()
 	divider := l.ListContentWidth() // post-T-160 visible-glyph column
 
 	m = send(m, tea.MouseMsg{X: divider, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if !m.draggingDivider {
-		t.Fatalf("precondition: drag did not start at divider x=%d", divider)
-	}
+	require.Truef(t, m.draggingDivider, "precondition: drag did not start at divider x=%d", divider)
 	m = send(m, tea.MouseMsg{X: divider - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 	m = send(m, tea.MouseMsg{X: divider - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 
 	reloaded := config.Load(cfgPath)
-	if reloaded.Config.DetailPane.WidthRatio != m.cfg.Config.DetailPane.WidthRatio {
-		t.Errorf("disk width_ratio after drag release: got %.3f, want %.3f",
-			reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
-	}
+	assert.Equalf(t, m.cfg.Config.DetailPane.WidthRatio, reloaded.Config.DetailPane.WidthRatio,
+		"disk width_ratio after drag release: got %.3f, want %.3f",
+		reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
 }
 
 // ---------- T-105: orientation flip preserves both ratios ----------
@@ -753,36 +670,30 @@ func TestModel_OrientationFlip_PreservesBothRatios(t *testing.T) {
 	cfg.Config.DetailPane.WidthRatio = 0.20
 
 	m := New("", false, "", cfg)
-	if m.cfg.Config.DetailPane.HeightRatio != 0.60 {
-		t.Fatalf("pre-resize height_ratio: got %.2f, want 0.60", m.cfg.Config.DetailPane.HeightRatio)
-	}
+	require.Equalf(t, 0.60, m.cfg.Config.DetailPane.HeightRatio,
+		"pre-resize height_ratio: got %.2f, want 0.60", m.cfg.Config.DetailPane.HeightRatio)
 
 	assertRatios := func(step string) {
 		t.Helper()
-		if m.cfg.Config.DetailPane.HeightRatio != 0.60 {
-			t.Errorf("%s: height_ratio = %.3f, want 0.600 (unmutated)", step, m.cfg.Config.DetailPane.HeightRatio)
-		}
-		if m.cfg.Config.DetailPane.WidthRatio != 0.20 {
-			t.Errorf("%s: width_ratio = %.3f, want 0.200 (unmutated)", step, m.cfg.Config.DetailPane.WidthRatio)
-		}
+		assert.Equalf(t, 0.60, m.cfg.Config.DetailPane.HeightRatio,
+			"%s: height_ratio = %.3f, want 0.600 (unmutated)", step, m.cfg.Config.DetailPane.HeightRatio)
+		assert.Equalf(t, 0.20, m.cfg.Config.DetailPane.WidthRatio,
+			"%s: width_ratio = %.3f, want 0.200 (unmutated)", step, m.cfg.Config.DetailPane.WidthRatio)
 	}
 
 	m = resize(m, 200, 24) // right
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: 200 cols should be right, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: 200 cols should be right, got %v", m.resize.Orientation())
 	assertRatios("after initial right resize")
 
 	m = resize(m, 80, 24) // below (under 100-col threshold)
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: 80 cols should be below, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: 80 cols should be below, got %v", m.resize.Orientation())
 	assertRatios("after flip to below")
 
 	m = resize(m, 200, 24) // back to right
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: 200 cols should flip back to right, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: 200 cols should flip back to right, got %v", m.resize.Orientation())
 	assertRatios("after flip back to right")
 }
 
@@ -799,21 +710,14 @@ func TestModel_PaneSearch_DismissedOnBlurred(t *testing.T) {
 	m = key(m, "tab")   // Tab → focus detail pane (T-144: `/` is focus-based)
 	m = key(m, "/")     // start pane search
 	m = key(m, "t")     // type a char
-	if !m.paneSearch.IsActive() {
-		t.Fatal("precondition: search should be active after '/'")
-	}
-	if m.paneSearch.Query() == "" {
-		t.Fatal("precondition: query should be non-empty after typing")
-	}
+	require.True(t, m.paneSearch.IsActive(), "precondition: search should be active after '/'")
+	require.NotEmpty(t, m.paneSearch.Query(), "precondition: query should be non-empty after typing")
 
 	m = send(m, detailpane.BlurredMsg{})
 
-	if m.paneSearch.IsActive() {
-		t.Error("search should be dismissed after pane closes")
-	}
-	if m.paneSearch.Query() != "" {
-		t.Errorf("search query should be cleared after pane closes, got %q", m.paneSearch.Query())
-	}
+	assert.False(t, m.paneSearch.IsActive(), "search should be dismissed after pane closes")
+	assert.Equalf(t, "", m.paneSearch.Query(),
+		"search query should be cleared after pane closes, got %q", m.paneSearch.Query())
 }
 
 // TestModel_PaneSearch_DismissedOnReopen verifies that opening a new
@@ -829,12 +733,9 @@ func TestModel_PaneSearch_DismissedOnReopen(t *testing.T) {
 
 	m = m.openPane(entries[1])
 
-	if m.paneSearch.IsActive() {
-		t.Error("search should be dismissed when a new entry opens the pane")
-	}
-	if m.paneSearch.Query() != "" {
-		t.Errorf("search query should be cleared on reopen, got %q", m.paneSearch.Query())
-	}
+	assert.False(t, m.paneSearch.IsActive(), "search should be dismissed when a new entry opens the pane")
+	assert.Equalf(t, "", m.paneSearch.Query(),
+		"search query should be cleared on reopen, got %q", m.paneSearch.Query())
 }
 
 // ---------- T-120: two-step Esc integration (cavekit-detail-pane R7 / F-007) ----------
@@ -850,43 +751,28 @@ func TestModel_TwoStepEsc_DismissesSearchThenClosesPane(t *testing.T) {
 	m = key(m, "tab")   // Tab → focus detail pane (T-144: focus-based `/`)
 	m = key(m, "/")     // activate pane search
 	m = key(m, "h")     // type something to exercise the query path
-	if !m.paneSearch.IsActive() {
-		t.Fatal("precondition: search should be active before first Esc")
-	}
-	if !m.pane.IsOpen() {
-		t.Fatal("precondition: pane should be open before first Esc")
-	}
+	require.True(t, m.paneSearch.IsActive(), "precondition: search should be active before first Esc")
+	require.True(t, m.pane.IsOpen(), "precondition: pane should be open before first Esc")
 
 	// First Esc — dismisses search, pane stays open.
 	m = key(m, "esc")
-	if m.paneSearch.IsActive() {
-		t.Error("first Esc should dismiss search")
-	}
-	if !m.pane.IsOpen() {
-		t.Error("first Esc should NOT close the pane")
-	}
-	if m.focus != appshell.FocusDetailPane {
-		t.Errorf("after first Esc focus should remain FocusDetailPane, got %v", m.focus)
-	}
+	assert.False(t, m.paneSearch.IsActive(), "first Esc should dismiss search")
+	assert.True(t, m.pane.IsOpen(), "first Esc should NOT close the pane")
+	assert.Equalf(t, appshell.FocusDetailPane, m.focus,
+		"after first Esc focus should remain FocusDetailPane, got %v", m.focus)
 
 	// Second Esc — closes the pane. Pane emits BlurredMsg which we
 	// deliver to the model to complete the focus handoff.
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
-	if m.pane.IsOpen() {
-		t.Error("second Esc should close the pane")
-	}
-	if cmd == nil {
-		t.Fatal("second Esc should return BlurredMsg cmd")
-	}
+	assert.False(t, m.pane.IsOpen(), "second Esc should close the pane")
+	require.NotNil(t, cmd, "second Esc should return BlurredMsg cmd")
 	blurMsg := cmd()
-	if _, ok := blurMsg.(detailpane.BlurredMsg); !ok {
-		t.Fatalf("second Esc should emit BlurredMsg, got %T", blurMsg)
-	}
+	_, ok := blurMsg.(detailpane.BlurredMsg)
+	require.Truef(t, ok, "second Esc should emit BlurredMsg, got %T", blurMsg)
 	m = send(m, blurMsg)
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after second Esc: got %v, want FocusEntryList", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after second Esc: got %v, want FocusEntryList", m.focus)
 }
 
 // ---------- T-144: focus-based `/` routing (cavekit-app-shell R13 revised) ----------
@@ -902,21 +788,15 @@ func TestModel_Slash_ListFocus_PaneOpen_ActivatesListSearch(t *testing.T) {
 	m = m.openPane(entries[0])
 	// Focus stays on the list after openPane per T-126 — that is the
 	// premise we want to test: `/` activates list search from here.
-	if m.focus != appshell.FocusEntryList {
-		t.Fatalf("precondition: want list focus after openPane, got %v", m.focus)
-	}
+	require.Equalf(t, appshell.FocusEntryList, m.focus,
+		"precondition: want list focus after openPane, got %v", m.focus)
 
 	m = key(m, "/")
 
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("/ with list focused must NOT transfer focus, got %v", m.focus)
-	}
-	if !m.list.HasActiveSearch() {
-		t.Error("/ with list focused should activate list search")
-	}
-	if m.paneSearch.IsActive() {
-		t.Error("/ with list focused must NOT activate pane search")
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"/ with list focused must NOT transfer focus, got %v", m.focus)
+	assert.True(t, m.list.HasActiveSearch(), "/ with list focused should activate list search")
+	assert.False(t, m.paneSearch.IsActive(), "/ with list focused must NOT activate pane search")
 }
 
 // TestModel_Slash_ListFocus_PaneClosed_ActivatesListSearch verifies that
@@ -927,21 +807,14 @@ func TestModel_Slash_ListFocus_PaneClosed_ActivatesListSearch(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
-	if m.pane.IsOpen() {
-		t.Fatal("precondition: pane should be closed")
-	}
+	require.False(t, m.pane.IsOpen(), "precondition: pane should be closed")
 
 	m = key(m, "/")
 
-	if !m.list.HasActiveSearch() {
-		t.Error("/ with list focused (pane closed) should activate list search")
-	}
-	if m.paneSearch.IsActive() {
-		t.Error("/ with list focused must NOT activate pane search")
-	}
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("/ with list focused should stay on list, got %v", m.focus)
-	}
+	assert.True(t, m.list.HasActiveSearch(), "/ with list focused (pane closed) should activate list search")
+	assert.False(t, m.paneSearch.IsActive(), "/ with list focused must NOT activate pane search")
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"/ with list focused should stay on list, got %v", m.focus)
 }
 
 // TestModel_Slash_DetailPaneFocus_ActivatesPaneSearch verifies that
@@ -956,12 +829,8 @@ func TestModel_Slash_DetailPaneFocus_ActivatesPaneSearch(t *testing.T) {
 
 	m = key(m, "/")
 
-	if !m.paneSearch.IsActive() {
-		t.Error("/ with pane focused should activate pane search")
-	}
-	if m.list.HasActiveSearch() {
-		t.Error("/ with pane focused must NOT activate list search")
-	}
+	assert.True(t, m.paneSearch.IsActive(), "/ with pane focused should activate pane search")
+	assert.False(t, m.list.HasActiveSearch(), "/ with pane focused must NOT activate list search")
 }
 
 // TestModel_ListSearch_TabCycle_ClearsSearch verifies that Tab-cycling
@@ -975,15 +844,11 @@ func TestModel_ListSearch_TabCycle_ClearsSearch(t *testing.T) {
 	// Focus is on list. Activate list search.
 	m = key(m, "/")
 	m = key(m, "e")
-	if !m.list.HasActiveSearch() {
-		t.Fatal("precondition: list search should be active")
-	}
+	require.True(t, m.list.HasActiveSearch(), "precondition: list search should be active")
 
 	m = key(m, "tab") // focus → detail pane
 
-	if m.list.HasActiveSearch() {
-		t.Error("Tab cycling off the list should clear list search")
-	}
+	assert.False(t, m.list.HasActiveSearch(), "Tab cycling off the list should clear list search")
 }
 
 // TestModel_Slash_FilterPanelFocus_RoutedToFilter verifies that `/` with
@@ -994,18 +859,14 @@ func TestModel_Slash_FilterPanelFocus_RoutedToFilter(t *testing.T) {
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
 	m = key(m, "f") // focus = FocusFilterPanel
-	if m.focus != appshell.FocusFilterPanel {
-		t.Fatalf("precondition: want filter panel focused, got %v", m.focus)
-	}
+	require.Equalf(t, appshell.FocusFilterPanel, m.focus,
+		"precondition: want filter panel focused, got %v", m.focus)
 
 	m = key(m, "/")
 
-	if m.paneSearch.IsActive() {
-		t.Error("/ in filter panel should NOT activate pane search")
-	}
-	if m.focus != appshell.FocusFilterPanel {
-		t.Errorf("/ in filter panel should stay in filter panel, got %v", m.focus)
-	}
+	assert.False(t, m.paneSearch.IsActive(), "/ in filter panel should NOT activate pane search")
+	assert.Equalf(t, appshell.FocusFilterPanel, m.focus,
+		"/ in filter panel should stay in filter panel, got %v", m.focus)
 }
 
 // ---------- T-118: input vs navigation mode (F-008) ----------
@@ -1023,20 +884,16 @@ func TestModel_Search_NavigateMode_JPassesThroughToPane(t *testing.T) {
 	m = m.openPane(entries[0])
 	m = key(m, "tab") // focus detail pane (T-144: `/` is focus-based)
 	m = key(m, "/")   // activate — input mode
-	if !m.paneSearch.IsActive() {
-		t.Fatal("precondition: search should be active after '/'")
-	}
+	require.True(t, m.paneSearch.IsActive(), "precondition: search should be active after '/'")
 	m = key(m, "enter") // commit to navigate
-	if m.paneSearch.Mode() != detailpane.SearchModeNavigate {
-		t.Fatalf("precondition: want SearchModeNavigate, got %v", m.paneSearch.Mode())
-	}
+	require.Equalf(t, detailpane.SearchModeNavigate, m.paneSearch.Mode(),
+		"precondition: want SearchModeNavigate, got %v", m.paneSearch.Mode())
 
 	paneBefore := m.pane
 	m = key(m, "j")
 	// Query must be unchanged: `j` in nav mode should NOT extend the query.
-	if m.paneSearch.Query() != "" {
-		t.Errorf("nav-mode `j` should not extend query, got %q", m.paneSearch.Query())
-	}
+	assert.Equalf(t, "", m.paneSearch.Query(),
+		"nav-mode `j` should not extend query, got %q", m.paneSearch.Query())
 	// Pane view should have changed IF the content exceeded the viewport.
 	// We check by rendering View() and comparing — if there was scroll
 	// room, the view string differs.
@@ -1046,12 +903,9 @@ func TestModel_Search_NavigateMode_JPassesThroughToPane(t *testing.T) {
 		t.Logf("note: pane view unchanged after j (content may have fit in viewport)")
 	}
 	// And search is still active in navigate mode.
-	if !m.paneSearch.IsActive() {
-		t.Error("search should still be active after nav-mode j")
-	}
-	if m.paneSearch.Mode() != detailpane.SearchModeNavigate {
-		t.Errorf("mode should stay navigate after j, got %v", m.paneSearch.Mode())
-	}
+	assert.True(t, m.paneSearch.IsActive(), "search should still be active after nav-mode j")
+	assert.Equalf(t, detailpane.SearchModeNavigate, m.paneSearch.Mode(),
+		"mode should stay navigate after j, got %v", m.paneSearch.Mode())
 }
 
 // TestModel_Search_InputMode_JAppendsToQuery verifies that in input mode,
@@ -1064,9 +918,8 @@ func TestModel_Search_InputMode_JAppendsToQuery(t *testing.T) {
 	m = key(m, "tab")   // Tab → focus detail pane (T-144)
 	m = key(m, "/")     // activate pane search — input mode
 	m = key(m, "j")     // should extend query
-	if m.paneSearch.Query() != "j" {
-		t.Errorf("input-mode `j` should extend query to 'j', got %q", m.paneSearch.Query())
-	}
+	assert.Equalf(t, "j", m.paneSearch.Query(),
+		"input-mode `j` should extend query to 'j', got %q", m.paneSearch.Query())
 }
 
 // ---------- T-123: detail-pane vertical height in right orientation (P0 / F-013) ----------
@@ -1085,18 +938,15 @@ func TestModel_PaneHeight_RightOrientation_UsesFullSlot(t *testing.T) {
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
 
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: forced orientation=right, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: forced orientation=right, got %v", m.resize.Orientation())
 	// 24 (height) - 1 (header) - 1 (status) = 22 outer rows → ContentHeight ≥ 20.
-	if got := m.pane.ContentHeight(); got < 20 {
-		t.Errorf("right-split ContentHeight: got %d, want ≥ 20 (F-013)", got)
-	}
+	assert.GreaterOrEqualf(t, m.pane.ContentHeight(), 20,
+		"right-split ContentHeight: got %d, want ≥ 20 (F-013)", m.pane.ContentHeight())
 	// Regression: height_ratio × terminalHeight = 7. If ContentHeight is ≤ 5
 	// we are still applying below-mode math in right orientation.
-	if got := m.pane.ContentHeight(); got <= 5 {
-		t.Errorf("right-split ContentHeight = %d — still clipped to height_ratio", got)
-	}
+	assert.Greaterf(t, m.pane.ContentHeight(), 5,
+		"right-split ContentHeight = %d — still clipped to height_ratio", m.pane.ContentHeight())
 }
 
 // TestModel_PaneHeight_BelowOrientation_UsesRatio verifies the ratio-based
@@ -1112,17 +962,14 @@ func TestModel_PaneHeight_BelowOrientation_UsesRatio(t *testing.T) {
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
 
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: forced orientation=below, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: forced orientation=below, got %v", m.resize.Orientation())
 	// 24 × 0.30 = 7 outer rows → ContentHeight = 5.
 	wantOuter := 7 // int(24 * 0.30) = 7
-	if got := m.paneHeight.PaneHeight(); got != wantOuter {
-		t.Errorf("below-mode outer height: got %d, want %d", got, wantOuter)
-	}
-	if got := m.pane.ContentHeight(); got != wantOuter-2 {
-		t.Errorf("below-mode ContentHeight: got %d, want %d", got, wantOuter-2)
-	}
+	assert.Equalf(t, wantOuter, m.paneHeight.PaneHeight(),
+		"below-mode outer height: got %d, want %d", m.paneHeight.PaneHeight(), wantOuter)
+	assert.Equalf(t, wantOuter-2, m.pane.ContentHeight(),
+		"below-mode ContentHeight: got %d, want %d", m.pane.ContentHeight(), wantOuter-2)
 }
 
 // TestModel_RatioKey_StillWorksInBelowMode verifies that `+` in below-mode
@@ -1143,9 +990,8 @@ func TestModel_RatioKey_StillWorksInBelowMode(t *testing.T) {
 
 	before := m.paneHeight.Ratio()
 	m = key(m, "+")
-	if m.paneHeight.Ratio() <= before {
-		t.Errorf("`+` in below-mode: ratio = %.2f, want > %.2f", m.paneHeight.Ratio(), before)
-	}
+	assert.Greaterf(t, m.paneHeight.Ratio(), before,
+		"`+` in below-mode: ratio = %.2f, want > %.2f", m.paneHeight.Ratio(), before)
 }
 
 // TestModel_OrientationFlip_VerticalSizeTracks verifies that flipping from
@@ -1163,40 +1009,31 @@ func TestModel_OrientationFlip_VerticalSizeTracks(t *testing.T) {
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
 
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: 80 cols should be below, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: 80 cols should be below, got %v", m.resize.Orientation())
 	belowOuter := m.paneHeight.PaneHeight()
-	if got, want := belowOuter, 7; got != want {
-		t.Errorf("below outer height: got %d, want %d", got, want)
-	}
+	assert.Equalf(t, 7, belowOuter, "below outer height: got %d, want %d", belowOuter, 7)
 
 	// Flip to right — wide terminal, detailW ≥ 30 so pane stays open.
 	m = resize(m, 140, 24)
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: 140 cols should flip to right, got %v", m.resize.Orientation())
-	}
-	if !m.pane.IsOpen() {
-		t.Fatalf("precondition: pane should still be open after flip to right")
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: 140 cols should flip to right, got %v", m.resize.Orientation())
+	require.True(t, m.pane.IsOpen(), "precondition: pane should still be open after flip to right")
 	// Right-mode vertical = full main slot = 24 - 1 - 1 = 22.
-	if got := m.pane.ContentHeight(); got < 20 {
-		t.Errorf("right-mode ContentHeight after flip: got %d, want ≥ 20", got)
-	}
+	assert.GreaterOrEqualf(t, m.pane.ContentHeight(), 20,
+		"right-mode ContentHeight after flip: got %d, want ≥ 20", m.pane.ContentHeight())
 
 	// Flip back to below — height_ratio preserved, ContentHeight returns to
 	// the ratio-derived value.
 	m = resize(m, 80, 24)
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: 80 cols should flip back to below, got %v", m.resize.Orientation())
-	}
-	if got := m.paneHeight.PaneHeight(); got != belowOuter {
-		t.Errorf("below outer height after round-trip: got %d, want %d (ratio not preserved)", got, belowOuter)
-	}
-	if m.cfg.Config.DetailPane.HeightRatio != 0.30 {
-		t.Errorf("height_ratio mutated by orientation flip: got %.3f, want 0.300",
-			m.cfg.Config.DetailPane.HeightRatio)
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: 80 cols should flip back to below, got %v", m.resize.Orientation())
+	assert.Equalf(t, belowOuter, m.paneHeight.PaneHeight(),
+		"below outer height after round-trip: got %d, want %d (ratio not preserved)",
+		m.paneHeight.PaneHeight(), belowOuter)
+	assert.Equalf(t, 0.30, m.cfg.Config.DetailPane.HeightRatio,
+		"height_ratio mutated by orientation flip: got %.3f, want 0.300",
+		m.cfg.Config.DetailPane.HeightRatio)
 }
 
 // ---------- T-126 (F-017, F-024): pane open-time focus policy ----------
@@ -1209,12 +1046,9 @@ func TestModel_OpenPane_KeepsListFocus(t *testing.T) {
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
 	m = key(m, "enter")
-	if !m.pane.IsOpen() {
-		t.Fatal("pane should be open after Enter")
-	}
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after Enter: got %v, want FocusEntryList", m.focus)
-	}
+	require.True(t, m.pane.IsOpen(), "pane should be open after Enter")
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after Enter: got %v, want FocusEntryList", m.focus)
 }
 
 // T-126 (F-017): OpenDetailPaneMsg (double-click path) also leaves focus
@@ -1225,9 +1059,8 @@ func TestModel_OpenPaneViaMsg_KeepsListFocus(t *testing.T) {
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = send(m, entrylist.OpenDetailPaneMsg{Entry: entries[1]})
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after OpenDetailPaneMsg: got %v, want FocusEntryList", m.focus)
-	}
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after OpenDetailPaneMsg: got %v, want FocusEntryList", m.focus)
 }
 
 // T-126 (F-024): Esc with the list focused and the pane open closes the
@@ -1237,18 +1070,14 @@ func TestModel_EscFromList_WithPaneOpen_ClosesPane(t *testing.T) {
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(3))
 	m = key(m, "enter") // open pane, focus stays on list
-	if !m.pane.IsOpen() || m.focus != appshell.FocusEntryList {
-		t.Fatalf("precondition: pane open + list focused; got open=%v focus=%v",
-			m.pane.IsOpen(), m.focus)
-	}
+	require.Truef(t, m.pane.IsOpen() && m.focus == appshell.FocusEntryList,
+		"precondition: pane open + list focused; got open=%v focus=%v",
+		m.pane.IsOpen(), m.focus)
 
 	m = key(m, "esc")
-	if m.pane.IsOpen() {
-		t.Error("pane should close on Esc from list-focus")
-	}
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after Esc: got %v, want FocusEntryList", m.focus)
-	}
+	assert.False(t, m.pane.IsOpen(), "pane should close on Esc from list-focus")
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after Esc: got %v, want FocusEntryList", m.focus)
 }
 
 // T-126 (F-017): with the pane open and the list focused, pressing `j`
@@ -1263,21 +1092,15 @@ func TestModel_J_FromList_WithPaneOpen_ReRendersPane(t *testing.T) {
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m = updated.(Model)
-	if cmd == nil {
-		t.Fatal("expected SelectionMsg cmd after `j` from list with pane open")
-	}
+	require.NotNil(t, cmd, "expected SelectionMsg cmd after `j` from list with pane open")
 	selMsg := cmd()
-	if _, ok := selMsg.(entrylist.SelectionMsg); !ok {
-		t.Fatalf("expected entrylist.SelectionMsg, got %T", selMsg)
-	}
+	_, ok := selMsg.(entrylist.SelectionMsg)
+	require.Truef(t, ok, "expected entrylist.SelectionMsg, got %T", selMsg)
 	// Deliver the SelectionMsg to the parent so the pane re-renders.
 	m = send(m, selMsg)
-	if !m.pane.IsOpen() {
-		t.Error("pane should still be open after cursor move")
-	}
-	if m.focus != appshell.FocusEntryList {
-		t.Errorf("focus after `j`: got %v, want FocusEntryList (should not transfer)", m.focus)
-	}
+	assert.True(t, m.pane.IsOpen(), "pane should still be open after cursor move")
+	assert.Equalf(t, appshell.FocusEntryList, m.focus,
+		"focus after `j`: got %v, want FocusEntryList (should not transfer)", m.focus)
 }
 
 // ---------- R14 (cavekit-entry-list): pane re-sync on tail-follow snap ----------
@@ -1313,33 +1136,23 @@ func TestModel_TailFollow_TailMsg_PaneResyncsOnAppend(t *testing.T) {
 	m = m.SetEntries(initial)
 
 	m = key(m, "G")
-	if m.list.Cursor() != 2 {
-		t.Fatalf("precondition: cursor at last entry, got %d", m.list.Cursor())
-	}
+	require.Equalf(t, 2, m.list.Cursor(), "precondition: cursor at last entry, got %d", m.list.Cursor())
 	m = key(m, "enter")
-	if !m.pane.IsOpen() {
-		t.Fatal("precondition: pane open after Enter")
-	}
-	if !containsSubstring(m.pane.View(), "gamma-msg") {
-		t.Fatalf("precondition: pane shows gamma-msg; got: %q", m.pane.View())
-	}
+	require.True(t, m.pane.IsOpen(), "precondition: pane open after Enter")
+	require.Truef(t, containsSubstring(m.pane.View(), "gamma-msg"),
+		"precondition: pane shows gamma-msg; got: %q", m.pane.View())
 
 	appended := jsonEntry(4, "delta-unique")
 	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entries: []logsource.Entry{appended}}))
 
-	if m.list.Cursor() != 3 {
-		t.Errorf("cursor should snap to new last entry (3), got %d", m.list.Cursor())
-	}
-	if !m.pane.IsOpen() {
-		t.Error("pane should still be open after append")
-	}
+	assert.Equalf(t, 3, m.list.Cursor(),
+		"cursor should snap to new last entry (3), got %d", m.list.Cursor())
+	assert.True(t, m.pane.IsOpen(), "pane should still be open after append")
 	post := m.pane.View()
-	if !containsSubstring(post, "delta-unique") {
-		t.Errorf("pane must re-render with appended entry (delta-unique); got: %q", post)
-	}
-	if containsSubstring(post, "gamma-msg") {
-		t.Errorf("pane must not keep rendering previous entry (gamma-msg); got: %q", post)
-	}
+	assert.Truef(t, containsSubstring(post, "delta-unique"),
+		"pane must re-render with appended entry (delta-unique); got: %q", post)
+	assert.Falsef(t, containsSubstring(post, "gamma-msg"),
+		"pane must not keep rendering previous entry (gamma-msg); got: %q", post)
 }
 
 // cavekit-entry-list R14 symmetry: same re-sync invariant for
@@ -1358,9 +1171,8 @@ func TestModel_TailFollow_BatchMsg_PaneResyncsOnAppend(t *testing.T) {
 
 	m = key(m, "G")
 	m = key(m, "enter")
-	if !m.pane.IsOpen() || m.list.Cursor() != 1 {
-		t.Fatalf("precondition: cursor=%d pane=%v", m.list.Cursor(), m.pane.IsOpen())
-	}
+	require.Truef(t, m.pane.IsOpen() && m.list.Cursor() == 1,
+		"precondition: cursor=%d pane=%v", m.list.Cursor(), m.pane.IsOpen())
 
 	batch := logsource.EntryBatchMsg{Entries: []logsource.Entry{
 		jsonEntry(3, "charlie-msg"),
@@ -1368,16 +1180,13 @@ func TestModel_TailFollow_BatchMsg_PaneResyncsOnAppend(t *testing.T) {
 	}}
 	m = send(m, logsource.NewLoadFileStreamMsgForTest(batch))
 
-	if m.list.Cursor() != 3 {
-		t.Errorf("cursor should snap to new last entry (3), got %d", m.list.Cursor())
-	}
+	assert.Equalf(t, 3, m.list.Cursor(),
+		"cursor should snap to new last entry (3), got %d", m.list.Cursor())
 	post := m.pane.View()
-	if !containsSubstring(post, "delta-unique") {
-		t.Errorf("pane must re-render with last appended entry (delta-unique); got: %q", post)
-	}
-	if containsSubstring(post, "beta-msg") {
-		t.Errorf("pane must not keep rendering pre-append entry (beta-msg); got: %q", post)
-	}
+	assert.Truef(t, containsSubstring(post, "delta-unique"),
+		"pane must re-render with last appended entry (delta-unique); got: %q", post)
+	assert.Falsef(t, containsSubstring(post, "beta-msg"),
+		"pane must not keep rendering pre-append entry (beta-msg); got: %q", post)
 }
 
 // cavekit-entry-list R14: signal must fire only when cursor actually
@@ -1398,23 +1207,19 @@ func TestModel_TailFollow_NotAtTail_PaneNotResynced(t *testing.T) {
 
 	// Cursor starts at 0 — NOT at tail. Open pane on alpha.
 	m = key(m, "enter")
-	if !m.pane.IsOpen() || !containsSubstring(m.pane.View(), "alpha-msg") {
-		t.Fatalf("precondition: pane open on alpha; got: %q", m.pane.View())
-	}
+	require.Truef(t, m.pane.IsOpen() && containsSubstring(m.pane.View(), "alpha-msg"),
+		"precondition: pane open on alpha; got: %q", m.pane.View())
 
 	appended := jsonEntry(4, "delta-unique")
 	m = send(m, logsource.NewTailStreamMsgForTest(logsource.TailMsg{Entries: []logsource.Entry{appended}}))
 
-	if m.list.Cursor() != 0 {
-		t.Errorf("cursor must NOT move when pre-append cursor < tail, got %d", m.list.Cursor())
-	}
+	assert.Equalf(t, 0, m.list.Cursor(),
+		"cursor must NOT move when pre-append cursor < tail, got %d", m.list.Cursor())
 	post := m.pane.View()
-	if !containsSubstring(post, "alpha-msg") {
-		t.Errorf("pane must still show alpha-msg (user's non-tail selection preserved); got: %q", post)
-	}
-	if containsSubstring(post, "delta-unique") {
-		t.Errorf("pane must NOT render appended entry (delta-unique) when follow disengaged; got: %q", post)
-	}
+	assert.Truef(t, containsSubstring(post, "alpha-msg"),
+		"pane must still show alpha-msg (user's non-tail selection preserved); got: %q", post)
+	assert.Falsef(t, containsSubstring(post, "delta-unique"),
+		"pane must NOT render appended entry (delta-unique) when follow disengaged; got: %q", post)
 }
 
 // ---------- T-127 (F-020): hidden-fields wiring ----------
@@ -1437,12 +1242,10 @@ func TestModel_OpenPane_WiresHiddenFieldsFromVisibility(t *testing.T) {
 	m = m.openPane(entry)
 
 	view := m.pane.View()
-	if containsSubstring(view, "secret") {
-		t.Errorf("detail pane view should not include suppressed field `secret`, got: %q", view)
-	}
-	if containsSubstring(view, "shh") {
-		t.Errorf("detail pane view should not include suppressed value, got: %q", view)
-	}
+	assert.Falsef(t, containsSubstring(view, "secret"),
+		"detail pane view should not include suppressed field `secret`, got: %q", view)
+	assert.Falsef(t, containsSubstring(view, "shh"),
+		"detail pane view should not include suppressed value, got: %q", view)
 }
 
 // containsSubstring is a small helper to keep imports tight.
@@ -1492,29 +1295,21 @@ func TestModel_Q_ListSearchInputMode_DoesNotQuit(t *testing.T) {
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(5))
 	m = key(m, "/") // activate list search — input mode
-	if !m.list.HasActiveSearch() {
-		t.Fatal("precondition: list search should be active")
-	}
-	if !m.list.Search().InputMode() {
-		t.Fatal("precondition: list search should be in input mode")
-	}
+	require.True(t, m.list.HasActiveSearch(), "precondition: list search should be active")
+	require.True(t, m.list.Search().InputMode(), "precondition: list search should be in input mode")
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	m = updated.(Model)
 
 	if cmd != nil {
 		if msg := cmd(); msg != nil {
-			if _, isQuit := msg.(tea.QuitMsg); isQuit {
-				t.Fatal("q in list-search input mode must NOT quit")
-			}
+			_, isQuit := msg.(tea.QuitMsg)
+			require.False(t, isQuit, "q in list-search input mode must NOT quit")
 		}
 	}
-	if m.list.Search().Query() != "q" {
-		t.Errorf("q in input mode should extend query to 'q', got %q", m.list.Search().Query())
-	}
-	if !m.list.HasActiveSearch() {
-		t.Error("list search should still be active after typed q")
-	}
+	assert.Equalf(t, "q", m.list.Search().Query(),
+		"q in input mode should extend query to 'q', got %q", m.list.Search().Query())
+	assert.True(t, m.list.HasActiveSearch(), "list search should still be active after typed q")
 
 	// F-117: chained keystrokes — the whole word "quit" must land in the query
 	// without the trailing "uit" ever escaping through to the global quit
@@ -1524,21 +1319,15 @@ func TestModel_Q_ListSearchInputMode_DoesNotQuit(t *testing.T) {
 		m = updated.(Model)
 		if cmd != nil {
 			if msg := cmd(); msg != nil {
-				if _, isQuit := msg.(tea.QuitMsg); isQuit {
-					t.Fatalf("keystroke %q in list-search input mode must NOT quit", string(r))
-				}
+				_, isQuit := msg.(tea.QuitMsg)
+				require.Falsef(t, isQuit, "keystroke %q in list-search input mode must NOT quit", string(r))
 			}
 		}
 	}
-	if got := m.list.Search().Query(); got != "quit" {
-		t.Errorf("chained q/u/i/t should build query %q, got %q", "quit", got)
-	}
-	if !m.list.HasActiveSearch() {
-		t.Error("list search should still be active after chained keystrokes")
-	}
-	if !m.list.Search().InputMode() {
-		t.Error("search should still be in input mode after chained keystrokes")
-	}
+	assert.Equalf(t, "quit", m.list.Search().Query(),
+		"chained q/u/i/t should build query %q, got %q", "quit", m.list.Search().Query())
+	assert.True(t, m.list.HasActiveSearch(), "list search should still be active after chained keystrokes")
+	assert.True(t, m.list.Search().InputMode(), "search should still be in input mode after chained keystrokes")
 }
 
 // TestModel_Q_ListSearchNavigateMode_StillQuits verifies that after Enter
@@ -1550,19 +1339,15 @@ func TestModel_Q_ListSearchNavigateMode_StillQuits(t *testing.T) {
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(5))
 	m = key(m, "/")
-	m = key(m, "t") // query "t" matches "test message"
+	m = key(m, "t")     // query "t" matches "test message"
 	m = key(m, "enter") // commit → navigate mode
-	if m.list.Search().InputMode() {
-		t.Fatal("precondition: search should be in navigate mode after Enter")
-	}
+	require.False(t, m.list.Search().InputMode(),
+		"precondition: search should be in navigate mode after Enter")
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	if cmd == nil {
-		t.Fatal("q in navigate mode should still emit quit cmd")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Error("q in navigate mode should emit tea.QuitMsg")
-	}
+	require.NotNil(t, cmd, "q in navigate mode should still emit quit cmd")
+	_, ok := cmd().(tea.QuitMsg)
+	assert.True(t, ok, "q in navigate mode should emit tea.QuitMsg")
 }
 
 // TestModel_Q_NoListSearch_StillQuits verifies the baseline quit behaviour
@@ -1573,12 +1358,9 @@ func TestModel_Q_NoListSearch_StillQuits(t *testing.T) {
 	m = m.SetEntries(makeEntries(3))
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	if cmd == nil {
-		t.Fatal("q without active search should quit")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Error("expected tea.QuitMsg")
-	}
+	require.NotNil(t, cmd, "q without active search should quit")
+	_, ok := cmd().(tea.QuitMsg)
+	assert.True(t, ok, "expected tea.QuitMsg")
 }
 
 // TestModel_Q_DetailPaneFocus_StillQuits verifies `q` on a non-list focus
@@ -1591,18 +1373,16 @@ func TestModel_Q_DetailPaneFocus_StillQuits(t *testing.T) {
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
 	m = key(m, "tab")
-	if m.focus != appshell.FocusDetailPane {
-		t.Fatalf("precondition: want detail pane focus, got %v", m.focus)
-	}
+	require.Equalf(t, appshell.FocusDetailPane, m.focus,
+		"precondition: want detail pane focus, got %v", m.focus)
 
 	// `q` on detail pane focus is NOT a quit (global quit only triggers on
 	// list focus — this is unchanged by T-146). Just confirms no regression.
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	if cmd != nil {
 		if msg := cmd(); msg != nil {
-			if _, isQuit := msg.(tea.QuitMsg); isQuit {
-				t.Error("q on detail pane focus should NOT quit (global quit requires list focus)")
-			}
+			_, isQuit := msg.(tea.QuitMsg)
+			assert.False(t, isQuit, "q on detail pane focus should NOT quit (global quit requires list focus)")
 		}
 	}
 }
@@ -1621,24 +1401,17 @@ func TestModel_F_FocusTransfer_ClearsActiveListSearch(t *testing.T) {
 	m = key(m, "/")
 	m = key(m, "t")
 	m = key(m, "enter") // commit to navigate mode so `f` is not captured as query
-	if !m.list.HasActiveSearch() {
-		t.Fatal("precondition: list search should be active")
-	}
-	if m.list.Search().InputMode() {
-		t.Fatal("precondition: search should be in navigate mode after Enter")
-	}
+	require.True(t, m.list.HasActiveSearch(), "precondition: list search should be active")
+	require.False(t, m.list.Search().InputMode(),
+		"precondition: search should be in navigate mode after Enter")
 
 	m = key(m, "f")
 
-	if m.focus != appshell.FocusFilterPanel {
-		t.Errorf("focus after f: got %v, want FocusFilterPanel", m.focus)
-	}
-	if m.list.HasActiveSearch() {
-		t.Error("f focus-transfer should deactivate list search")
-	}
-	if m.list.Search().Query() != "" {
-		t.Errorf("list search query should be cleared, got %q", m.list.Search().Query())
-	}
+	assert.Equalf(t, appshell.FocusFilterPanel, m.focus,
+		"focus after f: got %v, want FocusFilterPanel", m.focus)
+	assert.False(t, m.list.HasActiveSearch(), "f focus-transfer should deactivate list search")
+	assert.Equalf(t, "", m.list.Search().Query(),
+		"list search query should be cleared, got %q", m.list.Search().Query())
 }
 
 // ---------- T-153 (cavekit-app-shell R14 AC 5): help overlay Esc preserves list search ----------
@@ -1658,34 +1431,20 @@ func TestModel_HelpOverlay_PreservesListSearchState(t *testing.T) {
 	m = key(m, "a")
 	m = key(m, "b")
 	m = key(m, "c")
-	if !m.list.HasActiveSearch() {
-		t.Fatal("precondition: list search should be active")
-	}
-	if !m.list.Search().InputMode() {
-		t.Fatal("precondition: search should be in input mode")
-	}
-	if m.list.Search().Query() != "abc" {
-		t.Fatalf("precondition: query should be %q, got %q", "abc", m.list.Search().Query())
-	}
+	require.True(t, m.list.HasActiveSearch(), "precondition: list search should be active")
+	require.True(t, m.list.Search().InputMode(), "precondition: search should be in input mode")
+	require.Equalf(t, "abc", m.list.Search().Query(),
+		"precondition: query should be %q, got %q", "abc", m.list.Search().Query())
 
 	m = key(m, "?")
-	if !m.help.IsOpen() {
-		t.Fatal("? should open the help overlay")
-	}
+	require.True(t, m.help.IsOpen(), "? should open the help overlay")
 	m = key(m, "esc")
-	if m.help.IsOpen() {
-		t.Fatal("esc should dismiss the help overlay")
-	}
+	require.False(t, m.help.IsOpen(), "esc should dismiss the help overlay")
 
-	if !m.list.HasActiveSearch() {
-		t.Error("list search should still be active after help-overlay cycle")
-	}
-	if !m.list.Search().InputMode() {
-		t.Error("list search should still be in input mode after help-overlay cycle")
-	}
-	if got := m.list.Search().Query(); got != "abc" {
-		t.Errorf("list search query should be preserved as %q, got %q", "abc", got)
-	}
+	assert.True(t, m.list.HasActiveSearch(), "list search should still be active after help-overlay cycle")
+	assert.True(t, m.list.Search().InputMode(), "list search should still be in input mode after help-overlay cycle")
+	assert.Equalf(t, "abc", m.list.Search().Query(),
+		"list search query should be preserved as %q, got %q", "abc", m.list.Search().Query())
 }
 
 // ---------- T-154 (cavekit-entry-list R13 AC 7): mouse-click-off-list clears search ----------
@@ -1702,17 +1461,14 @@ func TestModel_MouseClick_DetailZone_ClearsActiveListSearch(t *testing.T) {
 	entries := makeEntries(5)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right orientation at width 200, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right orientation at width 200, got %v", m.resize.Orientation())
 	m.focus = appshell.FocusEntryList
 	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
 
 	m = key(m, "/")
 	m = key(m, "t")
-	if !m.list.HasActiveSearch() {
-		t.Fatal("precondition: list search should be active")
-	}
+	require.True(t, m.list.HasActiveSearch(), "precondition: list search should be active")
 
 	l := m.layout.Layout()
 	detailX := l.ListContentWidth() + 4 // past listEnd buffer + divider + detailStart buffer
@@ -1722,15 +1478,11 @@ func TestModel_MouseClick_DetailZone_ClearsActiveListSearch(t *testing.T) {
 		Action: tea.MouseActionPress,
 	})
 
-	if m.focus != appshell.FocusDetailPane {
-		t.Errorf("click in detail zone: focus = %v, want FocusDetailPane", m.focus)
-	}
-	if m.list.HasActiveSearch() {
-		t.Error("click in detail zone should deactivate list search")
-	}
-	if got := m.list.Search().Query(); got != "" {
-		t.Errorf("list search query should be cleared, got %q", got)
-	}
+	assert.Equalf(t, appshell.FocusDetailPane, m.focus,
+		"click in detail zone: focus = %v, want FocusDetailPane", m.focus)
+	assert.False(t, m.list.HasActiveSearch(), "click in detail zone should deactivate list search")
+	assert.Equalf(t, "", m.list.Search().Query(),
+		"list search query should be cleared, got %q", m.list.Search().Query())
 }
 
 // ---------- T-155: focus-aware keyboard resize (cavekit-app-shell R12 revised) ----------
@@ -1747,9 +1499,8 @@ func setupRatioModelRight(t *testing.T, listFocus bool) Model {
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right orientation, got %v", m.resize.Orientation())
 	if listFocus {
 		m.focus = appshell.FocusEntryList
 		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
@@ -1771,9 +1522,8 @@ func setupRatioModelBelow(t *testing.T, listFocus bool) Model {
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: want below orientation, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: want below orientation, got %v", m.resize.Orientation())
 	if listFocus {
 		m.focus = appshell.FocusEntryList
 		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
@@ -1791,9 +1541,8 @@ func TestModel_T155_Plus_DetailFocus_GrowsDetail_Right(t *testing.T) {
 	before := m.cfg.Config.DetailPane.WidthRatio
 	m = key(m, "+")
 	after := m.cfg.Config.DetailPane.WidthRatio
-	if after <= before {
-		t.Errorf("+ detail-focus must grow detail ratio: before=%.3f after=%.3f", before, after)
-	}
+	assert.Greaterf(t, after, before,
+		"+ detail-focus must grow detail ratio: before=%.3f after=%.3f", before, after)
 }
 
 // TestModel_T155_Plus_ListFocus_ShrinksDetail_Right: `+` with list
@@ -1803,9 +1552,8 @@ func TestModel_T155_Plus_ListFocus_ShrinksDetail_Right(t *testing.T) {
 	before := m.cfg.Config.DetailPane.WidthRatio
 	m = key(m, "+")
 	after := m.cfg.Config.DetailPane.WidthRatio
-	if after >= before {
-		t.Errorf("+ list-focus must shrink detail ratio: before=%.3f after=%.3f", before, after)
-	}
+	assert.Lessf(t, after, before,
+		"+ list-focus must shrink detail ratio: before=%.3f after=%.3f", before, after)
 }
 
 // TestModel_T155_Minus_SymmetricInverse_Right: `-` at each focus is the
@@ -1815,18 +1563,16 @@ func TestModel_T155_Minus_SymmetricInverse_Right(t *testing.T) {
 	m := setupRatioModelRight(t, false)
 	before := m.cfg.Config.DetailPane.WidthRatio
 	m = key(m, "-")
-	if m.cfg.Config.DetailPane.WidthRatio >= before {
-		t.Errorf("- detail-focus must shrink detail: before=%.3f after=%.3f",
-			before, m.cfg.Config.DetailPane.WidthRatio)
-	}
+	assert.Lessf(t, m.cfg.Config.DetailPane.WidthRatio, before,
+		"- detail-focus must shrink detail: before=%.3f after=%.3f",
+		before, m.cfg.Config.DetailPane.WidthRatio)
 	// list focus: `-` grows detail
 	m = setupRatioModelRight(t, true)
 	before = m.cfg.Config.DetailPane.WidthRatio
 	m = key(m, "-")
-	if m.cfg.Config.DetailPane.WidthRatio <= before {
-		t.Errorf("- list-focus must grow detail: before=%.3f after=%.3f",
-			before, m.cfg.Config.DetailPane.WidthRatio)
-	}
+	assert.Greaterf(t, m.cfg.Config.DetailPane.WidthRatio, before,
+		"- list-focus must grow detail: before=%.3f after=%.3f",
+		before, m.cfg.Config.DetailPane.WidthRatio)
 }
 
 // TestModel_T155_Pipe_DetailFocus_Toggles_Right: `|` with detail focused
@@ -1835,14 +1581,12 @@ func TestModel_T155_Pipe_DetailFocus_Toggles_Right(t *testing.T) {
 	m := setupRatioModelRight(t, false)
 	// From default 0.30 → 0.50.
 	m = key(m, "|")
-	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.50 {
-		t.Errorf("| detail from 0.30: got %.3f, want 0.50", got)
-	}
+	assert.Equalf(t, 0.50, m.cfg.Config.DetailPane.WidthRatio,
+		"| detail from 0.30: got %.3f, want 0.50", m.cfg.Config.DetailPane.WidthRatio)
 	// Back to 0.30.
 	m = key(m, "|")
-	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.30 {
-		t.Errorf("| detail from 0.50: got %.3f, want 0.30", got)
-	}
+	assert.Equalf(t, 0.30, m.cfg.Config.DetailPane.WidthRatio,
+		"| detail from 0.50: got %.3f, want 0.30", m.cfg.Config.DetailPane.WidthRatio)
 }
 
 // TestModel_T155_Pipe_ListFocus_TogglesShare_Right: `|` with list
@@ -1851,14 +1595,12 @@ func TestModel_T155_Pipe_ListFocus_TogglesShare_Right(t *testing.T) {
 	m := setupRatioModelRight(t, true)
 	// Default detail=0.30 → list share=0.70 (off-preset) → first preset share=0.30 → detail=0.70.
 	m = key(m, "|")
-	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.70 {
-		t.Errorf("| list from detail=0.30: got %.3f, want 0.70", got)
-	}
+	assert.Equalf(t, 0.70, m.cfg.Config.DetailPane.WidthRatio,
+		"| list from detail=0.30: got %.3f, want 0.70", m.cfg.Config.DetailPane.WidthRatio)
 	// From detail=0.70 (share=0.30) → toggle to share=0.50 → detail=0.50.
 	m = key(m, "|")
-	if got := m.cfg.Config.DetailPane.WidthRatio; got != 0.50 {
-		t.Errorf("| list from detail=0.70: got %.3f, want 0.50", got)
-	}
+	assert.Equalf(t, 0.50, m.cfg.Config.DetailPane.WidthRatio,
+		"| list from detail=0.70: got %.3f, want 0.50", m.cfg.Config.DetailPane.WidthRatio)
 }
 
 // TestModel_T155_Equals_ResetsDefault_BothFocus_Right: `=` resets detail
@@ -1870,10 +1612,9 @@ func TestModel_T155_Equals_ResetsDefault_BothFocus_Right(t *testing.T) {
 		m.cfg.Config.DetailPane.WidthRatio = 0.50
 		m.layout = m.layout.SetWidthRatio(0.50)
 		m = key(m, "=")
-		if got := m.cfg.Config.DetailPane.WidthRatio; got != appshell.RatioDefault {
-			t.Errorf("= listFocus=%v: got %.3f, want %.3f",
-				listFocus, got, appshell.RatioDefault)
-		}
+		assert.Equalf(t, appshell.RatioDefault, m.cfg.Config.DetailPane.WidthRatio,
+			"= listFocus=%v: got %.3f, want %.3f",
+			listFocus, m.cfg.Config.DetailPane.WidthRatio, appshell.RatioDefault)
 	}
 }
 
@@ -1884,9 +1625,9 @@ func TestModel_T155_ClampPin_DetailFocus_Max_Right(t *testing.T) {
 	m.cfg.Config.DetailPane.WidthRatio = appshell.RatioMax
 	m.layout = m.layout.SetWidthRatio(appshell.RatioMax)
 	m = key(m, "+")
-	if got := m.cfg.Config.DetailPane.WidthRatio; got != appshell.RatioMax {
-		t.Errorf("+ at RatioMax detail-focus: got %.3f, want %.3f (no-op)", got, appshell.RatioMax)
-	}
+	assert.Equalf(t, appshell.RatioMax, m.cfg.Config.DetailPane.WidthRatio,
+		"+ at RatioMax detail-focus: got %.3f, want %.3f (no-op)",
+		m.cfg.Config.DetailPane.WidthRatio, appshell.RatioMax)
 }
 
 // TestModel_T155_ClampPin_DetailFocus_Min_Right: `-` at RatioMin is a
@@ -1896,9 +1637,9 @@ func TestModel_T155_ClampPin_DetailFocus_Min_Right(t *testing.T) {
 	m.cfg.Config.DetailPane.WidthRatio = appshell.RatioMin
 	m.layout = m.layout.SetWidthRatio(appshell.RatioMin)
 	m = key(m, "-")
-	if got := m.cfg.Config.DetailPane.WidthRatio; got != appshell.RatioMin {
-		t.Errorf("- at RatioMin detail-focus: got %.3f, want %.3f (no-op)", got, appshell.RatioMin)
-	}
+	assert.Equalf(t, appshell.RatioMin, m.cfg.Config.DetailPane.WidthRatio,
+		"- at RatioMin detail-focus: got %.3f, want %.3f (no-op)",
+		m.cfg.Config.DetailPane.WidthRatio, appshell.RatioMin)
 }
 
 // TestModel_T155_Below_ActivatesHeightRatio: below-mode mutates
@@ -1908,13 +1649,11 @@ func TestModel_T155_Below_ActivatesHeightRatio(t *testing.T) {
 	beforeH := m.cfg.Config.DetailPane.HeightRatio
 	beforeW := m.cfg.Config.DetailPane.WidthRatio
 	m = key(m, "+")
-	if m.cfg.Config.DetailPane.HeightRatio == beforeH {
-		t.Errorf("+ in below-mode must change height_ratio: %.3f unchanged", beforeH)
-	}
-	if m.cfg.Config.DetailPane.WidthRatio != beforeW {
-		t.Errorf("+ in below-mode must NOT change width_ratio: %.3f → %.3f",
-			beforeW, m.cfg.Config.DetailPane.WidthRatio)
-	}
+	assert.NotEqualf(t, beforeH, m.cfg.Config.DetailPane.HeightRatio,
+		"+ in below-mode must change height_ratio: %.3f unchanged", beforeH)
+	assert.Equalf(t, beforeW, m.cfg.Config.DetailPane.WidthRatio,
+		"+ in below-mode must NOT change width_ratio: %.3f → %.3f",
+		beforeW, m.cfg.Config.DetailPane.WidthRatio)
 }
 
 // TestModel_T155_PaneClosed_AllKeys_NoOp: all four ratio keys are silent
@@ -1926,27 +1665,23 @@ func TestModel_T155_PaneClosed_AllKeys_NoOp(t *testing.T) {
 	m := New("", false, cfgPath, cfg)
 	m = resize(m, 200, 24)
 	m = m.SetEntries(makeEntries(3))
-	if m.pane.IsOpen() {
-		t.Fatal("precondition: pane should be closed")
-	}
+	require.False(t, m.pane.IsOpen(), "precondition: pane should be closed")
 	beforeW := m.cfg.Config.DetailPane.WidthRatio
 	beforeH := m.cfg.Config.DetailPane.HeightRatio
 
 	for _, k := range []string{"+", "-", "=", "|"} {
 		m = key(m, k)
-		if m.cfg.Config.DetailPane.WidthRatio != beforeW {
-			t.Errorf("%q with pane closed must not change width_ratio: %.3f → %.3f",
-				k, beforeW, m.cfg.Config.DetailPane.WidthRatio)
-		}
-		if m.cfg.Config.DetailPane.HeightRatio != beforeH {
-			t.Errorf("%q with pane closed must not change height_ratio: %.3f → %.3f",
-				k, beforeH, m.cfg.Config.DetailPane.HeightRatio)
-		}
+		assert.Equalf(t, beforeW, m.cfg.Config.DetailPane.WidthRatio,
+			"%q with pane closed must not change width_ratio: %.3f → %.3f",
+			k, beforeW, m.cfg.Config.DetailPane.WidthRatio)
+		assert.Equalf(t, beforeH, m.cfg.Config.DetailPane.HeightRatio,
+			"%q with pane closed must not change height_ratio: %.3f → %.3f",
+			k, beforeH, m.cfg.Config.DetailPane.HeightRatio)
 	}
 	// No disk write should have fired — config file must not exist.
-	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
-		t.Errorf("pane-closed ratio keys must not trigger config save; file exists: %v", err)
-	}
+	_, err := os.Stat(cfgPath)
+	assert.Truef(t, os.IsNotExist(err),
+		"pane-closed ratio keys must not trigger config save; file exists: %v", err)
 }
 
 // ---------- T-156: mouse drag resize (cavekit-app-shell R15) ----------
@@ -1970,9 +1705,7 @@ func TestModel_T156_BelowDrag_PressOnDivider_StartsDrag(t *testing.T) {
 	m := setupRatioModelBelow(t, false)
 	dy := belowDividerY(m)
 	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if !m.draggingDivider {
-		t.Errorf("Press on below-mode divider row y=%d must start drag", dy)
-	}
+	assert.Truef(t, m.draggingDivider, "Press on below-mode divider row y=%d must start drag", dy)
 }
 
 // TestModel_T156_BelowDrag_MotionUp_GrowsDetail verifies motion to a
@@ -1987,9 +1720,8 @@ func TestModel_T156_BelowDrag_MotionUp_GrowsDetail(t *testing.T) {
 	m = send(m, tea.MouseMsg{X: 20, Y: dy - 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 
 	after := m.cfg.Config.DetailPane.HeightRatio
-	if after <= before {
-		t.Errorf("drag up should grow height_ratio: before=%.3f after=%.3f", before, after)
-	}
+	assert.Greaterf(t, after, before,
+		"drag up should grow height_ratio: before=%.3f after=%.3f", before, after)
 }
 
 // TestModel_T156_BelowDrag_MotionDown_ShrinksDetail: motion to a larger y
@@ -2007,9 +1739,8 @@ func TestModel_T156_BelowDrag_MotionDown_ShrinksDetail(t *testing.T) {
 	m = send(m, tea.MouseMsg{X: 20, Y: dy + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 
 	after := m.cfg.Config.DetailPane.HeightRatio
-	if after >= before {
-		t.Errorf("drag down should shrink height_ratio: before=%.3f after=%.3f", before, after)
-	}
+	assert.Lessf(t, after, before,
+		"drag down should shrink height_ratio: before=%.3f after=%.3f", before, after)
 }
 
 // TestModel_T156_BelowDrag_Release_PersistsHeightRatio ensures the final
@@ -2024,26 +1755,21 @@ func TestModel_T156_BelowDrag_Release_PersistsHeightRatio(t *testing.T) {
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: want below, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: want below, got %v", m.resize.Orientation())
 	dy := belowDividerY(m)
 
 	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	// Ensure config file does NOT exist yet — motion must not save.
 	m = send(m, tea.MouseMsg{X: 20, Y: dy - 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-	if _, err := os.Stat(cfgPath); err == nil {
-		t.Error("motion during drag must NOT write config; file exists already")
-	}
+	_, err := os.Stat(cfgPath)
+	assert.Error(t, err, "motion during drag must NOT write config; file exists already")
 	m = send(m, tea.MouseMsg{X: 20, Y: dy - 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
-	if m.draggingDivider {
-		t.Error("Release must end drag session")
-	}
+	assert.False(t, m.draggingDivider, "Release must end drag session")
 	reloaded := config.Load(cfgPath)
-	if reloaded.Config.DetailPane.HeightRatio != m.cfg.Config.DetailPane.HeightRatio {
-		t.Errorf("disk height_ratio after release: got %.3f, want %.3f",
-			reloaded.Config.DetailPane.HeightRatio, m.cfg.Config.DetailPane.HeightRatio)
-	}
+	assert.Equalf(t, m.cfg.Config.DetailPane.HeightRatio, reloaded.Config.DetailPane.HeightRatio,
+		"disk height_ratio after release: got %.3f, want %.3f",
+		reloaded.Config.DetailPane.HeightRatio, m.cfg.Config.DetailPane.HeightRatio)
 }
 
 // TestModel_T156_Drag_IsFocusNeutral ensures dragging the divider never
@@ -2089,9 +1815,8 @@ func TestModel_T156_Drag_IsFocusNeutral(t *testing.T) {
 			m = send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 			m = send(m, tea.MouseMsg{X: x + tc.motionDX, Y: y + tc.motionDY, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 			m = send(m, tea.MouseMsg{X: x + tc.motionDX, Y: y + tc.motionDY, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
-			if m.focus != startFocus {
-				t.Errorf("drag changed focus: start=%v end=%v", startFocus, m.focus)
-			}
+			assert.Equalf(t, startFocus, m.focus,
+				"drag changed focus: start=%v end=%v", startFocus, m.focus)
 		})
 	}
 }
@@ -2105,9 +1830,9 @@ func TestModel_T156_BelowDrag_ClampsAtMax(t *testing.T) {
 	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m = send(m, tea.MouseMsg{X: 20, Y: -100, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 
-	if got := m.cfg.Config.DetailPane.HeightRatio; got != appshell.RatioMax {
-		t.Errorf("extreme up drag: got %.3f, want RatioMax %.3f", got, appshell.RatioMax)
-	}
+	assert.Equalf(t, appshell.RatioMax, m.cfg.Config.DetailPane.HeightRatio,
+		"extreme up drag: got %.3f, want RatioMax %.3f",
+		m.cfg.Config.DetailPane.HeightRatio, appshell.RatioMax)
 }
 
 // TestModel_T156_BelowDrag_ClampsAtMin verifies a drag that would push the
@@ -2120,9 +1845,9 @@ func TestModel_T156_BelowDrag_ClampsAtMin(t *testing.T) {
 	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m = send(m, tea.MouseMsg{X: 20, Y: termH + 100, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 
-	if got := m.cfg.Config.DetailPane.HeightRatio; got != appshell.RatioMin {
-		t.Errorf("extreme down drag: got %.3f, want RatioMin %.3f", got, appshell.RatioMin)
-	}
+	assert.Equalf(t, appshell.RatioMin, m.cfg.Config.DetailPane.HeightRatio,
+		"extreme down drag: got %.3f, want RatioMin %.3f",
+		m.cfg.Config.DetailPane.HeightRatio, appshell.RatioMin)
 }
 
 // TestModel_T156_PaneClosed_PressIsNoOp: pressing anywhere with the pane
@@ -2136,17 +1861,14 @@ func TestModel_T156_PaneClosed_PressIsNoOp(t *testing.T) {
 		m := New("", false, cfgPath, cfg)
 		m = resize(m, size.w, size.h)
 		m = m.SetEntries(makeEntries(3))
-		if m.pane.IsOpen() {
-			t.Fatalf("precondition: pane must be closed at %dx%d", size.w, size.h)
-		}
+		require.Falsef(t, m.pane.IsOpen(), "precondition: pane must be closed at %dx%d", size.w, size.h)
 		m = send(m, tea.MouseMsg{X: 10, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-		if m.draggingDivider {
-			t.Errorf("%dx%d press with pane closed must not start drag", size.w, size.h)
-		}
+		assert.Falsef(t, m.draggingDivider,
+			"%dx%d press with pane closed must not start drag", size.w, size.h)
 	}
-	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
-		t.Errorf("pane-closed press must not save config; file exists: %v", err)
-	}
+	_, err := os.Stat(cfgPath)
+	assert.Truef(t, os.IsNotExist(err),
+		"pane-closed press must not save config; file exists: %v", err)
 }
 
 // ---------- T-157: divider-cell click is focus-neutral (cavekit-app-shell R6 AC 7) ----------
@@ -2190,9 +1912,8 @@ func TestModel_T157_DividerClick_DoesNotTransferFocus(t *testing.T) {
 			// Bare click: Press then Release with no motion between.
 			m = send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 			m = send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
-			if m.focus != startFocus {
-				t.Errorf("divider click changed focus: start=%v end=%v", startFocus, m.focus)
-			}
+			assert.Equalf(t, startFocus, m.focus,
+				"divider click changed focus: start=%v end=%v", startFocus, m.focus)
 		})
 	}
 }
@@ -2209,9 +1930,8 @@ func TestModel_T156_RightDrag_UpdatesWidthRatio(t *testing.T) {
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right, got %v", m.resize.Orientation())
 	beforeH := m.cfg.Config.DetailPane.HeightRatio
 	dx := rightDividerX(m)
 
@@ -2219,15 +1939,13 @@ func TestModel_T156_RightDrag_UpdatesWidthRatio(t *testing.T) {
 	m = send(m, tea.MouseMsg{X: dx - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 	m = send(m, tea.MouseMsg{X: dx - 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 
-	if m.cfg.Config.DetailPane.HeightRatio != beforeH {
-		t.Errorf("right-mode drag must not mutate height_ratio: %.3f → %.3f",
-			beforeH, m.cfg.Config.DetailPane.HeightRatio)
-	}
+	assert.Equalf(t, beforeH, m.cfg.Config.DetailPane.HeightRatio,
+		"right-mode drag must not mutate height_ratio: %.3f → %.3f",
+		beforeH, m.cfg.Config.DetailPane.HeightRatio)
 	reloaded := config.Load(cfgPath)
-	if reloaded.Config.DetailPane.WidthRatio != m.cfg.Config.DetailPane.WidthRatio {
-		t.Errorf("disk width_ratio after right-drag release: got %.3f, want %.3f",
-			reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
-	}
+	assert.Equalf(t, m.cfg.Config.DetailPane.WidthRatio, reloaded.Config.DetailPane.WidthRatio,
+		"disk width_ratio after right-drag release: got %.3f, want %.3f",
+		reloaded.Config.DetailPane.WidthRatio, m.cfg.Config.DetailPane.WidthRatio)
 }
 
 // ---------- T-158: single-owner click-row resolver (cavekit-entry-list R10) ----------
@@ -2244,13 +1962,10 @@ func TestModel_T158_Click_FirstRow_SelectsRowZero_BelowMode(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(20))
-	if m.pane.IsOpen() {
-		t.Fatalf("precondition: pane should be closed")
-	}
+	require.False(t, m.pane.IsOpen(), "precondition: pane should be closed")
 	m = clickAt(m, 10, 2)
-	if got := m.list.CursorPosition(); got != 1 {
-		t.Errorf("click y=2 (first content row): CursorPosition = %d (1-based), want 1", got)
-	}
+	assert.Equalf(t, 1, m.list.CursorPosition(),
+		"click y=2 (first content row): CursorPosition = %d (1-based), want 1", m.list.CursorPosition())
 }
 
 // TestModel_T158_Click_SecondRow_SelectsRowOne_BelowMode: y=3 → row 1.
@@ -2259,9 +1974,8 @@ func TestModel_T158_Click_SecondRow_SelectsRowOne_BelowMode(t *testing.T) {
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(20))
 	m = clickAt(m, 10, 3)
-	if got := m.list.CursorPosition(); got != 2 {
-		t.Errorf("click y=3 (second content row): CursorPosition = %d, want 2", got)
-	}
+	assert.Equalf(t, 2, m.list.CursorPosition(),
+		"click y=3 (second content row): CursorPosition = %d, want 2", m.list.CursorPosition())
 }
 
 // TestModel_T158_Click_TopBorder_NoOp: click at y=1 (list top border) does
@@ -2272,9 +1986,8 @@ func TestModel_T158_Click_TopBorder_NoOp(t *testing.T) {
 	m = m.SetEntries(makeEntries(20))
 	before := m.list.CursorPosition()
 	m = clickAt(m, 10, 1)
-	if got := m.list.CursorPosition(); got != before {
-		t.Errorf("click on top border: CursorPosition = %d, want %d (unchanged)", got, before)
-	}
+	assert.Equalf(t, before, m.list.CursorPosition(),
+		"click on top border: CursorPosition = %d, want %d (unchanged)", m.list.CursorPosition(), before)
 }
 
 // TestModel_T158_Click_Header_NoOp: y=0 (header) routes to ZoneHeader, not
@@ -2288,9 +2001,8 @@ func TestModel_T158_Click_Header_NoOp(t *testing.T) {
 	}
 	before := m.list.CursorPosition()
 	m = clickAt(m, 10, 0)
-	if got := m.list.CursorPosition(); got != before {
-		t.Errorf("click on header: CursorPosition = %d, want %d (unchanged)", got, before)
-	}
+	assert.Equalf(t, before, m.list.CursorPosition(),
+		"click on header: CursorPosition = %d, want %d (unchanged)", m.list.CursorPosition(), before)
 }
 
 // TestModel_T158_Click_FirstRow_RightMode: same single-owner mapping applies
@@ -2301,13 +2013,11 @@ func TestModel_T158_Click_FirstRow_RightMode(t *testing.T) {
 	entries := makeEntries(20)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right, got %v", m.resize.Orientation())
 	m = clickAt(m, 10, 2)
-	if got := m.list.CursorPosition(); got != 1 {
-		t.Errorf("right-mode click y=2: CursorPosition = %d, want 1", got)
-	}
+	assert.Equalf(t, 1, m.list.CursorPosition(),
+		"right-mode click y=2: CursorPosition = %d, want 1", m.list.CursorPosition())
 }
 
 // TestModel_T158_Click_FirstRow_BelowMode_PaneOpen: same mapping applies
@@ -2318,13 +2028,11 @@ func TestModel_T158_Click_FirstRow_BelowMode_PaneOpen(t *testing.T) {
 	entries := makeEntries(20)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: want below, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: want below, got %v", m.resize.Orientation())
 	m = clickAt(m, 10, 2)
-	if got := m.list.CursorPosition(); got != 1 {
-		t.Errorf("below-mode pane-open click y=2: CursorPosition = %d, want 1", got)
-	}
+	assert.Equalf(t, 1, m.list.CursorPosition(),
+		"below-mode pane-open click y=2: CursorPosition = %d, want 1", m.list.CursorPosition())
 }
 
 // TestModel_T158_DoubleClick_UsesSameResolver: double-click at y=3 opens the
@@ -2337,27 +2045,19 @@ func TestModel_T158_DoubleClick_UsesSameResolver(t *testing.T) {
 
 	// First click at y=3 positions the cursor on row 1.
 	m = clickAt(m, 10, 3)
-	if got := m.list.CursorPosition(); got != 2 {
-		t.Fatalf("first click y=3: CursorPosition = %d, want 2", got)
-	}
+	require.Equalf(t, 2, m.list.CursorPosition(),
+		"first click y=3: CursorPosition = %d, want 2", m.list.CursorPosition())
 	// Second click at the SAME y=3 within 500ms triggers double-click,
 	// which emits OpenDetailPaneMsg. We verify the cmd return.
 	updated, cmd := m.Update(tea.MouseMsg{X: 10, Y: 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m = updated.(Model)
-	if cmd == nil {
-		// Not every list state emits a command here, but if double-click
-		// fired, we should see OpenDetailPaneMsg.
-		t.Fatal("second click at same y should emit a cmd for double-click")
-	}
+	require.NotNil(t, cmd, "second click at same y should emit a cmd for double-click")
 	msg := cmd()
 	open, ok := msg.(entrylist.OpenDetailPaneMsg)
-	if !ok {
-		t.Fatalf("double-click cmd: want OpenDetailPaneMsg, got %T", msg)
-	}
-	if open.Entry.LineNumber != entries[1].LineNumber {
-		t.Errorf("double-click opens wrong entry: got line %d, want %d",
-			open.Entry.LineNumber, entries[1].LineNumber)
-	}
+	require.Truef(t, ok, "double-click cmd: want OpenDetailPaneMsg, got %T", msg)
+	assert.Equalf(t, entries[1].LineNumber, open.Entry.LineNumber,
+		"double-click opens wrong entry: got line %d, want %d",
+		open.Entry.LineNumber, entries[1].LineNumber)
 }
 
 // TestModel_T158_Click_DividerRow_NoListSelection: click on the below-mode
@@ -2377,9 +2077,9 @@ func TestModel_T158_Click_DividerRow_NoListSelection(t *testing.T) {
 	dy := belowDividerY(m)
 	m = clickAt(m, 10, dy)
 
-	if got := m.list.CursorPosition(); got != before {
-		t.Errorf("click on divider row (y=%d): CursorPosition = %d, want %d (unchanged)", dy, got, before)
-	}
+	assert.Equalf(t, before, m.list.CursorPosition(),
+		"click on divider row (y=%d): CursorPosition = %d, want %d (unchanged)",
+		dy, m.list.CursorPosition(), before)
 }
 
 // ---------- T-162: mid-drag auto-close terminates the drag (F-125) ----------
@@ -2400,43 +2100,34 @@ func TestModel_T162_Drag_AutoClose_TerminatesSession(t *testing.T) {
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if !m.pane.IsOpen() {
-		t.Fatal("precondition: pane must be open")
-	}
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
-	}
+	require.True(t, m.pane.IsOpen(), "precondition: pane must be open")
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"precondition: want right orientation, got %v", m.resize.Orientation())
 	dividerX := rightDividerX(m)
 	startW := m.cfg.Config.DetailPane.WidthRatio
 
 	// Begin a drag with a Press on the divider.
 	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if !m.draggingDivider {
-		t.Fatalf("precondition: Press at divider x=%d must start drag", dividerX)
-	}
+	require.Truef(t, m.draggingDivider,
+		"precondition: Press at divider x=%d must start drag", dividerX)
 
 	// Shrink the terminal so the right-split detail width falls below
 	// MinDetailWidth (30). Usable = w-5, detailW = usable * 0.30.
 	// Using w=70 → usable=65 → detailW=19 < 30 → auto-close fires.
 	m = resize(m, 70, 24)
-	if m.pane.IsOpen() {
-		t.Fatalf("precondition: pane must have auto-closed at w=70")
-	}
-	if m.draggingDivider {
-		t.Errorf("auto-close must clear draggingDivider (belt-and-braces)")
-	}
+	require.False(t, m.pane.IsOpen(), "precondition: pane must have auto-closed at w=70")
+	assert.False(t, m.draggingDivider, "auto-close must clear draggingDivider (belt-and-braces)")
 
 	// Any subsequent Motion + Release must be a no-op for ratio + config.
 	m = send(m, tea.MouseMsg{X: 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 	m = send(m, tea.MouseMsg{X: 20, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 
-	if m.cfg.Config.DetailPane.WidthRatio != startW {
-		t.Errorf("width_ratio mutated after mid-drag auto-close: start=%.3f end=%.3f",
-			startW, m.cfg.Config.DetailPane.WidthRatio)
-	}
-	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
-		t.Errorf("mid-drag auto-close must NOT write config; file exists: %v", err)
-	}
+	assert.Equalf(t, startW, m.cfg.Config.DetailPane.WidthRatio,
+		"width_ratio mutated after mid-drag auto-close: start=%.3f end=%.3f",
+		startW, m.cfg.Config.DetailPane.WidthRatio)
+	_, err := os.Stat(cfgPath)
+	assert.Truef(t, os.IsNotExist(err),
+		"mid-drag auto-close must NOT write config; file exists: %v", err)
 }
 
 // TestModel_T162_DragBranch_GuardsOnClosedPane covers the inner guard —
@@ -2456,16 +2147,13 @@ func TestModel_T162_DragBranch_GuardsOnClosedPane(t *testing.T) {
 	startW := m.cfg.Config.DetailPane.WidthRatio
 
 	m = send(m, tea.MouseMsg{X: 50, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-	if m.draggingDivider {
-		t.Error("closed-pane drag-branch guard must clear draggingDivider")
-	}
-	if m.cfg.Config.DetailPane.WidthRatio != startW {
-		t.Errorf("closed-pane drag-branch must not mutate ratio: %.3f → %.3f",
-			startW, m.cfg.Config.DetailPane.WidthRatio)
-	}
-	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
-		t.Errorf("closed-pane drag-branch must not write config; file exists: %v", err)
-	}
+	assert.False(t, m.draggingDivider, "closed-pane drag-branch guard must clear draggingDivider")
+	assert.Equalf(t, startW, m.cfg.Config.DetailPane.WidthRatio,
+		"closed-pane drag-branch must not mutate ratio: %.3f → %.3f",
+		startW, m.cfg.Config.DetailPane.WidthRatio)
+	_, err := os.Stat(cfgPath)
+	assert.Truef(t, os.IsNotExist(err),
+		"closed-pane drag-branch must not write config; file exists: %v", err)
 }
 
 // ---------- T-164: bare Press+Release skips config write (F-129) ----------
@@ -2489,24 +2177,18 @@ func TestModel_T164_BareClick_OnDivider_DoesNotWriteConfig(t *testing.T) {
 	startW := m.cfg.Config.DetailPane.WidthRatio
 
 	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if !m.draggingDivider {
-		t.Fatalf("precondition: Press at divider x=%d must start drag", dividerX)
-	}
-	if m.dragDirty {
-		t.Error("Press must reset dragDirty to false")
-	}
+	require.Truef(t, m.draggingDivider,
+		"precondition: Press at divider x=%d must start drag", dividerX)
+	assert.False(t, m.dragDirty, "Press must reset dragDirty to false")
 	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 
-	if m.draggingDivider {
-		t.Error("Release must end drag session")
-	}
-	if m.cfg.Config.DetailPane.WidthRatio != startW {
-		t.Errorf("bare click mutated width_ratio: start=%.3f end=%.3f",
-			startW, m.cfg.Config.DetailPane.WidthRatio)
-	}
-	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
-		t.Errorf("bare Press+Release on divider must NOT write config; file exists: %v", err)
-	}
+	assert.False(t, m.draggingDivider, "Release must end drag session")
+	assert.Equalf(t, startW, m.cfg.Config.DetailPane.WidthRatio,
+		"bare click mutated width_ratio: start=%.3f end=%.3f",
+		startW, m.cfg.Config.DetailPane.WidthRatio)
+	_, err := os.Stat(cfgPath)
+	assert.Truef(t, os.IsNotExist(err),
+		"bare Press+Release on divider must NOT write config; file exists: %v", err)
 }
 
 // TestModel_T164_Drag_WithMotion_DoesWriteConfig is the positive-case
@@ -2527,14 +2209,11 @@ func TestModel_T164_Drag_WithMotion_DoesWriteConfig(t *testing.T) {
 
 	m = send(m, tea.MouseMsg{X: dividerX, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m = send(m, tea.MouseMsg{X: dividerX - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-	if !m.dragDirty {
-		t.Error("Motion that changes ratio must set dragDirty=true")
-	}
+	assert.True(t, m.dragDirty, "Motion that changes ratio must set dragDirty=true")
 	m = send(m, tea.MouseMsg{X: dividerX - 30, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 
-	if _, err := os.Stat(cfgPath); err != nil {
-		t.Errorf("drag with motion must write config: %v", err)
-	}
+	_, err := os.Stat(cfgPath)
+	assert.NoErrorf(t, err, "drag with motion must write config: %v", err)
 }
 
 // ---------- F-132: degenerate-dim guard fidelity (supersedes T-165) ----------
@@ -2573,19 +2252,13 @@ func TestModel_F132_DegenerateDim_Right_GuardFiresWith_PaneOpen(t *testing.T) {
 
 	// Force termW=0 — auto-close fires, pane closes, draggingDivider clears.
 	m = send(m, tea.WindowSizeMsg{Width: 0, Height: 24})
-	if m.pane.IsOpen() {
-		t.Fatalf("precondition: pane must auto-close at width=0")
-	}
+	require.False(t, m.pane.IsOpen(), "precondition: pane must auto-close at width=0")
 	// Re-open the pane. relayout() does not re-evaluate ShouldAutoCloseDetail
 	// (that lives in the WindowSizeMsg handler only), so the pane stays open
 	// even though m.resize.Width() is still 0.
 	m = m.openPane(entries[0])
-	if !m.pane.IsOpen() {
-		t.Fatalf("precondition: pane must re-open via openPane")
-	}
-	if m.resize.Width() != 0 {
-		t.Fatalf("precondition: termW must remain 0, got %d", m.resize.Width())
-	}
+	require.True(t, m.pane.IsOpen(), "precondition: pane must re-open via openPane")
+	require.Equalf(t, 0, m.resize.Width(), "precondition: termW must remain 0, got %d", m.resize.Width())
 	// All preconditions for the termW<=0 guard are now met: pane open,
 	// drag flag set, Motion incoming with termW=0. The IsOpen() guard
 	// passes — the only thing preventing ratio shadowing is :554-556.
@@ -2594,10 +2267,9 @@ func TestModel_F132_DegenerateDim_Right_GuardFiresWith_PaneOpen(t *testing.T) {
 
 	m = send(m, tea.MouseMsg{X: 10, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 
-	if m.cfg.Config.DetailPane.WidthRatio != startRatio {
-		t.Errorf("termW<=0 guard absent or bypassed: ratio shadowed from %.3f to %.3f",
-			startRatio, m.cfg.Config.DetailPane.WidthRatio)
-	}
+	assert.Equalf(t, startRatio, m.cfg.Config.DetailPane.WidthRatio,
+		"termW<=0 guard absent or bypassed: ratio shadowed from %.3f to %.3f",
+		startRatio, m.cfg.Config.DetailPane.WidthRatio)
 }
 
 // TestModel_F132_DegenerateDim_Below_GuardFiresWith_PaneOpen is the
@@ -2616,25 +2288,18 @@ func TestModel_F132_DegenerateDim_Below_GuardFiresWith_PaneOpen(t *testing.T) {
 	m.paneHeight = m.paneHeight.SetRatio(0.45)
 
 	m = send(m, tea.WindowSizeMsg{Width: 80, Height: 0})
-	if m.pane.IsOpen() {
-		t.Fatalf("precondition: pane must auto-close at height=0")
-	}
+	require.False(t, m.pane.IsOpen(), "precondition: pane must auto-close at height=0")
 	m = m.openPane(entries[0])
-	if !m.pane.IsOpen() {
-		t.Fatalf("precondition: pane must re-open via openPane")
-	}
-	if m.resize.Height() != 0 {
-		t.Fatalf("precondition: termH must remain 0, got %d", m.resize.Height())
-	}
+	require.True(t, m.pane.IsOpen(), "precondition: pane must re-open via openPane")
+	require.Equalf(t, 0, m.resize.Height(), "precondition: termH must remain 0, got %d", m.resize.Height())
 	m.draggingDivider = true
 	startRatio := m.cfg.Config.DetailPane.HeightRatio
 
 	m = send(m, tea.MouseMsg{X: 20, Y: 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 
-	if m.cfg.Config.DetailPane.HeightRatio != startRatio {
-		t.Errorf("termH<=0 guard absent or bypassed: ratio shadowed from %.3f to %.3f",
-			startRatio, m.cfg.Config.DetailPane.HeightRatio)
-	}
+	assert.Equalf(t, startRatio, m.cfg.Config.DetailPane.HeightRatio,
+		"termH<=0 guard absent or bypassed: ratio shadowed from %.3f to %.3f",
+		startRatio, m.cfg.Config.DetailPane.HeightRatio)
 }
 
 // ---------- T6 (B3): handleRatioKey guards saveConfig on newR != current ----------
@@ -2672,9 +2337,8 @@ func TestModel_T6_RatioKey_NoOpAtBoundary_DoesNotWriteConfig(t *testing.T) {
 			entries := makeEntries(3)
 			m = m.SetEntries(entries)
 			m = m.openPane(entries[0])
-			if m.resize.Orientation() != appshell.OrientationRight {
-				t.Fatalf("precondition: want right orientation at 200 cols, got %v", m.resize.Orientation())
-			}
+			require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+				"precondition: want right orientation at 200 cols, got %v", m.resize.Orientation())
 			if tc.listFocus {
 				m.focus = appshell.FocusEntryList
 			} else {
@@ -2686,13 +2350,12 @@ func TestModel_T6_RatioKey_NoOpAtBoundary_DoesNotWriteConfig(t *testing.T) {
 			m = key(m, tc.key)
 			after := m.cfg.Config.DetailPane.WidthRatio
 
-			if before != after {
-				t.Fatalf("precondition: %q at ratio=%.2f listFocus=%v should be a no-op; got %.3f → %.3f",
-					tc.key, tc.seedRatio, tc.listFocus, before, after)
-			}
-			if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
-				t.Errorf("B3 regression: no-op %q press wrote config file; stat err: %v", tc.key, err)
-			}
+			require.Equalf(t, before, after,
+				"precondition: %q at ratio=%.2f listFocus=%v should be a no-op; got %.3f → %.3f",
+				tc.key, tc.seedRatio, tc.listFocus, before, after)
+			_, err := os.Stat(cfgPath)
+			assert.Truef(t, os.IsNotExist(err),
+				"B3 regression: no-op %q press wrote config file; stat err: %v", tc.key, err)
 		})
 	}
 }
@@ -2713,9 +2376,8 @@ func TestModel_T6_RatioKey_NoOpAtBoundary_Below_DoesNotWriteConfig(t *testing.T)
 	entries := makeEntries(3)
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: want below orientation, got %v", m.resize.Orientation())
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: want below orientation, got %v", m.resize.Orientation())
 	m.focus = appshell.FocusDetailPane
 	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
 
@@ -2723,13 +2385,12 @@ func TestModel_T6_RatioKey_NoOpAtBoundary_Below_DoesNotWriteConfig(t *testing.T)
 	m = key(m, "+") // detail-focus at RatioMax → no-op
 	after := m.paneHeight.Ratio()
 
-	if before != after {
-		t.Fatalf("precondition: `+` at height_ratio=%.2f detail-focus should be no-op; got %.3f → %.3f",
-			appshell.RatioMax, before, after)
-	}
-	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
-		t.Errorf("B3 regression (below-mode): no-op `+` wrote config file; stat err: %v", err)
-	}
+	require.Equalf(t, before, after,
+		"precondition: `+` at height_ratio=%.2f detail-focus should be no-op; got %.3f → %.3f",
+		appshell.RatioMax, before, after)
+	_, err := os.Stat(cfgPath)
+	assert.Truef(t, os.IsNotExist(err),
+		"B3 regression (below-mode): no-op `+` wrote config file; stat err: %v", err)
 }
 
 // TestModel_T6_RatioKey_Change_WritesConfig is the positive-case anchor.
@@ -2743,11 +2404,11 @@ func TestModel_T6_RatioKey_Change_WritesConfig(t *testing.T) {
 		key       string
 		seedRatio float64
 	}{
-		{"plus_from_default", "+", appshell.RatioDefault},   // 0.30 → 0.35
-		{"minus_from_default", "-", appshell.RatioDefault},  // 0.30 → 0.25
-		{"equals_from_off_default", "=", 0.50},              // 0.50 → 0.30
-		{"pipe_from_default", "|", appshell.RatioDefault},   // 0.30 → 0.50 (preset cycle)
-		{"pipe_from_off_preset", "|", 0.45},                 // off-preset → 0.30
+		{"plus_from_default", "+", appshell.RatioDefault},  // 0.30 → 0.35
+		{"minus_from_default", "-", appshell.RatioDefault}, // 0.30 → 0.25
+		{"equals_from_off_default", "=", 0.50},             // 0.50 → 0.30
+		{"pipe_from_default", "|", appshell.RatioDefault},  // 0.30 → 0.50 (preset cycle)
+		{"pipe_from_off_preset", "|", 0.45},                // off-preset → 0.30
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2761,9 +2422,8 @@ func TestModel_T6_RatioKey_Change_WritesConfig(t *testing.T) {
 			entries := makeEntries(3)
 			m = m.SetEntries(entries)
 			m = m.openPane(entries[0])
-			if m.resize.Orientation() != appshell.OrientationRight {
-				t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
-			}
+			require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+				"precondition: want right orientation, got %v", m.resize.Orientation())
 			m.focus = appshell.FocusDetailPane
 			m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
 
@@ -2771,17 +2431,14 @@ func TestModel_T6_RatioKey_Change_WritesConfig(t *testing.T) {
 			m = key(m, tc.key)
 			after := m.cfg.Config.DetailPane.WidthRatio
 
-			if before == after {
-				t.Fatalf("precondition: %q at ratio=%.2f should change the value; stayed %.3f",
-					tc.key, tc.seedRatio, before)
-			}
-			if _, err := os.Stat(cfgPath); err != nil {
-				t.Errorf("%q change path must write config: %v", tc.key, err)
-			}
+			require.NotEqualf(t, before, after,
+				"precondition: %q at ratio=%.2f should change the value; stayed %.3f",
+				tc.key, tc.seedRatio, before)
+			_, err := os.Stat(cfgPath)
+			assert.NoErrorf(t, err, "%q change path must write config: %v", tc.key, err)
 			reloaded := config.Load(cfgPath)
-			if reloaded.Config.DetailPane.WidthRatio != after {
-				t.Errorf("disk width_ratio: got %.3f, want %.3f", reloaded.Config.DetailPane.WidthRatio, after)
-			}
+			assert.Equalf(t, after, reloaded.Config.DetailPane.WidthRatio,
+				"disk width_ratio: got %.3f, want %.3f", reloaded.Config.DetailPane.WidthRatio, after)
 		})
 	}
 }

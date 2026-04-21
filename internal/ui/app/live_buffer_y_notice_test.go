@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/ui/appshell"
 )
@@ -24,9 +26,7 @@ var sgrOpenRe = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
 func assertNoticeIsStyledDistinctly(t *testing.T, captured, notice string) {
 	t.Helper()
 	idx := strings.Index(captured, notice)
-	if idx < 0 {
-		t.Fatalf("notice %q not in captured bytes — live-buffer test preconditions failed", notice)
-	}
+	require.GreaterOrEqualf(t, idx, 0, "notice %q not in captured bytes — live-buffer test preconditions failed", notice)
 	prefix := captured[:idx]
 	matches := sgrOpenRe.FindAllStringSubmatchIndex(prefix, -1)
 	for i := len(matches) - 1; i >= 0; i-- {
@@ -35,14 +35,13 @@ func assertNoticeIsStyledDistinctly(t *testing.T, captured, notice string) {
 		if params == "" || params == "0" {
 			continue // reset, skip — style comes from an earlier SGR
 		}
-		if !sgrContainsParam(params, "1") {
-			t.Errorf("notice %q rendered without Bold SGR — V25 class-(b) perceptual distinctness lost.\n  preceding SGR params: %q",
-				notice, params)
-		}
+		assert.Truef(t, sgrContainsParam(params, "1"),
+			"notice %q rendered without Bold SGR — V25 class-(b) perceptual distinctness lost.\n  preceding SGR params: %q",
+			notice, params)
 		return
 	}
-	t.Errorf("no non-reset SGR sequence precedes notice %q in captured bytes — V25 class-(b) violation",
-		notice)
+	assert.Failf(t, "no non-reset SGR precedes notice",
+		"no non-reset SGR sequence precedes notice %q in captured bytes — V25 class-(b) violation", notice)
 }
 
 // sgrContainsParam reports whether `target` appears as a standalone
@@ -87,9 +86,8 @@ func runYProgramAndCapture(t *testing.T, seed Model, preMarkCount int) string {
 		p.Quit()
 	}()
 
-	if _, err := p.Run(); err != nil {
-		t.Fatalf("tea.Program.Run: %v", err)
-	}
+	_, err := p.Run()
+	require.NoErrorf(t, err, "tea.Program.Run")
 	return out.String()
 }
 
@@ -104,9 +102,8 @@ func TestLiveBuffer_YNoMarks_NoticeReachesRenderer(t *testing.T) {
 	m = m.SetEntries(makeEntries(3))
 
 	got := runYProgramAndCapture(t, m, 0)
-	if !strings.Contains(got, clipboardNoMarksNotice) {
-		t.Errorf("no-marks notice %q missing from live-buffer output", clipboardNoMarksNotice)
-	}
+	assert.Containsf(t, got, clipboardNoMarksNotice,
+		"no-marks notice %q missing from live-buffer output", clipboardNoMarksNotice)
 	assertNoticeIsStyledDistinctly(t, got, clipboardNoMarksNotice)
 }
 
@@ -124,9 +121,7 @@ func TestLiveBuffer_YCopied_NoticeReachesRenderer(t *testing.T) {
 
 	got := runYProgramAndCapture(t, m, 2)
 	want := formatClipboardCopiedNotice(2)
-	if !strings.Contains(got, want) {
-		t.Errorf("copied notice %q missing from live-buffer output", want)
-	}
+	assert.Containsf(t, got, want, "copied notice %q missing from live-buffer output", want)
 	assertNoticeIsStyledDistinctly(t, got, want)
 }
 
@@ -148,9 +143,9 @@ func TestLiveBuffer_YClipboardErr_NoticeReachesRenderer(t *testing.T) {
 	// the full prefix so the class-(b) distinctness check has a stable
 	// anchor to locate in the captured byte stream.
 	const want = "clipboard error: pbcopy: broken"
-	if !strings.Contains(got, want) {
-		t.Errorf("clipboard-error notice %q missing from live-buffer output; captured bytes (first 500):\n%s",
-			want, truncateForLog(got, 500))
+	if !assert.Containsf(t, got, want,
+		"clipboard-error notice %q missing from live-buffer output; captured bytes (first 500):\n%s",
+		want, truncateForLog(got, 500)) {
 		return
 	}
 	assertNoticeIsStyledDistinctly(t, got, want)

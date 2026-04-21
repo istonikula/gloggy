@@ -8,6 +8,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Backprop R8 AC5 (new): tail entries reach the entry-list render path across
@@ -22,9 +24,7 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 	path := filepath.Join(dir, "e2e.jsonl")
 
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const initialLines = 5
 	for i := 1; i <= initialLines; i++ {
 		fmt.Fprintf(f, `{"level":"INFO","msg":"initial %d"}`+"\n", i)
@@ -42,9 +42,7 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 	// in-flight cmd call — we never abandon a blocking cmd, which is what
 	// loses messages in a naive harness.
 	initialCmd := m.Init()
-	if initialCmd == nil {
-		t.Fatal("Init() returned nil cmd in follow mode")
-	}
+	require.NotNil(t, initialCmd, "Init() returned nil cmd in follow mode")
 
 	msgChan := make(chan tea.Msg, 128)
 	nextCmdChan := make(chan tea.Cmd, 16)
@@ -80,7 +78,8 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 		deadline := time.Now().Add(8 * time.Second)
 		for len(m.entries) < want {
 			if time.Now().After(deadline) {
-				t.Fatalf("%s: timed out (entries=%d, want=%d)", label, len(m.entries), want)
+				require.Failf(t, "pump timeout",
+					"%s: timed out (entries=%d, want=%d)", label, len(m.entries), want)
 			}
 			select {
 			case msg := <-msgChan:
@@ -96,9 +95,7 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 
 	appendBatch := func(count, offset int) {
 		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		for i := 1; i <= count; i++ {
 			fmt.Fprintf(f, `{"level":"WARN","msg":"batch %d line %d"}`+"\n", offset, i)
 		}
@@ -118,9 +115,7 @@ func TestTailE2E_EntryListReceivesMultipleAppends(t *testing.T) {
 
 	// Line numbers must be monotonic from 1 and match append ordering.
 	for i, e := range m.entries {
-		if e.LineNumber != i+1 {
-			t.Errorf("entry %d: LineNumber=%d, want %d", i, e.LineNumber, i+1)
-		}
+		assert.Equalf(t, i+1, e.LineNumber, "entry %d: LineNumber=%d, want %d", i, e.LineNumber, i+1)
 	}
 
 	if m.tailCancel != nil {
