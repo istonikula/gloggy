@@ -85,6 +85,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 - **V22** (cfg:R3, cfg:R6) unknown TOML keys preserved on write-back. live writes preserve existing unrelated values.
 - **V23** (ls:R8) tail mode available only for file inputs. stdin never tailed regardless of flags.
 - **V24** (ls:R7) loading never blocks UI. progress signals stream; UI renders partial results mid-load.
+- **V25** (as:R9) V15 coverage MUST include live-buffer verification. unit tests asserting `m.View()` contains the notice string are necessary but NOT sufficient — bubbletea's diff-renderer or keyhint line-replace edge cases can drop the row so the notice never reaches the pty. every `y`-feedback path (copied-N, no-marks, clipboard-err) requires either a tea.Program capture-renderer test OR a pty-driven integration test that reads the bottom row post-keypress and asserts the notice text is present. (gap revealed by B1: passing V15-aligned unit tests coexisted w/ fully-silent live TUI.)
 
 ## §T tasks
 
@@ -100,5 +101,6 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 
 | id | date | cause | fix |
 |----|------|-------|-----|
+| B1 | 2026-04-21 | `y` notice set on `m.keyhints` and present in `m.View()` output but never reaches rendered terminal buffer — bubbletea diff-renderer or KeyHintBar line-replace path silently drops the row. V15 violation observable only in live TUI (all unit tests pass). | pending: investigate keyhints line-replace vs bubbletea diff; add pty-integration test per V25 |
 
-(empty — historical backprops recorded in kit changelogs: F-013/F-015/F-016/F-017, F-101..F-109, F-121..F-129, F-132/F-133/F-134, F-200/F-201/F-202. if new bugs surface, append here via `/ck:spec bug: <desc>`.)
+(historical backprops recorded in kit changelogs: F-013/F-015/F-016/F-017, F-101..F-109, F-121..F-129, F-132/F-133/F-134, F-200/F-201/F-202.)
