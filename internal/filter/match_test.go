@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/istonikula/gloggy/internal/logsource"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func baseEntry() logsource.Entry {
@@ -24,95 +26,83 @@ func baseEntry() logsource.Entry {
 func TestMatch_LiteralMsg(t *testing.T) {
 	f := Filter{Field: "msg", Pattern: "timeout"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || !ok {
-		t.Errorf("expected match; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected match")
 }
 
 func TestMatch_LiteralMsg_NoMatch(t *testing.T) {
 	f := Filter{Field: "msg", Pattern: "success"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || ok {
-		t.Errorf("expected no match; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.False(t, ok, "expected no match")
 }
 
 // T-018: regex match
 func TestMatch_Regex(t *testing.T) {
 	f := Filter{Field: "msg", Pattern: `timeout.*occurred`}
 	ok, err := Match(f, baseEntry())
-	if err != nil || !ok {
-		t.Errorf("expected regex match; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected regex match")
 }
 
 func TestMatch_Regex_NoMatch(t *testing.T) {
 	f := Filter{Field: "msg", Pattern: `^timeout$`}
 	ok, err := Match(f, baseEntry())
-	if err != nil || ok {
-		t.Errorf("expected no regex match; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.False(t, ok, "expected no regex match")
 }
 
 // T-018: invalid regex returns error, not applied
 func TestMatch_InvalidRegex_Error(t *testing.T) {
 	f := Filter{Field: "msg", Pattern: `[invalid`}
 	_, err := Match(f, baseEntry())
-	if err == nil {
-		t.Error("expected error for invalid regex")
-	}
+	assert.Error(t, err, "expected error for invalid regex")
 }
 
 // T-018: match against level, logger, thread
 func TestMatch_Level(t *testing.T) {
 	f := Filter{Field: "level", Pattern: "ERROR"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || !ok {
-		t.Errorf("expected match on level; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected match on level")
 }
 
 func TestMatch_Logger(t *testing.T) {
 	f := Filter{Field: "logger", Pattern: "HttpClient"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || !ok {
-		t.Errorf("expected match on logger; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected match on logger")
 }
 
 func TestMatch_Thread(t *testing.T) {
 	f := Filter{Field: "thread", Pattern: "worker"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || !ok {
-		t.Errorf("expected match on thread; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected match on thread")
 }
 
 // T-018: match against extra field (string value)
 func TestMatch_ExtraStringField(t *testing.T) {
 	f := Filter{Field: "requestId", Pattern: "abc"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || !ok {
-		t.Errorf("expected match on extra string field; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected match on extra string field")
 }
 
 // T-018: match against extra field (numeric value)
 func TestMatch_ExtraNumericField(t *testing.T) {
 	f := Filter{Field: "retryCount", Pattern: "3"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || !ok {
-		t.Errorf("expected match on extra numeric field; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected match on extra numeric field")
 }
 
 // T-018: missing field → no match (not error)
 func TestMatch_MissingField(t *testing.T) {
 	f := Filter{Field: "nonexistent", Pattern: "x"}
 	ok, err := Match(f, baseEntry())
-	if err != nil || ok {
-		t.Errorf("expected no match on missing field; err=%v ok=%v", err, ok)
-	}
+	require.NoError(t, err)
+	assert.False(t, ok, "expected no match on missing field")
 }
 
 // T-026: ToggleAll disables all filters
@@ -122,9 +112,7 @@ func TestToggleAll_DisablesAll(t *testing.T) {
 	fs.Add(Filter{Field: "b", Enabled: true})
 	fs.Add(Filter{Field: "c", Enabled: false})
 	fs.ToggleAll()
-	if got := fs.GetEnabled(); len(got) != 0 {
-		t.Errorf("expected 0 enabled after ToggleAll, got %d", len(got))
-	}
+	assert.Empty(t, fs.GetEnabled(), "expected 0 enabled after ToggleAll")
 }
 
 // T-026: second ToggleAll re-enables previously-enabled filters
@@ -134,9 +122,7 @@ func TestToggleAll_ReEnablesEnabled(t *testing.T) {
 	fs.Add(Filter{Field: "b", Enabled: true})
 	fs.ToggleAll()
 	fs.ToggleAll()
-	if got := fs.GetEnabled(); len(got) != 2 {
-		t.Errorf("expected 2 re-enabled, got %d", len(got))
-	}
+	assert.Len(t, fs.GetEnabled(), 2, "expected 2 re-enabled")
 }
 
 // T-026: individually-disabled filters stay disabled after re-enable
@@ -148,12 +134,8 @@ func TestToggleAll_IndividuallyDisabledStaysDisabled(t *testing.T) {
 	fs.ToggleAll()
 	fs.ToggleAll()
 	enabled := fs.GetEnabled()
-	if len(enabled) != 1 {
-		t.Fatalf("expected 1 enabled, got %d", len(enabled))
-	}
-	if enabled[0].Field != "b" {
-		t.Errorf("expected 'b' to be enabled, got %q", enabled[0].Field)
-	}
+	require.Len(t, enabled, 1)
+	assert.Equal(t, "b", enabled[0].Field, "expected 'b' to be enabled")
 }
 
 // T-069: Match must not panic when entry.Extra is nil.
@@ -165,12 +147,8 @@ func TestMatch_NilExtra(t *testing.T) {
 	}
 	f := Filter{Field: "somekey", Pattern: "val"}
 	ok, err := Match(f, entry)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if ok {
-		t.Error("expected no match for nil Extra")
-	}
+	require.NoError(t, err)
+	assert.False(t, ok, "expected no match for nil Extra")
 }
 
 // T-077: JSON string unquoting must handle escape sequences.
@@ -195,12 +173,8 @@ func TestMatch_JSONEscapedStrings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := Filter{Field: tc.field, Pattern: tc.pattern}
 			ok, err := Match(f, entry)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if ok != tc.want {
-				t.Errorf("Match() = %v, want %v", ok, tc.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, ok, "Match()")
 		})
 	}
 
@@ -215,12 +189,8 @@ func TestMatch_JSONEscapedStrings(t *testing.T) {
 	for _, tc := range unquoteTests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := entryFieldValue(tc.field, entry)
-			if !ok {
-				t.Fatalf("expected field %q to be found", tc.field)
-			}
-			if got != tc.want {
-				t.Errorf("entryFieldValue(%q) = %q, want %q", tc.field, got, tc.want)
-			}
+			require.True(t, ok, "expected field %q to be found", tc.field)
+			assert.Equal(t, tc.want, got, "entryFieldValue(%q)", tc.field)
 		})
 	}
 }
@@ -248,23 +218,15 @@ func TestToggleAll_AddWhileDisabled(t *testing.T) {
 
 	// c should be disabled immediately.
 	all := fs.GetAll()
-	if all[2].Enabled {
-		t.Error("filter c should be disabled while globally disabled")
-	}
+	assert.False(t, all[2].Enabled, "filter c should be disabled while globally disabled")
 
 	// Re-enable all.
 	fs.ToggleAll()
 
 	all = fs.GetAll()
-	if !all[0].Enabled {
-		t.Error("a should be re-enabled")
-	}
-	if all[1].Enabled {
-		t.Error("b should still be disabled (was disabled before toggle)")
-	}
-	if !all[2].Enabled {
-		t.Error("c should be re-enabled (was enabled when added)")
-	}
+	assert.True(t, all[0].Enabled, "a should be re-enabled")
+	assert.False(t, all[1].Enabled, "b should still be disabled (was disabled before toggle)")
+	assert.True(t, all[2].Enabled, "c should be re-enabled (was enabled when added)")
 }
 
 // T-074: Removing filter while globally disabled must not break re-enable.
@@ -278,10 +240,6 @@ func TestToggleAll_RemoveWhileDisabled(t *testing.T) {
 	fs.ToggleAll()
 
 	all := fs.GetAll()
-	if len(all) != 1 {
-		t.Fatalf("expected 1 filter, got %d", len(all))
-	}
-	if !all[0].Enabled {
-		t.Error("b should be re-enabled")
-	}
+	require.Len(t, all, 1)
+	assert.True(t, all[0].Enabled, "b should be re-enabled")
 }
