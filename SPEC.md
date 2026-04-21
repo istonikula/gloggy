@@ -90,7 +90,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 
 | id | status | desc | cites |
 |----|--------|------|-------|
-| T1 | . | human tui-mcp sign-off across all 3 themes × {80x24, 140x35} × {below, right} — README notes "not yet human tested" | V7,V10,V19,V20 |
+| T1 | x | human tui-mcp sign-off across all 3 themes × {80x24, 140x35} × {below, right} — README notes "not yet human tested" | V7,V10,V19,V20 |
 | T2 | . | human verify tail-follow no-scroll-animation on `logs/big.log` w/ `gloggy -f` | V1,V2 |
 | T3 | . | human verify mouse click-row resolver across orientations × focus states on `logs/small.log` | V8,V9 |
 | T4 | . | human verify clipboard `y` notices (copied/empty/err) | V15 |
