@@ -684,3 +684,90 @@ func TestAppendEntries_PauseWithK_ResumeWithG(t *testing.T) {
 		t.Errorf("resumed: cursor=%d, want %d", m.scroll.Cursor, wantLast)
 	}
 }
+
+// T9 (I.keys): `M` clears all marks. Cursor/viewport unchanged, no
+// SelectionMsg emitted.
+func TestListModel_M_ClearsAllMarks(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(5))
+	// Mark two entries: cursor at 0 → `m`, move to 2 → `m`.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	if got := m.Marks().Count(); got != 2 {
+		t.Fatalf("pre-M count = %d, want 2", got)
+	}
+	cursorBefore := m.scroll.Cursor
+	offsetBefore := m.scroll.Offset
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
+	if got := m2.Marks().Count(); got != 0 {
+		t.Errorf("post-M count = %d, want 0", got)
+	}
+	if m2.scroll.Cursor != cursorBefore {
+		t.Errorf("M moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
+	}
+	if m2.scroll.Offset != offsetBefore {
+		t.Errorf("M moved offset: %d → %d", offsetBefore, m2.scroll.Offset)
+	}
+	if cmd != nil {
+		t.Errorf("M emitted cmd %v, want nil (no SelectionMsg on clear-all-marks)", cmd)
+	}
+}
+
+// T10 (V4, V5, V26): a marked row must not overflow `m.width`. Previously
+// `list.View()` rendered `prefix + RenderCompactRow(m.width)` so a 2-cell
+// mark glyph pushed the total row to `m.width+2`, which soft-wraps to 2
+// terminal lines and cascades into V5 by displacing the header (B2).
+// Post-fix: a 2-cell prefix column is reserved on every row; content is
+// sized to `m.width-2`; total row = m.width.
+func TestListModel_V26_MarkedRow_NoWidthOverflow(t *testing.T) {
+	const innerWidth = 60
+	const innerHeight = 5
+	entries := makeEntries(innerHeight)
+	for i := range entries {
+		entries[i].Msg = strings.Repeat("x", 200)
+	}
+	m := NewListModel(theme.GetTheme("tokyo-night"), config.DefaultConfig(), innerWidth, innerHeight)
+	m = m.SetEntries(entries)
+	// Mark the cursor-row entry so `* ` prefix is prepended.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+
+	view := m.View()
+	lines := strings.Split(view, "\n")
+
+	// V5: applyPaneStyle wraps the inner ViewportHeight rows with top +
+	// bottom border → exactly innerHeight + 2 output lines.
+	if got, want := len(lines), innerHeight+2; got != want {
+		t.Errorf("View line count = %d, want %d (top border + %d inner rows + bottom border)", got, want, innerHeight)
+	}
+
+	// V4 + V26: each line's visible width must fit in innerWidth + 2
+	// (inner content + left-/right- border). Pre-fix: marked row = innerWidth+2
+	// content + border = innerWidth+4 → fails here.
+	maxAllowed := innerWidth + 2
+	for i, line := range lines {
+		if w := lipgloss.Width(line); w > maxAllowed {
+			t.Errorf("line %d visible width = %d, want ≤ %d: %q", i, w, maxAllowed, line)
+		}
+	}
+}
+
+// T9 (I.keys): `M` with zero marks is a silent no-op — no panic, no state
+// change, no command.
+func TestListModel_M_EmptyNoop(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(5))
+	if got := m.Marks().Count(); got != 0 {
+		t.Fatalf("precondition: Count = %d, want 0", got)
+	}
+	cursorBefore := m.scroll.Cursor
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
+	if got := m2.Marks().Count(); got != 0 {
+		t.Errorf("post-M count = %d, want 0", got)
+	}
+	if m2.scroll.Cursor != cursorBefore {
+		t.Errorf("M on empty moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
+	}
+	if cmd != nil {
+		t.Errorf("M on empty emitted cmd %v, want nil", cmd)
+	}
+}

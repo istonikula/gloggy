@@ -80,6 +80,30 @@ func TestMarkNoMarks(t *testing.T) {
 	}
 }
 
+func TestMarkClear(t *testing.T) {
+	ms := NewMarkSet()
+	ms.Toggle(10)
+	ms.Toggle(20)
+	ms.Toggle(30)
+	if ms.Count() != 3 {
+		t.Fatalf("pre-Clear count = %d, want 3", ms.Count())
+	}
+	ms.Clear()
+	if ms.Count() != 0 {
+		t.Errorf("post-Clear count = %d, want 0", ms.Count())
+	}
+	for _, id := range []int{10, 20, 30} {
+		if ms.IsMarked(id) {
+			t.Errorf("IsMarked(%d) = true after Clear, want false", id)
+		}
+	}
+	// Idempotent on empty set.
+	ms.Clear()
+	if ms.Count() != 0 {
+		t.Errorf("second Clear count = %d, want 0", ms.Count())
+	}
+}
+
 func TestMarkPersistsThroughFilterChange(t *testing.T) {
 	ms := NewMarkSet()
 	ms.Toggle(42)

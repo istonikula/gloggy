@@ -35,6 +35,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "m", Desc: "Toggle mark on current entry"},
 			{Key: "u", Desc: "Jump to next mark"},
 			{Key: "U", Desc: "Jump to previous mark"},
+			{Key: "M", Desc: "Clear all marks"},
 		},
 		DomainDetailPane: {
 			{Key: "j/↓", Desc: "Scroll down"},
