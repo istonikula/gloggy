@@ -1,10 +1,11 @@
 package filter
 
 import (
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/filter"
 )
@@ -31,45 +32,25 @@ func TestPanel_ViewShowsAllFilters(t *testing.T) {
 	m := New(fs)
 	view := m.View()
 
-	if !strings.Contains(view, "level") {
-		t.Error("view missing 'level' field")
-	}
-	if !strings.Contains(view, "ERROR") {
-		t.Error("view missing 'ERROR' pattern")
-	}
-	if !strings.Contains(view, "include") {
-		t.Error("view missing 'include' mode")
-	}
-	if !strings.Contains(view, "[x]") {
-		t.Error("view missing enabled indicator [x]")
-	}
-	if !strings.Contains(view, "msg") {
-		t.Error("view missing 'msg' field")
-	}
-	if !strings.Contains(view, "exclude") {
-		t.Error("view missing 'exclude' mode")
-	}
-	if !strings.Contains(view, "[ ]") {
-		t.Error("view missing disabled indicator [ ]")
-	}
+	assert.Contains(t, view, "level", "view missing 'level' field")
+	assert.Contains(t, view, "ERROR", "view missing 'ERROR' pattern")
+	assert.Contains(t, view, "include", "view missing 'include' mode")
+	assert.Contains(t, view, "[x]", "view missing enabled indicator [x]")
+	assert.Contains(t, view, "msg", "view missing 'msg' field")
+	assert.Contains(t, view, "exclude", "view missing 'exclude' mode")
+	assert.Contains(t, view, "[ ]", "view missing disabled indicator [ ]")
 }
 
 // T-039: R5.2 — j/k navigates between filters
 func TestPanel_JKNavigation(t *testing.T) {
 	m := New(makeFS("a", "b", "c"))
-	if m.cursor != 0 {
-		t.Fatalf("initial cursor = %d, want 0", m.cursor)
-	}
+	require.Equal(t, 0, m.cursor, "initial cursor")
 
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if m2.cursor != 1 {
-		t.Errorf("after j: cursor = %d, want 1", m2.cursor)
-	}
+	assert.Equal(t, 1, m2.cursor, "after j")
 
 	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	if m3.cursor != 0 {
-		t.Errorf("after k: cursor = %d, want 0", m3.cursor)
-	}
+	assert.Equal(t, 0, m3.cursor, "after k")
 }
 
 // T-039: R5.3 — Space toggles enabled state
@@ -81,21 +62,13 @@ func TestPanel_SpaceTogglesEnabled(t *testing.T) {
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	_ = m2
 
-	if cmd == nil {
-		t.Fatal("expected a cmd after Space, got nil")
-	}
+	require.NotNil(t, cmd, "expected a cmd after Space")
 	msg := cmd()
 	changed, ok := msg.(FilterChangedMsg)
-	if !ok {
-		t.Fatalf("expected FilterChangedMsg, got %T", msg)
-	}
+	require.True(t, ok, "expected FilterChangedMsg, got %T", msg)
 	filters := changed.FilterSet.GetAll()
-	if len(filters) == 0 {
-		t.Fatal("FilterSet is empty")
-	}
-	if filters[0].Enabled {
-		t.Error("filter should be disabled after Space toggle")
-	}
+	require.NotEmpty(t, filters, "FilterSet is empty")
+	assert.False(t, filters[0].Enabled, "filter should be disabled after Space toggle")
 }
 
 // T-039: R5.4 — d deletes filter
@@ -108,18 +81,12 @@ func TestPanel_DDeletesFilter(t *testing.T) {
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
 	_ = m2
 
-	if cmd == nil {
-		t.Fatal("expected cmd after d")
-	}
+	require.NotNil(t, cmd, "expected cmd after d")
 	msg := cmd()
 	changed, ok := msg.(FilterChangedMsg)
-	if !ok {
-		t.Fatalf("expected FilterChangedMsg, got %T", msg)
-	}
+	require.True(t, ok, "expected FilterChangedMsg, got %T", msg)
 	remaining := changed.FilterSet.GetAll()
-	if len(remaining) != 1 {
-		t.Errorf("expected 1 filter remaining, got %d", len(remaining))
-	}
+	assert.Len(t, remaining, 1, "expected 1 filter remaining")
 }
 
 // T-039: R5.5 — FilterChangedMsg emitted on change (already tested above, explicit test)
@@ -129,13 +96,10 @@ func TestPanel_FilterChangedMsgOnChange(t *testing.T) {
 	m := New(fs)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
-	if cmd == nil {
-		t.Fatal("expected FilterChangedMsg cmd, got nil")
-	}
+	require.NotNil(t, cmd, "expected FilterChangedMsg cmd")
 	msg := cmd()
-	if _, ok := msg.(FilterChangedMsg); !ok {
-		t.Errorf("expected FilterChangedMsg, got %T", msg)
-	}
+	_, ok := msg.(FilterChangedMsg)
+	assert.True(t, ok, "expected FilterChangedMsg, got %T", msg)
 }
 
 // T-039: R5.6 — mouse click selects filter row
@@ -147,7 +111,5 @@ func TestPanel_MouseClickSelectsRow(t *testing.T) {
 		X:      0,
 		Y:      2,
 	})
-	if m2.cursor != 2 {
-		t.Errorf("after click row 2: cursor = %d, want 2", m2.cursor)
-	}
+	assert.Equal(t, 2, m2.cursor, "after click row 2")
 }
