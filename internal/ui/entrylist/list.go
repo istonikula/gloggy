@@ -435,6 +435,13 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 				}
 				m.scroll.Cursor = prevMark
 			}
+		case "M":
+			// Clear all marks. Drops pin per u/U pattern; wrapDir is already
+			// reset at switch entry. Cursor/viewport unchanged → no
+			// SelectionMsg emitted. 0-marks → silent no-op (Clear is
+			// idempotent on empty set).
+			m.marks.Clear()
+			m.pinnedFullIdx = -1
 		case "e":
 			m = m.applyLevelJump(true, "ERROR")
 		case "E":

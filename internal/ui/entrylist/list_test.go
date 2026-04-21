@@ -684,3 +684,52 @@ func TestAppendEntries_PauseWithK_ResumeWithG(t *testing.T) {
 		t.Errorf("resumed: cursor=%d, want %d", m.scroll.Cursor, wantLast)
 	}
 }
+
+// T9 (I.keys): `M` clears all marks. Cursor/viewport unchanged, no
+// SelectionMsg emitted.
+func TestListModel_M_ClearsAllMarks(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(5))
+	// Mark two entries: cursor at 0 → `m`, move to 2 → `m`.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	if got := m.Marks().Count(); got != 2 {
+		t.Fatalf("pre-M count = %d, want 2", got)
+	}
+	cursorBefore := m.scroll.Cursor
+	offsetBefore := m.scroll.Offset
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
+	if got := m2.Marks().Count(); got != 0 {
+		t.Errorf("post-M count = %d, want 0", got)
+	}
+	if m2.scroll.Cursor != cursorBefore {
+		t.Errorf("M moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
+	}
+	if m2.scroll.Offset != offsetBefore {
+		t.Errorf("M moved offset: %d → %d", offsetBefore, m2.scroll.Offset)
+	}
+	if cmd != nil {
+		t.Errorf("M emitted cmd %v, want nil (no SelectionMsg on clear-all-marks)", cmd)
+	}
+}
+
+// T9 (I.keys): `M` with zero marks is a silent no-op — no panic, no state
+// change, no command.
+func TestListModel_M_EmptyNoop(t *testing.T) {
+	m := defaultListModel(10).SetEntries(makeEntries(5))
+	if got := m.Marks().Count(); got != 0 {
+		t.Fatalf("precondition: Count = %d, want 0", got)
+	}
+	cursorBefore := m.scroll.Cursor
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
+	if got := m2.Marks().Count(); got != 0 {
+		t.Errorf("post-M count = %d, want 0", got)
+	}
+	if m2.scroll.Cursor != cursorBefore {
+		t.Errorf("M on empty moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
+	}
+	if cmd != nil {
+		t.Errorf("M on empty emitted cmd %v, want nil", cmd)
+	}
+}

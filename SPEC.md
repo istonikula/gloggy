@@ -51,7 +51,7 @@ TUI for interactive JSONL log analysis. single binary. file or stdin. go + bubbl
 ### I.keys (canonical — full list in README + as:R5 help overlay)
 
 - nav: j/k g/G Ctrl-d/u PgDn/PgUp Space/b (dp) Home/End (dp)
-- el: e/E w/W m u/U l/h Tab Enter / n/N
+- el: e/E w/W m/M u/U l/h Tab Enter / n/N  (M = clear all marks, silent no-op on zero)
 - dp: / n/N + - = | Esc
 - global: f y ? q
 
@@ -100,6 +100,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T6 | x | guard `saveConfig()` in `handleRatioKey` on `newR != current`; add regression test for no-mtime-advance at ratio boundary across `-`/`+`/`=`/`\|` | V17 |
 | T7 | x | fix B1: diagnose + repair `y`-notice drop (keyhints line-replace vs bubbletea diff-renderer); add tea.Program capture-renderer OR pty-driven test for copied-N / no-marks / clipboard-err paths per V25 | V15,V25 |
 | T8 | x | automate V25 class-(b) coverage — tui-mcp / pty-driven golden-frame or contrast-check test that launches gloggy, presses `y` on no-marks, reads the bottom row, and asserts the notice cells are visually distinct from the keyhints row (e.g. differing SGR style: Bold or different fg). repeat for all 3 themes × all 3 y-feedback paths (copied-N / no-marks / clipboard-err). | V15,V25 |
+| T9 | x | impl `M` clear-all-marks in entrylist: add `MarkSet.Clear()`, wire `case "M"` in `list.go` (drops pin + resets mark-nav state, per u/U pattern), unit test empties MarkSet + verifies zero-count after Clear. 0-marks → silent no-op, no confirm. update help overlay (as:R5) + README keymap. | I.keys |
 
 ## §B bugs
 

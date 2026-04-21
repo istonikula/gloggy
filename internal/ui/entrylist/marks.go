@@ -21,6 +21,11 @@ func (ms *MarkSet) Toggle(id int) {
 	}
 }
 
+// Clear removes all marks. Idempotent on an empty set.
+func (ms *MarkSet) Clear() {
+	ms.marks = make(map[int]bool)
+}
+
 // IsMarked returns whether the given ID is marked.
 func (ms *MarkSet) IsMarked(id int) bool {
 	return ms.marks[id]

@@ -2,8 +2,6 @@
 
 > **100% vibe coded.** This project was designed, architected, and implemented entirely by [Claude](https://anthropic.com/claude) via [Claude Code](https://claude.ai/code) — zero hand-written lines of Go. No prompts like "write me a log viewer"; instead, a structured methodology called [Cavekit](https://github.com/JuliusBrussee/cavekit) was used to translate product ideas into kits, kits into a dependency-ordered build plan, and the build plan into working code — autonomously, wave by wave. Development will continue the same way.
 
-> ⚠️ **Not yet human tested.** The codebase has 100% automated test coverage against its acceptance criteria, but has not been run as an actual TUI by a human yet. Screenshots and real-world validation are coming soon.
-
 A terminal UI for interactively analyzing JSONL log files during local development. Single binary, reads from a file or stdin.
 
 ## Comparison
@@ -46,7 +44,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 - **Level-jump navigation** — `e`/`E` jump to the next/previous ERROR, `w`/`W` for WARN. Wraps with an indicator.
 - **Two-level cursor** — magit-style: `j`/`k` move between entries; `l`/`Tab`/`→` expand into per-field sub-rows; `h`/`←`/`Esc` collapse back.
 - **Scroll navigation** — `g`/`G` go to top/bottom, `Ctrl-d`/`Ctrl-u` half-page. Viewport follows the cursor with a configurable `scrolloff` margin of context rows around the cursor (default 5).
-- **Marks** — `m` toggles a bookmark; `u`/`U` jump between marks. Marked entries are visually indicated.
+- **Marks** — `m` toggles a bookmark; `u`/`U` jump between marks; `M` clears all marks. Marked entries are visually indicated.
 - **List-scope search** — `/` opens a free-text search over the visible list (matches against time/level/logger/msg); matching rows are highlighted, `Enter` commits to navigate mode, `n`/`N` move the cursor to the next/prev match with `scrolloff` context, `Esc` dismisses. Matches extend live while new entries stream in from tail mode.
 - **Mouse support** — click to select, scroll wheel to scroll (cursor is dragged along when it would leave the scrolloff margin, nvim-style), click a selected entry to open the detail pane.
 
@@ -99,6 +97,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 | `w`/`W` | Next/prev WARN |
 | `m` | Toggle mark |
 | `u`/`U` | Next/prev mark |
+| `M` | Clear all marks |
 | `Tab` / `l` / `→` | Expand entry into per-field sub-rows |
 | `h` / `←` | Collapse sub-rows |
 | `Enter` | Open detail pane for current entry |
@@ -119,9 +118,9 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 |-----|--------|
 | `Tab` | Cycle focus between visible panes |
 | `Esc` | Close overlay → close detail pane → clear transient state |
-| `\|` | Cycle layout ratio presets (10% / 30% / 70%) |
-| `+` / `-` | Adjust the active pane ratio by ±5% |
-| `=` | Reset ratio to 0.30 |
+| `\|` | Cycle focused pane's share between 30% / 50% |
+| `+` / `-` | Grow/shrink the focused pane by 5% |
+| `=` | Reset detail-pane ratio to 30% |
 
 ### Global
 
