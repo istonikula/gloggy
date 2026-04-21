@@ -36,6 +36,21 @@ func defaultPane(height int) PaneModel {
 	return NewPaneModel(theme.GetTheme("tokyo-night"), height)
 }
 
+// paneWithNLines opens a pane at (height, width) pre-populated with n copies
+// of "ln" as rawContent. Collapses the hand-rolled setup that otherwise
+// repeats across scroll/cursor-highlight/indicator tests.
+func paneWithNLines(height, width, n int) PaneModel {
+	m := defaultPane(height).SetWidth(width)
+	m.open = true
+	lines := make([]string, n)
+	for i := range lines {
+		lines[i] = "ln"
+	}
+	m.rawContent = strings.Join(lines, "\n")
+	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	return m
+}
+
 // Regression for F-203 (two-tone detail-pane bug, Tier 24 follow-up):
 // `render.go` styles each JSON token (key, string, number, boolean, null)
 // with `lipgloss.NewStyle().Foreground(...)` only — no Background. Every
@@ -110,26 +125,25 @@ func TestPaneModel_Open_RendersContent(t *testing.T) {
 	assert.NotEmpty(t, m.View(), "expected non-empty view after Open()")
 }
 
-// T-041: R1.3 — Esc closes pane and emits BlurredMsg.
-func TestPaneModel_Esc_ClosesAndEmitsBlurred(t *testing.T) {
-	m := defaultPane(10).Open(testEntry())
-	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	assert.False(t, m2.IsOpen(), "expected pane to be closed after Esc")
-	require.NotNil(t, cmd, "expected BlurredMsg cmd")
-	msg := cmd()
-	_, ok := msg.(BlurredMsg)
-	assert.Truef(t, ok, "expected BlurredMsg, got %T", msg)
-}
-
-// T-041: R1.4 — Enter in pane closes and emits BlurredMsg.
-func TestPaneModel_Enter_ClosesAndEmitsBlurred(t *testing.T) {
-	m := defaultPane(10).Open(testEntry())
-	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	assert.False(t, m2.IsOpen(), "expected pane to be closed after Enter")
-	require.NotNil(t, cmd, "expected BlurredMsg cmd")
-	msg := cmd()
-	_, ok := msg.(BlurredMsg)
-	assert.Truef(t, ok, "expected BlurredMsg, got %T", msg)
+// T-041: R1.3/R1.4 — Esc and Enter both close the pane and emit BlurredMsg.
+func TestPaneModel_DismissKey_ClosesAndEmitsBlurred(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		keyType tea.KeyType
+	}{
+		{"Esc", tea.KeyEsc},
+		{"Enter", tea.KeyEnter},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := defaultPane(10).Open(testEntry())
+			m2, cmd := m.Update(tea.KeyMsg{Type: tc.keyType})
+			assert.False(t, m2.IsOpen(), "expected pane to be closed after %s", tc.name)
+			require.NotNil(t, cmd, "expected BlurredMsg cmd")
+			msg := cmd()
+			_, ok := msg.(BlurredMsg)
+			assert.Truef(t, ok, "expected BlurredMsg, got %T", msg)
+		})
+	}
 }
 
 // When pane is closed, Update is a no-op.
@@ -260,50 +274,49 @@ func TestPaneModel_ContentLines_ClosedReturnsNil(t *testing.T) {
 	assert.Nil(t, m.ContentLines(), "expected nil from closed-after-open pane")
 }
 
-// T-114 (F-002, F-004, F-010): an active SearchModel attached via
-// WithSearch() renders a visible prompt row and (cur/total) counter in
-// the pane's View output.
-func TestPaneModel_WithSearch_RendersPromptAndCounter(t *testing.T) {
-	pane := defaultPane(12).SetWidth(60).Open(logsource.Entry{
+// T-114 (F-002, F-004, F-010): the search prompt row, (cur/total) counter,
+// bare-prompt and "No matches" indicator all render via WithSearch() — and
+// inactive search leaves the pane's normal rendering unchanged.
+func TestPaneModel_WithSearch(t *testing.T) {
+	// Entry with multiple 'hello' matches so MatchCount >= 1.
+	multiHit := logsource.Entry{
 		IsJSON: true,
 		Time:   time.Now(),
 		Level:  "INFO",
 		Msg:    "hello",
 		Raw:    []byte(`{"level":"INFO","msg":"hello world","tag":"hello there"}`),
-	})
-	search := NewSearchModel(theme.GetTheme("tokyo-night")).Activate().SetQuery("hello", pane.ContentLines())
-	require.GreaterOrEqualf(t, search.MatchCount(), 1, "setup: expected >=1 match, got %d", search.MatchCount())
-	view := pane.WithSearch(search).View()
-	assert.Containsf(t, view, "/hello", "view missing active query prompt '/hello': %q", view)
-	// Counter "(1/N)" — N depends on match count but we check the format.
-	assert.Containsf(t, view, "(1/", "view missing (cur/total) counter: %q", view)
-}
-
-// T-114: non-empty query with zero matches renders "No matches".
-func TestPaneModel_WithSearch_NoMatchesIndicator(t *testing.T) {
-	pane := defaultPane(12).SetWidth(60).Open(testEntry())
-	search := NewSearchModel(theme.GetTheme("tokyo-night")).Activate().SetQuery("zzz-nope", pane.ContentLines())
-	require.Equal(t, 0, search.MatchCount(), "setup: expected 0 matches")
-	view := pane.WithSearch(search).View()
-	assert.Containsf(t, view, "No matches", "view should show 'No matches' for query with zero hits: %q", view)
-}
-
-// T-114: bare `/` prompt (no query yet) renders just the slash so the
-// user sees that search is running.
-func TestPaneModel_WithSearch_BarePrompt(t *testing.T) {
-	pane := defaultPane(12).SetWidth(60).Open(testEntry())
-	search := NewSearchModel(theme.GetTheme("tokyo-night")).Activate()
-	view := pane.WithSearch(search).View()
-	assert.Containsf(t, view, "/", "view should contain '/' prompt while search is active: %q", view)
-}
-
-// T-114: when search is inactive, View() does not render a prompt row —
-// the pane reverts to its normal rendering.
-func TestPaneModel_WithSearch_InactiveNoPrompt(t *testing.T) {
-	pane := defaultPane(12).SetWidth(60).Open(testEntry())
-	search := NewSearchModel(theme.GetTheme("tokyo-night")) // not activated
-	view := pane.WithSearch(search).View()
-	assert.NotContainsf(t, view, "No matches", "inactive search should not render 'No matches': %q", view)
+	}
+	for _, tc := range []struct {
+		name     string
+		entry    logsource.Entry
+		activate bool
+		query    string
+		want     []string
+		notWant  []string
+	}{
+		{"prompt+counter on match", multiHit, true, "hello", []string{"/hello", "(1/"}, nil},
+		{"no matches indicator", testEntry(), true, "zzz-nope", []string{"No matches"}, nil},
+		{"bare prompt", testEntry(), true, "", []string{"/"}, nil},
+		{"inactive no prompt", testEntry(), false, "", nil, []string{"No matches"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pane := defaultPane(12).SetWidth(60).Open(tc.entry)
+			search := NewSearchModel(theme.GetTheme("tokyo-night"))
+			if tc.activate {
+				search = search.Activate()
+				if tc.query != "" {
+					search = search.SetQuery(tc.query, pane.ContentLines())
+				}
+			}
+			view := pane.WithSearch(search).View()
+			for _, w := range tc.want {
+				assert.Containsf(t, view, w, "view missing %q: %q", w, view)
+			}
+			for _, nw := range tc.notWant {
+				assert.NotContainsf(t, view, nw, "view unexpectedly contained %q: %q", nw, view)
+			}
+		})
+	}
 }
 
 // T-115 (F-005): ScrollToLine brings an out-of-window line into view.
@@ -336,16 +349,7 @@ func TestPaneModel_ScrollToLine_BringsMatchIntoView(t *testing.T) {
 // T-134 (F-026, cavekit R11): ScrollToLine moves the cursor AND scrolls so
 // the cursor has scrolloff context.
 func TestPaneModel_ScrollToLine_MovesCursorWithScrolloffContext(t *testing.T) {
-	m := defaultPane(12).SetWidth(40) // ContentHeight = 10
-	m = m.WithScrolloff(5)
-	m.open = true
-	lines := make([]string, 100)
-	for i := range lines {
-		lines[i] = "ln"
-	}
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight()).WithScrolloff(5)
-
+	m := paneWithNLines(12, 40, 100).WithScrolloff(5) // ContentHeight = 10
 	m = m.ScrollToLine(40)
 	assert.Equal(t, 40, m.scroll.Cursor(), "cursor")
 	assert.Equal(t, 36, m.scroll.Offset(), "offset (cursor at bottom-margin)")
@@ -356,73 +360,39 @@ func TestPaneModel_ScrollToLine_MovesCursorWithScrolloffContext(t *testing.T) {
 // SearchHighlight fg.
 func TestPaneModel_View_CursorBgOverSearchActive(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
-	m := defaultPane(12).SetWidth(40)
-	m = m.WithScrolloff(5)
-	m.open = true
-	lines := make([]string, 100)
-	for i := range lines {
-		lines[i] = "ln"
-	}
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight()).WithScrolloff(5)
+	m := paneWithNLines(12, 40, 100).WithScrolloff(5)
 	m.Focused = true
-
 	m = m.ScrollToLine(40)
 	view := m.View()
 	bgSGR := bgSGRFor(th.CursorHighlight)
 	assert.Containsf(t, view, bgSGR, "cursor-row bg missing after ScrollToLine; view=%q", view)
 }
 
-// T-125 (F-016): scroll indicator reports a percentage when content
-// exceeds the viewport.
-func TestPaneModel_ScrollPercent_ExceedingViewport(t *testing.T) {
-	m := defaultPane(22) // ContentHeight = 20
-	// Seed scroll with 200 lines of known content.
-	lines := make([]string, 200)
-	for i := range lines {
-		lines[i] = "line"
+// T-125 (F-016): scroll indicator reports percentage when content exceeds
+// viewport, 100 at the bottom, and sentinel -1 when the content fits.
+func TestPaneModel_ScrollPercent(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		nLines  int
+		offset  int
+		want    int
+		comment string
+	}{
+		{"top of long doc", 200, 0, 10, "offset 0, height 20, total 200 → (0+20)/200 = 10%"},
+		{"bottom of long doc", 200, 180, 100, "max offset = 200-20 → 100%"},
+		{"fits viewport", 4, 0, -1, "short content → sentinel -1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := paneWithNLines(22, 0, tc.nLines) // width irrelevant for ScrollPercent
+			m.scroll.offset = tc.offset
+			assert.Equalf(t, tc.want, m.ScrollPercent(), "%s", tc.comment)
+		})
 	}
-	m.open = true
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
-	// offset 0, height 20, total 200 → (0+20)/200 = 10%
-	assert.Equal(t, 10, m.ScrollPercent(), "ScrollPercent at offset=0")
-}
-
-// T-125: at the bottom of a long document the indicator reads 100%.
-func TestPaneModel_ScrollPercent_AtBottom(t *testing.T) {
-	m := defaultPane(22)
-	lines := make([]string, 200)
-	for i := range lines {
-		lines[i] = "line"
-	}
-	m.open = true
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
-	m.scroll.offset = 180 // max offset = 200-20
-	assert.Equal(t, 100, m.ScrollPercent(), "ScrollPercent at bottom")
-}
-
-// T-125: content that fits entirely → indicator omitted (sentinel -1).
-func TestPaneModel_ScrollPercent_FitsViewport(t *testing.T) {
-	m := defaultPane(22)
-	lines := []string{"only", "a", "few", "lines"}
-	m.open = true
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
-	assert.Equal(t, -1, m.ScrollPercent(), "ScrollPercent with short content")
 }
 
 // T-125: View overlays the indicator on the last body line (dim text).
 func TestPaneModel_View_IncludesScrollIndicator(t *testing.T) {
-	m := defaultPane(22).SetWidth(30)
-	lines := make([]string, 200)
-	for i := range lines {
-		lines[i] = "ln"
-	}
-	m.open = true
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	m := paneWithNLines(22, 30, 200)
 	view := m.View()
 	assert.Containsf(t, view, "10%", "view should contain \"10%%\" indicator, got: %q", view)
 }
@@ -515,66 +485,45 @@ func bgSGRFor(c lipgloss.Color) string {
 	return rendered[i : i+end]
 }
 
-// T-131: cursor row renders with CursorHighlight bg + Bold when focused.
-func TestPaneModel_View_CursorHighlight_FocusedBold(t *testing.T) {
+// T-131: cursor row keeps CursorHighlight bg in both focus states; focused
+// combines Bold (SGR 1) with bg, unfocused combines Faint (SGR 2) with bg —
+// never both.
+func TestPaneModel_View_CursorHighlight_FocusAttr(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
-	m := defaultPane(12).SetWidth(30)
-	m.open = true
-	lines := make([]string, 40)
-	for i := range lines {
-		lines[i] = "ln"
-	}
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
-	m.Focused = true
-	view := m.View()
 	bgSGR := bgSGRFor(th.CursorHighlight)
 	require.NotEmpty(t, bgSGR, "could not synthesize CursorHighlight bg SGR")
-	assert.Containsf(t, view, bgSGR, "expected CursorHighlight bg SGR %q in focused view; view=%q", bgSGR, view)
-	// Focused cursor row should be bold — lipgloss emits SGR 1 combined
-	// with the bg attribute, e.g. `\x1b[1;48;2;...m`.
-	bold1 := strings.Contains(view, "\x1b[1;48;")
-	bold2 := strings.Contains(view, ";1;48;")
-	assert.Truef(t, bold1 || bold2, "expected Bold+bg combined SGR on focused cursor row; view=%q", view)
-}
 
-// T-131: cursor row keeps CursorHighlight bg when pane is unfocused but
-// uses Faint instead of Bold.
-func TestPaneModel_View_CursorHighlight_UnfocusedNoBold(t *testing.T) {
-	th := theme.GetTheme("tokyo-night")
-	m := defaultPane(12).SetWidth(30)
-	m.open = true
-	lines := make([]string, 40)
-	for i := range lines {
-		lines[i] = "ln"
+	hasAttrBg := func(view string, attr int) bool {
+		prefix := "\x1b[" + string(rune('0'+attr)) + ";48;"
+		infix := ";" + string(rune('0'+attr)) + ";48;"
+		return strings.Contains(view, prefix) || strings.Contains(view, infix)
 	}
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
-	m.Focused = false
-	view := m.View()
-	bgSGR := bgSGRFor(th.CursorHighlight)
-	assert.Containsf(t, view, bgSGR, "expected CursorHighlight bg SGR %q in unfocused view; view=%q", bgSGR, view)
-	// Unfocused cursor row combines Faint (SGR 2) with bg.
-	faint1 := strings.Contains(view, "\x1b[2;48;")
-	faint2 := strings.Contains(view, ";2;48;")
-	assert.Truef(t, faint1 || faint2, "expected Faint+bg combined SGR on unfocused cursor row; view=%q", view)
-	// And no Bold on the cursor row.
-	bold1 := strings.Contains(view, "\x1b[1;48;")
-	bold2 := strings.Contains(view, ";1;48;")
-	assert.Falsef(t, bold1 || bold2, "expected no Bold SGR on unfocused cursor row; view=%q", view)
+
+	for _, tc := range []struct {
+		name    string
+		focused bool
+		wantBg  bool // always true; kept for clarity
+		// Exactly one of wantBold/wantFaint is true; the other must be absent.
+		wantBold, wantFaint bool
+	}{
+		{"focused bold", true, true, true, false},
+		{"unfocused faint", false, true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := paneWithNLines(12, 30, 40)
+			m.Focused = tc.focused
+			view := m.View()
+			assert.Containsf(t, view, bgSGR, "expected CursorHighlight bg SGR %q: %q", bgSGR, view)
+			assert.Equalf(t, tc.wantBold, hasAttrBg(view, 1), "bold+bg presence: %q", view)
+			assert.Equalf(t, tc.wantFaint, hasAttrBg(view, 2), "faint+bg presence: %q", view)
+		})
+	}
 }
 
 // T-131: cursor row paints at the correct visible position when offset > 0.
 func TestPaneModel_View_CursorHighlight_HonorsOffset(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
-	m := defaultPane(10).SetWidth(20)
-	m.open = true
-	lines := make([]string, 50)
-	for i := range lines {
-		lines[i] = "ln"
-	}
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	m := paneWithNLines(10, 20, 50)
 	m.scroll.cursor = 7
 	m.scroll.offset = 3
 	m.Focused = true
@@ -646,14 +595,7 @@ var innerResetAfterBgReopen = regexp.MustCompile(`\x1b\[0m\x1b\[48[;\d]*m`)
 // does NOT add columns. Under single-owner border accounting, `SetWidth(n)`
 // is content width; outer rendered width = n + 2 border cells.
 func TestPaneModel_View_IndicatorDoesNotExpandWidth(t *testing.T) {
-	m := defaultPane(22).SetWidth(30)
-	lines := make([]string, 200)
-	for i := range lines {
-		lines[i] = "ln"
-	}
-	m.open = true
-	m.rawContent = strings.Join(lines, "\n")
-	m.scroll = NewScrollModel(m.rawContent, m.ContentHeight())
+	m := paneWithNLines(22, 30, 200)
 	view := m.View()
 	// Inspect each row's cell width; all should equal outer pane width
 	// (content 30 + 2 border cells = 32).
