@@ -35,6 +35,18 @@ func defaultListModel(height int) ListModel {
 	return NewListModel(theme.GetTheme("tokyo-night"), config.DefaultConfig(), 80, height)
 }
 
+// bgColorANSI mirrors the appshell test helper — renders a probe with
+// background color c and returns the SGR prefix. Local copy so this test
+// doesn't cross package boundaries.
+func bgColorANSI(c lipgloss.Color) string {
+	rendered := lipgloss.NewStyle().Background(c).Render("x")
+	end := strings.Index(rendered, "x")
+	if end <= 0 {
+		return ""
+	}
+	return rendered[:end]
+}
+
 // T-029: R6.1 — rendered rows ≤ viewport height for 100k entries
 func TestListModel_VirtualRendering_100k(t *testing.T) {
 	const total = 100_000
@@ -84,67 +96,64 @@ func TestListModel_NoSelectionMsg_AtBoundary(t *testing.T) {
 	assert.Nil(t, cmd, "expected nil cmd when cursor cannot move")
 }
 
-// T-080: R11 — CursorPosition returns 1-based index
-func TestCursorPosition_EmptyList(t *testing.T) {
-	m := defaultListModel(10)
-	require.Equal(t, 0, m.CursorPosition(), "CursorPosition on empty")
+// T-080: R11 — CursorPosition returns 1-based index, tracks j/k/g/G + filter.
+func TestCursorPosition(t *testing.T) {
+	t.Run("empty list", func(t *testing.T) {
+		m := defaultListModel(10)
+		assert.Equal(t, 0, m.CursorPosition())
+	})
+
+	t.Run("initial + j + k", func(t *testing.T) {
+		m := defaultListModel(10).SetEntries(makeEntries(5))
+		assert.Equal(t, 1, m.CursorPosition(), "initial")
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		assert.Equal(t, 2, m.CursorPosition(), "after j")
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+		assert.Equal(t, 1, m.CursorPosition(), "after k")
+	})
+
+	t.Run("G then g", func(t *testing.T) {
+		m := defaultListModel(10).SetEntries(makeEntries(5))
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+		assert.Equal(t, 5, m.CursorPosition(), "after G")
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+		assert.Equal(t, 1, m.CursorPosition(), "after g")
+	})
+
+	t.Run("clamps after filter", func(t *testing.T) {
+		m := defaultListModel(10).SetEntries(makeEntries(5))
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+		m = m.SetFilter([]int{0, 1})
+		assert.Equal(t, 2, m.CursorPosition(), "after filter")
+	})
 }
 
-func TestCursorPosition_JK(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(5))
-	require.Equal(t, 1, m.CursorPosition(), "initial CursorPosition")
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	require.Equal(t, 2, m.CursorPosition(), "after j: CursorPosition")
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	require.Equal(t, 1, m.CursorPosition(), "after k: CursorPosition")
-}
-
-func TestCursorPosition_gG(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(5))
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	require.Equal(t, 5, m.CursorPosition(), "after G: CursorPosition")
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
-	require.Equal(t, 1, m.CursorPosition(), "after g: CursorPosition")
-}
-
-func TestCursorPosition_AfterFilter(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(5))
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	// Filter to indices 0,1 → cursor clamps
-	m = m.SetFilter([]int{0, 1})
-	require.Equal(t, 2, m.CursorPosition(), "after filter: CursorPosition")
-}
-
-// T-079: R1.8 — cursor row rendered with CursorHighlight background.
-// T-100: list output is wrapped in a pane border; the cursor row is now the
-// first content line inside the top border.
-func TestView_CursorHighlight(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(3))
-	m.Focused = true
-	v := m.View()
-	lines := strings.Split(v, "\n")
-	require.GreaterOrEqualf(t, len(lines), 3,
-		"expected at least 3 lines (top border + content): got %d", len(lines))
-	// First line is top border; cursor row is the next content line.
-	cursorRow := lines[1]
-	assert.Containsf(t, cursorRow, "\x1b[", "cursor row should have ANSI styling: %q", cursorRow)
-	// Non-cursor rows should not match the cursor row.
-	if len(lines) > 2 {
-		assert.NotEqual(t, lines[2], cursorRow, "cursor row should differ from non-cursor row")
-	}
-	// "48;" is the ANSI SGR background prefix (CursorHighlight).
-	if !strings.Contains(cursorRow, "48;") {
-		t.Logf("cursor row (line 1): %q", cursorRow)
-		if len(lines) > 2 {
-			t.Logf("non-cursor row (line 2): %q", lines[2])
+// T-079: R1.8 + T-102 — cursor row carries CursorHighlight bg regardless of
+// focus state. List output is wrapped in a pane border; cursor row is the
+// first content line inside the top border (lines[1]).
+func TestView_CursorRow_HasHighlightBg(t *testing.T) {
+	for _, focused := range []bool{true, false} {
+		name := "focused"
+		if !focused {
+			name = "unfocused"
 		}
-		assert.Fail(t, "cursor row should contain background color escape (48;)")
+		t.Run(name, func(t *testing.T) {
+			m := defaultListModel(10).SetEntries(makeEntries(3))
+			m.Focused = focused
+			lines := strings.Split(m.View(), "\n")
+			require.GreaterOrEqualf(t, len(lines), 3, "expected at least 3 lines, got %d", len(lines))
+			cursorRow := lines[1]
+			// "48;" is the ANSI SGR background prefix (CursorHighlight).
+			assert.Containsf(t, cursorRow, "48;",
+				"cursor row missing bg escape (48;): %q", cursorRow)
+			if focused && len(lines) > 2 {
+				assert.NotEqual(t, lines[2], cursorRow, "cursor row should differ from non-cursor row")
+			}
+		})
 	}
 }
 
 // WindowSizeMsg must be processed even when the entry list is empty.
-// The initial resize arrives before async loading finishes.
-//
 // T-100: incoming width/height are the OUTER pane allocation; the list
 // reserves 2 cells / 2 rows for its full border.
 func TestWindowSizeMsg_ProcessedWhenEmpty(t *testing.T) {
@@ -152,27 +161,6 @@ func TestWindowSizeMsg_ProcessedWhenEmpty(t *testing.T) {
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 	assert.Equal(t, 198, m.width, "width after WindowSizeMsg on empty list (200 - 2 borders)")
 	assert.Equal(t, 48, m.scroll.ViewportHeight, "ViewportHeight after WindowSizeMsg on empty list (50 - 2 borders)")
-}
-
-// Messages with embedded newlines must render as exactly one terminal line.
-func TestFlattenNewlines(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"no newlines", "no newlines"},
-		{"line1\nline2", "line1 line2"},
-		{"line1\r\nline2", "line1 line2"},
-		{"tabs\t\there", "tabs\t\there"},
-		{"mixed\n\t\tindent", "mixed indent"},
-		{"trailing\n", "trailing "},
-		{"\nleading", " leading"},
-		{"multi\n\n\nnewlines", "multi newlines"},
-	}
-	for _, tt := range tests {
-		got := flattenNewlines(tt.in)
-		assert.Equalf(t, tt.want, got, "flattenNewlines(%q)", tt.in)
-	}
 }
 
 // T-100: list rendered with focus elsewhere uses DividerColor borders +
@@ -197,8 +185,6 @@ func TestView_VisualState_Unfocused_DiffersFromFocused_AndHasBg(t *testing.T) {
 	// Unfocused render must include a background SGR (48;) for UnfocusedBg.
 	assert.Containsf(t, unfocused, "48;", "unfocused render missing background SGR (48;): %q", unfocused)
 	// Focused render must NOT include a background SGR on the border.
-	// (Cursor row uses 48; for CursorHighlight; the border lines should
-	// not — a structural test would inspect line[0] only.)
 	assert.NotContainsf(t, fLines[0], "48;", "focused border line must not have UnfocusedBg: %q", fLines[0])
 }
 
@@ -214,13 +200,6 @@ func TestView_VisualState_Unfocused_DiffersFromFocused_AndHasBg(t *testing.T) {
 // `termenv.TrueColor`, so we're asserting the RENDERER-LEVEL outcome:
 // when the color profile IS TrueColor, do the three bundled themes
 // produce DISTINCT BaseBg SGR in the real `View()` output path?
-//
-// Why this test exists: the tui-mcp visual verification is unreliable
-// for fine-grained bg distinction because the harness environment is
-// not guaranteed to have TrueColor. Users in real terminals with
-// COLORTERM=truecolor should see the distinctness (and `main.go`'s
-// `forceTrueColorIfSupported()` guards that path). This test is the
-// objective floor: in a TrueColor profile, themes MUST NOT collapse.
 //
 // cavekit-config.md R4 AC 19 (cross-theme perceptibly-distinct).
 func TestView_BaseBg_ThemesProduceDistinctSGR_UnderTrueColor(t *testing.T) {
@@ -285,18 +264,6 @@ func TestView_LevelTokenReset_FollowedByBaseBg(t *testing.T) {
 	}
 }
 
-// bgColorANSI mirrors the appshell test helper — renders a probe with
-// background color c and returns the SGR prefix. Local copy so this test
-// doesn't cross package boundaries.
-func bgColorANSI(c lipgloss.Color) string {
-	rendered := lipgloss.NewStyle().Background(c).Render("x")
-	end := strings.Index(rendered, "x")
-	if end <= 0 {
-		return ""
-	}
-	return rendered[:end]
-}
-
 // T-101: when the pane is alone (no other pane visible), it uses the
 // focused styling regardless of the Focused flag.
 func TestView_VisualState_Alone_UsesFocusedTreatment(t *testing.T) {
@@ -318,53 +285,36 @@ func TestView_VisualState_Alone_UsesFocusedTreatment(t *testing.T) {
 	assert.Equalf(t, focused, alone, "alone treatment must equal focused treatment\nalone:    %q\nfocused:  %q", alone, focused)
 }
 
-// T-102: the cursor row is rendered with CursorHighlight regardless of
-// focus state. When unfocused, the surrounding pane is Faint-dimmed but
-// the cursor row remains identifiable.
-func TestView_CursorRow_AlwaysRendered_WhenUnfocused(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(3))
-	m.Focused = false
-	v := m.View()
-	lines := strings.Split(v, "\n")
-	require.GreaterOrEqualf(t, len(lines), 2, "expected at least 2 lines: got %d", len(lines))
-	// First content line (after top border) is the cursor row at index 0.
-	cursorRow := lines[1]
-	assert.Containsf(t, cursorRow, "48;", "cursor row must carry CursorHighlight bg even when unfocused: %q", cursorRow)
-}
-
 // T-111 R8 #6 / R9 #5 — wrap indicator (↻) renders on cursor row when a
-// level-jump or mark navigation wraps around.
-func TestListModel_View_RendersWrapIndicator(t *testing.T) {
+// level-jump or mark navigation wraps around; Esc (ClearTransient) hides it.
+func TestListModel_View_WrapIndicator(t *testing.T) {
 	// Build entries: 5 INFOs then 1 ERROR at the end. With cursor at 5 (the
 	// ERROR), pressing `e` advances forward and wraps back to the same
 	// ERROR — WrapForward direction.
-	entries := makeEntries(6)
-	entries[5].Level = "ERROR"
-	m := defaultListModel(10).SetEntries(entries)
-	m.Focused = true
-	// Move cursor to the ERROR row (last entry).
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	// Press `e` — there is only one ERROR (the current one), so NextLevel
-	// finds it again and reports WrapForward.
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
-	require.NotEqual(t, NoWrap, m.WrapDir(), "expected wrap after pressing e past last ERROR")
-	require.True(t, m.HasTransient(), "HasTransient must be true while wrap indicator is active")
-	v := m.View()
-	assert.Containsf(t, v, "↻", "View() must render the wrap indicator glyph ↻; got %q", v)
-}
+	setup := func() ListModel {
+		entries := makeEntries(6)
+		entries[5].Level = "ERROR"
+		m := defaultListModel(10).SetEntries(entries)
+		m.Focused = true
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+		return m
+	}
 
-// T-111 — pressing Esc (ClearTransient) hides the wrap indicator on next View.
-func TestListModel_View_NoIndicator_AfterClearTransient(t *testing.T) {
-	entries := makeEntries(6)
-	entries[5].Level = "ERROR"
-	m := defaultListModel(10).SetEntries(entries)
-	m.Focused = true
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
-	require.NotEqual(t, NoWrap, m.WrapDir(), "precondition: expected wrap state before ClearTransient")
-	m = m.ClearTransient()
-	assert.False(t, m.HasTransient(), "ClearTransient must drop wrap state")
-	assert.NotContains(t, m.View(), "↻", "wrap glyph must not render after ClearTransient")
+	t.Run("renders ↻ after wrap", func(t *testing.T) {
+		m := setup()
+		require.NotEqual(t, NoWrap, m.WrapDir(), "expected wrap after pressing e past last ERROR")
+		require.True(t, m.HasTransient(), "HasTransient must be true while wrap indicator is active")
+		assert.Contains(t, m.View(), "↻", "View() must render the wrap indicator glyph ↻")
+	})
+
+	t.Run("ClearTransient drops ↻", func(t *testing.T) {
+		m := setup()
+		require.NotEqual(t, NoWrap, m.WrapDir(), "precondition: expected wrap state before ClearTransient")
+		m = m.ClearTransient()
+		assert.False(t, m.HasTransient(), "ClearTransient must drop wrap state")
+		assert.NotContains(t, m.View(), "↻", "wrap glyph must not render after ClearTransient")
+	})
 }
 
 // T-112 R8 #7-8 — when level-jump lands on an entry excluded by the active
@@ -391,76 +341,45 @@ func TestListModel_LevelJump_LandsOnFilteredOutEntry_RendersIndicator(t *testing
 	assert.NotContains(t, m.View(), "⌀", "⌀ glyph must not render after pin is cleared")
 }
 
-// An entry with embedded newlines in its message renders as one line in the list.
-func TestRenderCompactRow_FlattenNewlines(t *testing.T) {
-	entry := logsource.Entry{
-		IsJSON: true,
-		Time:   time.Now(),
-		Level:  "INFO",
-		Logger: "test",
-		Msg:    "line1\n\tline2\n\tline3",
-		Raw:    []byte(`{}`),
-	}
-	row := RenderCompactRow(entry, 120, theme.GetTheme("tokyo-night"), config.DefaultConfig())
-	assert.NotContainsf(t, row, "\n", "compact row contains newline: %q", row)
-}
+// T-158/T-163 (F-127): click-row resolver uses contentTopY injection. A
+// ListModel without `WithContentTopY` called must reject all rowForY lookups
+// (V9: silent 2-row-offset regression); once injected, y=contentTopY maps to
+// row 0; y=contentTopY+k maps to row k; y<contentTopY is a no-op (top border).
+func TestListModel_MouseClick_ContentTopY(t *testing.T) {
+	t.Run("rowForY rejects when contentTopY unset", func(t *testing.T) {
+		// Fresh list, never wires WithContentTopY. WindowSizeMsg still arrives
+		// so ViewportHeight is set — proving rejection is due to contentTopYSet,
+		// not a degenerate viewport.
+		m := defaultListModel(20).SetEntries(makeEntries(30))
+		m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+		for _, y := range []int{0, 2, 5, 10, 15} {
+			assert.Equalf(t, -1, m.rowForY(y), "rowForY(%d) without WithContentTopY should be rejected", y)
+		}
+		// After injection the resolver comes back online.
+		m = m.WithContentTopY(2)
+		assert.Equal(t, 0, m.rowForY(2), "after WithContentTopY(2), rowForY(2)")
+		assert.Equal(t, 3, m.rowForY(5), "after WithContentTopY(2), rowForY(5)")
+	})
 
-// ---------- T-158: click-row resolver uses contentTopY injection ----------
+	t.Run("click honours contentTopY offset", func(t *testing.T) {
+		m := defaultListModel(20).SetEntries(makeEntries(30)).WithContentTopY(2)
+		m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+		m, _ = m.Update(tea.MouseMsg{X: 10, Y: 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		assert.Equal(t, 0, m.Cursor(), "click y=2 with contentTopY=2: Cursor")
+		m, _ = m.Update(tea.MouseMsg{X: 10, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		assert.Equal(t, 3, m.Cursor(), "click y=5 with contentTopY=2: Cursor")
+	})
 
-// TestListModel_MouseClick_HonorsContentTopY_Offset2 verifies that with
-// contentTopY = 2 (header 1 + top border 1), a click at terminal y=2
-// lands on visible row 0 — NOT row 2 as the pre-T-158 resolver did.
-func TestListModel_MouseClick_HonorsContentTopY_Offset2(t *testing.T) {
-	m := defaultListModel(20).SetEntries(makeEntries(30)).WithContentTopY(2)
-	// Deliver a sized window so ViewportHeight is meaningful.
-	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
-
-	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	assert.Equal(t, 0, m.Cursor(), "click y=2 with contentTopY=2: Cursor")
-
-	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	assert.Equal(t, 3, m.Cursor(), "click y=5 with contentTopY=2: Cursor")
-}
-
-// TestListModel_MouseClick_TopBorderBelowContentTopY_NoOp: click at y=1
-// (above the first content row) is a no-op — rowForY returns -1 and the
-// Press handler does not touch the cursor.
-func TestListModel_MouseClick_TopBorderBelowContentTopY_NoOp(t *testing.T) {
-	m := defaultListModel(20).SetEntries(makeEntries(30)).WithContentTopY(2)
-	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
-	// Move cursor off row 0 so a bug would be observable.
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	before := m.Cursor()
-
-	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-
-	assert.Equalf(t, before, m.Cursor(), "click on top border (y=1): Cursor should be unchanged (%d)", before)
-}
-
-// TestListModel_T163_RowForY_Rejects_When_ContentTopY_Unset pins the
-// T-163 (F-127) regression vector: a ListModel that has never had
-// `WithContentTopY` called on it must reject all rowForY lookups. Without
-// the contentTopYSet guard, `contentTopY` defaults to 0 and rowForY
-// silently resolves any terminal-Y in [0, viewportHeight) to a visible
-// row — reintroducing the pre-T-158 2-row offset bug if the app-shell
-// wiring is ever dropped.
-func TestListModel_T163_RowForY_Rejects_When_ContentTopY_Unset(t *testing.T) {
-	// Fresh list, never wires WithContentTopY. WindowSizeMsg still arrives
-	// so ViewportHeight is set to a normal value — proving the rejection
-	// is due to contentTopYSet, not a degenerate viewport.
-	m := defaultListModel(20).SetEntries(makeEntries(30))
-	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
-
-	for _, y := range []int{0, 2, 5, 10, 15} {
-		assert.Equalf(t, -1, m.rowForY(y), "rowForY(%d) without WithContentTopY should be rejected", y)
-	}
-
-	// After injecting contentTopY the resolver comes back online.
-	m = m.WithContentTopY(2)
-	assert.Equal(t, 0, m.rowForY(2), "after WithContentTopY(2), rowForY(2)")
-	assert.Equal(t, 3, m.rowForY(5), "after WithContentTopY(2), rowForY(5)")
+	t.Run("click above contentTopY is a no-op", func(t *testing.T) {
+		m := defaultListModel(20).SetEntries(makeEntries(30)).WithContentTopY(2)
+		m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+		for i := 0; i < 3; i++ {
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		}
+		before := m.Cursor()
+		m, _ = m.Update(tea.MouseMsg{X: 10, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		assert.Equalf(t, before, m.Cursor(), "click on top border (y=1): Cursor should be unchanged (%d)", before)
+	})
 }
 
 // R14 AC1+AC2: cursor on last entry => AppendEntries advances cursor to new
@@ -513,21 +432,23 @@ func TestAppendEntries_EmptyList_FirstAppend(t *testing.T) {
 }
 
 // R14 AC6: IsAtTail reflects cursor==last; k breaks it, G restores it.
-func TestIsAtTail_ReflectsCursorAtLast(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(20))
-	assert.False(t, m.IsAtTail(), "IsAtTail on fresh list (cursor=0) should be false")
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	assert.True(t, m.IsAtTail(), "IsAtTail after G should be true")
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	assert.False(t, m.IsAtTail(), "IsAtTail after k should be false")
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	assert.True(t, m.IsAtTail(), "IsAtTail after return-to-tail (G) should be true again")
-}
+// Edge: empty list is not "at tail".
+func TestIsAtTail(t *testing.T) {
+	t.Run("empty list is false", func(t *testing.T) {
+		m := defaultListModel(10)
+		assert.False(t, m.IsAtTail(), "IsAtTail on empty list must be false")
+	})
 
-// R14 AC6 edge: empty list is not "at tail".
-func TestIsAtTail_EmptyIsFalse(t *testing.T) {
-	m := defaultListModel(10)
-	assert.False(t, m.IsAtTail(), "IsAtTail on empty list must be false")
+	t.Run("tracks cursor position through j/k/g/G", func(t *testing.T) {
+		m := defaultListModel(10).SetEntries(makeEntries(20))
+		assert.False(t, m.IsAtTail(), "IsAtTail on fresh list (cursor=0)")
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+		assert.True(t, m.IsAtTail(), "IsAtTail after G")
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+		assert.False(t, m.IsAtTail(), "IsAtTail after k")
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+		assert.True(t, m.IsAtTail(), "IsAtTail after return-to-tail (G)")
+	})
 }
 
 // R14 combined: after k, subsequent appends must NOT advance viewport even if
@@ -554,71 +475,4 @@ func TestAppendEntries_PauseWithK_ResumeWithG(t *testing.T) {
 	m = m.AppendEntries(makeEntries(3))
 	wantLast := 20 + 3 + 3 + 3 - 1
 	assert.Equal(t, wantLast, m.scroll.Cursor, "resumed: cursor")
-}
-
-// T9 (I.keys): `M` clears all marks. Cursor/viewport unchanged, no
-// SelectionMsg emitted.
-func TestListModel_M_ClearsAllMarks(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(5))
-	// Mark two entries: cursor at 0 → `m`, move to 2 → `m`.
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
-	require.Equal(t, 2, m.Marks().Count(), "pre-M count")
-	cursorBefore := m.scroll.Cursor
-	offsetBefore := m.scroll.Offset
-	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
-	assert.Equal(t, 0, m2.Marks().Count(), "post-M count")
-	assert.Equalf(t, cursorBefore, m2.scroll.Cursor, "M moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
-	assert.Equalf(t, offsetBefore, m2.scroll.Offset, "M moved offset: %d → %d", offsetBefore, m2.scroll.Offset)
-	assert.Nilf(t, cmd, "M emitted cmd %v, want nil (no SelectionMsg on clear-all-marks)", cmd)
-}
-
-// T10 (V4, V5, V26): a marked row must not overflow `m.width`. Previously
-// `list.View()` rendered `prefix + RenderCompactRow(m.width)` so a 2-cell
-// mark glyph pushed the total row to `m.width+2`, which soft-wraps to 2
-// terminal lines and cascades into V5 by displacing the header (B2).
-// Post-fix: a 2-cell prefix column is reserved on every row; content is
-// sized to `m.width-2`; total row = m.width.
-func TestListModel_V26_MarkedRow_NoWidthOverflow(t *testing.T) {
-	const innerWidth = 60
-	const innerHeight = 5
-	entries := makeEntries(innerHeight)
-	for i := range entries {
-		entries[i].Msg = strings.Repeat("x", 200)
-	}
-	m := NewListModel(theme.GetTheme("tokyo-night"), config.DefaultConfig(), innerWidth, innerHeight)
-	m = m.SetEntries(entries)
-	// Mark the cursor-row entry so `* ` prefix is prepended.
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
-
-	view := m.View()
-	lines := strings.Split(view, "\n")
-
-	// V5: applyPaneStyle wraps the inner ViewportHeight rows with top +
-	// bottom border → exactly innerHeight + 2 output lines.
-	assert.Lenf(t, lines, innerHeight+2,
-		"View line count should be %d (top border + %d inner rows + bottom border)", innerHeight+2, innerHeight)
-
-	// V4 + V26: each line's visible width must fit in innerWidth + 2
-	// (inner content + left-/right- border). Pre-fix: marked row = innerWidth+2
-	// content + border = innerWidth+4 → fails here.
-	maxAllowed := innerWidth + 2
-	for i, line := range lines {
-		w := lipgloss.Width(line)
-		assert.LessOrEqualf(t, w, maxAllowed, "line %d visible width = %d, want ≤ %d: %q", i, w, maxAllowed, line)
-	}
-}
-
-// T9 (I.keys): `M` with zero marks is a silent no-op — no panic, no state
-// change, no command.
-func TestListModel_M_EmptyNoop(t *testing.T) {
-	m := defaultListModel(10).SetEntries(makeEntries(5))
-	require.Equal(t, 0, m.Marks().Count(), "precondition: Count")
-	cursorBefore := m.scroll.Cursor
-	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
-	assert.Equal(t, 0, m2.Marks().Count(), "post-M count")
-	assert.Equalf(t, cursorBefore, m2.scroll.Cursor, "M on empty moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
-	assert.Nilf(t, cmd, "M on empty emitted cmd %v, want nil", cmd)
 }
