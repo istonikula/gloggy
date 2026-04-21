@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/theme"
 )
@@ -38,21 +40,16 @@ func TestPaneStyle_DragSeamOnlyOverridesDetailTop_NotListBottom(t *testing.T) {
 		th := theme.GetTheme(themeName)
 		t.Run(themeName, func(t *testing.T) {
 			dragSGR := colorANSI(th.DragHandle)
-			if dragSGR == "" {
-				t.Fatalf("empty DragHandle SGR — is the color profile TrueColor?")
-			}
+			require.NotEmptyf(t, dragSGR, "empty DragHandle SGR — is the color profile TrueColor?")
 
 			// Detail pane in below-mode: focus-state base style with
 			// WithDragSeamTop applied — the top row must carry DragHandle SGR
 			// because the detail pane's top border IS the drag seam.
 			detail := WithDragSeamTop(PaneStyle(th, PaneStateFocused).Width(20), th).Render("detail")
 			detailLines := strings.Split(detail, "\n")
-			if len(detailLines) < 3 {
-				t.Fatalf("detail pane render too short: %d lines", len(detailLines))
-			}
-			if !strings.Contains(detailLines[0], dragSGR) {
-				t.Errorf("detail pane top border must carry DragHandle SGR %q; got %q", dragSGR, detailLines[0])
-			}
+			require.GreaterOrEqualf(t, len(detailLines), 3, "detail pane render too short: %d lines", len(detailLines))
+			assert.Containsf(t, detailLines[0], dragSGR,
+				"detail pane top border must carry DragHandle SGR %q; got %q", dragSGR, detailLines[0])
 
 			// List pane in below-mode sits ABOVE the detail pane. Its bottom
 			// border is a separate row from the detail's top border, rendered
@@ -62,13 +59,10 @@ func TestPaneStyle_DragSeamOnlyOverridesDetailTop_NotListBottom(t *testing.T) {
 			// the mouse-hit-zone contract in R6 would need to widen too.
 			list := PaneStyle(th, PaneStateUnfocused).Width(20).Render("list")
 			listLines := strings.Split(list, "\n")
-			if len(listLines) < 3 {
-				t.Fatalf("list pane render too short: %d lines", len(listLines))
-			}
+			require.GreaterOrEqualf(t, len(listLines), 3, "list pane render too short: %d lines", len(listLines))
 			listBottom := listLines[len(listLines)-1]
-			if strings.Contains(listBottom, dragSGR) {
-				t.Errorf("list pane bottom border must NOT carry DragHandle SGR (drag seam is the detail pane's top border alone, not a shared row); got %q", listBottom)
-			}
+			assert.NotContainsf(t, listBottom, dragSGR,
+				"list pane bottom border must NOT carry DragHandle SGR (drag seam is the detail pane's top border alone, not a shared row); got %q", listBottom)
 		})
 	}
 }
@@ -107,18 +101,13 @@ func TestPaneBackground_BaseBgRendered_AllThemes(t *testing.T) {
 			t.Run(name+"/"+tc.label, func(t *testing.T) {
 				want := bgColorANSI(tc.wantBg(th))
 				rej := bgColorANSI(tc.rejBg(th))
-				if want == "" || rej == "" {
-					t.Fatalf("empty bg SGR probe want=%q rej=%q — TrueColor?", want, rej)
-				}
+				require.NotEmptyf(t, want, "empty bg SGR probe want — TrueColor?")
+				require.NotEmptyf(t, rej, "empty bg SGR probe rej — TrueColor?")
 				rendered := PaneStyle(th, tc.state).Width(10).Render("body")
-				if !strings.Contains(rendered, want) {
-					t.Errorf("missing expected bg SGR %q in render:\n%q",
-						want, rendered)
-				}
-				if strings.Contains(rendered, rej) {
-					t.Errorf("rejected bg SGR %q leaked into render:\n%q",
-						rej, rendered)
-				}
+				assert.Containsf(t, rendered, want,
+					"missing expected bg SGR %q in render:\n%q", want, rendered)
+				assert.NotContainsf(t, rendered, rej,
+					"rejected bg SGR %q leaked into render:\n%q", rej, rendered)
 			})
 		}
 	}
@@ -145,29 +134,23 @@ func TestPaneStyle_WithDragSeamTop_TopRowUsesDragHandle(t *testing.T) {
 
 				lines := strings.Split(seam, "\n")
 				refLines := strings.Split(ref, "\n")
-				if len(lines) < 3 || len(refLines) < 3 {
-					t.Fatalf("expected >=3 lines (top border, body, bottom border); got seam=%d ref=%d", len(lines), len(refLines))
-				}
+				require.GreaterOrEqualf(t, len(lines), 3, "expected >=3 lines; got seam=%d", len(lines))
+				require.GreaterOrEqualf(t, len(refLines), 3, "expected >=3 lines; got ref=%d", len(refLines))
 				topSGR := colorANSI(th.DragHandle)
-				if topSGR == "" {
-					t.Fatalf("empty DragHandle SGR — is the color profile TrueColor?")
-				}
-				if !strings.Contains(lines[0], topSGR) {
-					t.Errorf("top border missing DragHandle SGR %q; got %q", topSGR, lines[0])
-				}
+				require.NotEmptyf(t, topSGR, "empty DragHandle SGR — is the color profile TrueColor?")
+				assert.Containsf(t, lines[0], topSGR,
+					"top border missing DragHandle SGR %q; got %q", topSGR, lines[0])
 				// Bottom row must NOT use DragHandle — the override is
 				// strictly scoped to the top edge.
 				bottom := lines[len(lines)-1]
-				if strings.Contains(bottom, topSGR) {
-					t.Errorf("bottom border must NOT use DragHandle; got %q", bottom)
-				}
+				assert.NotContainsf(t, bottom, topSGR,
+					"bottom border must NOT use DragHandle; got %q", bottom)
 				// Middle + bottom rows must be byte-identical to the base
 				// (un-overridden) style so left/right/bottom borders keep
 				// their focus-state colour.
 				for i := 1; i < len(lines) && i < len(refLines); i++ {
-					if lines[i] != refLines[i] {
-						t.Errorf("row %d differs between base and drag-seam styles; override leaked off the top edge\nbase: %q\nseam: %q", i, refLines[i], lines[i])
-					}
+					assert.Equalf(t, refLines[i], lines[i],
+						"row %d differs between base and drag-seam styles; override leaked off the top edge", i)
 				}
 			})
 		}

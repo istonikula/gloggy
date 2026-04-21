@@ -2,8 +2,10 @@ package appshell
 
 import (
 	"regexp"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/theme"
 )
@@ -49,22 +51,19 @@ func TestKeyHintBar_NoticeSgrDiffersFromHints_AllThemes(t *testing.T) {
 			hintsAttrs := sgrParams(hintsView)
 			noticeAttrs := sgrParams(noticeView)
 
-			if len(noticeAttrs) == 0 {
-				t.Fatalf("notice view emitted no SGR attributes — test env may be stripping styles; hintsView=%q noticeView=%q",
-					hintsView, noticeView)
-			}
+			require.NotEmptyf(t, noticeAttrs,
+				"notice view emitted no SGR attributes — test env may be stripping styles; hintsView=%q noticeView=%q",
+				hintsView, noticeView)
 
-			if equalStringSet(hintsAttrs, noticeAttrs) {
-				t.Errorf("notice SGR attrs == hints SGR attrs for theme %q — V25 class-(b) violation (notice would blend into keyhints row).\n  hints:  %v\n  notice: %v",
-					name, sortedKeys(hintsAttrs), sortedKeys(noticeAttrs))
-			}
+			assert.Falsef(t, equalStringSet(hintsAttrs, noticeAttrs),
+				"notice SGR attrs == hints SGR attrs for theme %q — V25 class-(b) violation (notice would blend into keyhints row).\n  hints:  %v\n  notice: %v",
+				name, sortedKeys(hintsAttrs), sortedKeys(noticeAttrs))
 
 			// Sanity: the notice text itself must appear in the rendered
 			// output. Without this, a degenerate stub View() that emitted
 			// only SGR codes would pass the distinctness check.
-			if !strings.Contains(noticeView, "no marked entries") {
-				t.Errorf("notice text missing from notice view: %q", noticeView)
-			}
+			assert.Containsf(t, noticeView, "no marked entries",
+				"notice text missing from notice view: %q", noticeView)
 		})
 	}
 }

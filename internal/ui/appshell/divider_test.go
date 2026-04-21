@@ -6,6 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/theme"
 )
@@ -33,9 +35,7 @@ func TestRenderDivider_RowWidthIsOneCell(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
 	out := RenderDivider(5, th)
 	for i, line := range strings.Split(out, "\n") {
-		if w := lipgloss.Width(line); w != 1 {
-			t.Errorf("row %d width: got %d, want 1; line=%q", i, w, line)
-		}
+		assert.Equalf(t, 1, lipgloss.Width(line), "row %d width: got %d, want 1; line=%q", i, lipgloss.Width(line), line)
 	}
 }
 
@@ -46,30 +46,22 @@ func TestRenderDivider_RowCountMatchesHeight(t *testing.T) {
 	for _, h := range cases {
 		out := RenderDivider(h, th)
 		got := len(strings.Split(out, "\n"))
-		if got != h {
-			t.Errorf("RenderDivider(%d): got %d rows, want %d", h, got, h)
-		}
+		assert.Equalf(t, h, got, "RenderDivider(%d): got %d rows, want %d", h, got, h)
 	}
 }
 
 // T-089: zero/negative heights produce an empty string.
 func TestRenderDivider_ZeroHeightEmpty(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
-	if out := RenderDivider(0, th); out != "" {
-		t.Errorf("RenderDivider(0): got %q, want empty", out)
-	}
-	if out := RenderDivider(-3, th); out != "" {
-		t.Errorf("RenderDivider(-3): got %q, want empty", out)
-	}
+	assert.Emptyf(t, RenderDivider(0, th), "RenderDivider(0): want empty")
+	assert.Emptyf(t, RenderDivider(-3, th), "RenderDivider(-3): want empty")
 }
 
 // T-089: glyph is the documented vertical-bar character.
 func TestRenderDivider_GlyphIsVerticalBar(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
 	out := RenderDivider(1, th)
-	if !strings.Contains(out, dividerGlyph) {
-		t.Errorf("divider must include %q glyph, got %q", dividerGlyph, out)
-	}
+	assert.Containsf(t, out, dividerGlyph, "divider must include %q glyph, got %q", dividerGlyph, out)
 }
 
 // T-172: glyph foreground is DragHandle (not DividerColor). Focus-neutral
@@ -82,15 +74,10 @@ func TestRenderDivider_GlyphUsesDragHandle_AllThemes(t *testing.T) {
 			out := RenderDivider(1, th)
 			wantSGR := colorANSI(th.DragHandle)
 			divSGR := colorANSI(th.DividerColor)
-			if wantSGR == "" || divSGR == "" {
-				t.Fatalf("empty probe SGR: DragHandle=%q DividerColor=%q (profile not TrueColor?)", wantSGR, divSGR)
-			}
-			if !strings.Contains(out, wantSGR) {
-				t.Errorf("divider missing DragHandle SGR %q; got %q", wantSGR, out)
-			}
-			if strings.Contains(out, divSGR) {
-				t.Errorf("divider still paints DividerColor SGR %q; got %q", divSGR, out)
-			}
+			require.NotEmptyf(t, wantSGR, "empty DragHandle probe SGR (profile not TrueColor?)")
+			require.NotEmptyf(t, divSGR, "empty DividerColor probe SGR (profile not TrueColor?)")
+			assert.Containsf(t, out, wantSGR, "divider missing DragHandle SGR %q; got %q", wantSGR, out)
+			assert.NotContainsf(t, out, divSGR, "divider still paints DividerColor SGR %q; got %q", divSGR, out)
 		})
 	}
 }

@@ -1,6 +1,10 @@
 package appshell
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 // T-091: pane auto-closes when detail width drops below 30 in right-split.
 func TestShouldAutoCloseDetail_RightSplit_BelowMinWidth(t *testing.T) {
@@ -8,9 +12,8 @@ func TestShouldAutoCloseDetail_RightSplit_BelowMinWidth(t *testing.T) {
 	l := NewLayout(60, 24, true, 0)
 	l.Orientation = OrientationRight
 	l.WidthRatio = 0.30
-	if !ShouldAutoCloseDetail(l) {
-		t.Errorf("expected auto-close at termWidth=60 (detailW=%d), got false", l.DetailContentWidth())
-	}
+	assert.Truef(t, ShouldAutoCloseDetail(l),
+		"expected auto-close at termWidth=60 (detailW=%d), got false", l.DetailContentWidth())
 }
 
 // T-091: pane stays open when right-split detail width is >= 30.
@@ -19,32 +22,25 @@ func TestShouldAutoCloseDetail_RightSplit_AboveMinWidth(t *testing.T) {
 	l := NewLayout(140, 24, true, 0)
 	l.Orientation = OrientationRight
 	l.WidthRatio = 0.30
-	if ShouldAutoCloseDetail(l) {
-		t.Errorf("expected keep-open at termWidth=140 (detailW=%d), got true", l.DetailContentWidth())
-	}
+	assert.Falsef(t, ShouldAutoCloseDetail(l),
+		"expected keep-open at termWidth=140 (detailW=%d), got true", l.DetailContentWidth())
 }
 
 // T-091: pane auto-closes when below-mode height drops below 3 rows.
 func TestShouldAutoCloseDetail_BelowMode_BelowMinHeight(t *testing.T) {
 	l := NewLayout(80, 24, true, 2)
-	if !ShouldAutoCloseDetail(l) {
-		t.Errorf("expected auto-close at paneHeight=2, got false")
-	}
+	assert.Truef(t, ShouldAutoCloseDetail(l), "expected auto-close at paneHeight=2, got false")
 }
 
 // T-091: below-mode at exactly 3 rows stays open.
 func TestShouldAutoCloseDetail_BelowMode_AtMinHeight(t *testing.T) {
 	l := NewLayout(80, 24, true, 3)
-	if ShouldAutoCloseDetail(l) {
-		t.Errorf("expected keep-open at paneHeight=3, got true")
-	}
+	assert.Falsef(t, ShouldAutoCloseDetail(l), "expected keep-open at paneHeight=3, got true")
 }
 
 // T-091: closed pane never reports auto-close.
 func TestShouldAutoCloseDetail_ClosedPane(t *testing.T) {
 	l := NewLayout(60, 24, false, 0)
 	l.Orientation = OrientationRight
-	if ShouldAutoCloseDetail(l) {
-		t.Errorf("closed pane must not report auto-close")
-	}
+	assert.Falsef(t, ShouldAutoCloseDetail(l), "closed pane must not report auto-close")
 }
