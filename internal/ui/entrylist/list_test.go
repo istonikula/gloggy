@@ -714,6 +714,44 @@ func TestListModel_M_ClearsAllMarks(t *testing.T) {
 	}
 }
 
+// T10 (V4, V5, V26): a marked row must not overflow `m.width`. Previously
+// `list.View()` rendered `prefix + RenderCompactRow(m.width)` so a 2-cell
+// mark glyph pushed the total row to `m.width+2`, which soft-wraps to 2
+// terminal lines and cascades into V5 by displacing the header (B2).
+// Post-fix: a 2-cell prefix column is reserved on every row; content is
+// sized to `m.width-2`; total row = m.width.
+func TestListModel_V26_MarkedRow_NoWidthOverflow(t *testing.T) {
+	const innerWidth = 60
+	const innerHeight = 5
+	entries := makeEntries(innerHeight)
+	for i := range entries {
+		entries[i].Msg = strings.Repeat("x", 200)
+	}
+	m := NewListModel(theme.GetTheme("tokyo-night"), config.DefaultConfig(), innerWidth, innerHeight)
+	m = m.SetEntries(entries)
+	// Mark the cursor-row entry so `* ` prefix is prepended.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+
+	view := m.View()
+	lines := strings.Split(view, "\n")
+
+	// V5: applyPaneStyle wraps the inner ViewportHeight rows with top +
+	// bottom border → exactly innerHeight + 2 output lines.
+	if got, want := len(lines), innerHeight+2; got != want {
+		t.Errorf("View line count = %d, want %d (top border + %d inner rows + bottom border)", got, want, innerHeight)
+	}
+
+	// V4 + V26: each line's visible width must fit in innerWidth + 2
+	// (inner content + left-/right- border). Pre-fix: marked row = innerWidth+2
+	// content + border = innerWidth+4 → fails here.
+	maxAllowed := innerWidth + 2
+	for i, line := range lines {
+		if w := lipgloss.Width(line); w > maxAllowed {
+			t.Errorf("line %d visible width = %d, want ≤ %d: %q", i, w, maxAllowed, line)
+		}
+	}
+}
+
 // T9 (I.keys): `M` with zero marks is a silent no-op — no panic, no state
 // change, no command.
 func TestListModel_M_EmptyNoop(t *testing.T) {

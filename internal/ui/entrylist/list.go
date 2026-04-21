@@ -723,10 +723,15 @@ func (m ListModel) View() string {
 			sb.WriteByte('\n')
 		}
 		isCursor := i == m.scroll.Cursor
-		// Single 2-cell prefix slot. Priority: pinned out-of-filter > wrap
-		// indicator on cursor row > mark glyph. The wrap and pin glyphs are
-		// transient (cleared on next nav or Esc); marks are persistent.
-		prefix := ""
+		// T10 (V26): 2-cell prefix slot reserved on EVERY row regardless of
+		// glyph presence. Prefix glyph occupies cells [0:2]; row content
+		// occupies [2:m.width]. Previously `prefix + RenderCompactRow(m.width)`
+		// produced an `m.width+2` row when prefix was non-empty — soft-wrapped
+		// to 2 terminal lines, cascaded into V5 by displacing the header (B2).
+		// Priority: pinned out-of-filter > wrap indicator on cursor row > mark.
+		// The wrap and pin glyphs are transient (cleared on next nav or Esc);
+		// marks are persistent. Empty slot padded with 2 spaces.
+		prefix := "  "
 		switch {
 		case pinPos >= 0 && i == pinPos:
 			prefix = lipgloss.NewStyle().Foreground(m.th.LevelWarn).Render("⌀ ")
@@ -735,14 +740,18 @@ func (m ListModel) View() string {
 		case m.marks.IsMarked(vis[i].LineNumber):
 			prefix = lipgloss.NewStyle().Foreground(m.th.Mark).Render("* ")
 		}
+		contentWidth := m.width - 2
+		if contentWidth < 0 {
+			contentWidth = 0
+		}
 		switch {
 		case isCursor:
-			sb.WriteString(prefix + RenderCompactRowWithBg(vis[i], m.width, m.th, m.cfg, m.th.CursorHighlight))
+			sb.WriteString(prefix + RenderCompactRowWithBg(vis[i], contentWidth, m.th, m.cfg, m.th.CursorHighlight))
 		case matchSet[i]:
 			// T-143: non-cursor match row → SearchHighlight bg.
-			sb.WriteString(prefix + RenderCompactRowWithBg(vis[i], m.width, m.th, m.cfg, m.th.SearchHighlight))
+			sb.WriteString(prefix + RenderCompactRowWithBg(vis[i], contentWidth, m.th, m.cfg, m.th.SearchHighlight))
 		default:
-			sb.WriteString(prefix + RenderCompactRow(vis[i], m.width, m.th, m.cfg))
+			sb.WriteString(prefix + RenderCompactRow(vis[i], contentWidth, m.th, m.cfg))
 		}
 		rendered++
 	}
