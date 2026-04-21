@@ -363,16 +363,14 @@ func TestModel_F_FocusTransfer_ClearsActiveListSearch(t *testing.T) {
 		"list search query should be cleared, got %q", m.list.Search().Query())
 }
 
-// ---------- T-153 (cavekit-app-shell R14 AC 5): help overlay Esc preserves list search ----------
+// ---------- T15 / V14 / B5: `?` does not preempt active pane-search input ----------
 
-// TestModel_HelpOverlay_PreservesListSearchState verifies that opening the
-// help overlay (`?`) and dismissing it (`Esc`) over an active, input-mode
-// list search leaves the search state fully intact: still active, same
-// partial query, still in input mode. The help overlay is a separate
-// model from list.search so preservation is by construction — this test
-// pins that no future refactor accidentally dismisses the search on
-// overlay exit (F-118).
-func TestModel_HelpOverlay_PreservesListSearchState(t *testing.T) {
+// TestModel_HelpOverlay_DoesNotPreemptListSearchInput verifies V14: with the
+// list search active in input mode, pressing `?` is consumed as a query
+// char and the help overlay stays closed. B5 regression: the prior
+// behaviour opened help unconditionally because HelpOverlayModel.Update
+// intercepted `?` before handleKey could route it to the active search.
+func TestModel_HelpOverlay_DoesNotPreemptListSearchInput(t *testing.T) {
 	m := newModel()
 	m = resize(m, 80, 24)
 	m = m.SetEntries(makeEntries(5))
@@ -386,14 +384,71 @@ func TestModel_HelpOverlay_PreservesListSearchState(t *testing.T) {
 		"precondition: query should be %q, got %q", "abc", m.list.Search().Query())
 
 	m = key(m, "?")
+
+	assert.False(t, m.help.IsOpen(), "? must NOT open help while list search is in input mode (V14)")
+	assert.True(t, m.list.HasActiveSearch(), "list search should remain active")
+	assert.True(t, m.list.Search().InputMode(), "list search should remain in input mode")
+	assert.Equalf(t, "abc?", m.list.Search().Query(),
+		"? should extend the query to %q, got %q", "abc?", m.list.Search().Query())
+}
+
+// TestModel_HelpOverlay_OpensOnQuestion_NoActiveSearch pins the happy path:
+// `?` opens the help overlay when no pane-search is active, and Esc
+// dismisses it.
+func TestModel_HelpOverlay_OpensOnQuestion_NoActiveSearch(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(5))
+	require.False(t, m.list.HasActiveSearch(), "precondition: no active list search")
+
+	m = key(m, "?")
 	require.True(t, m.help.IsOpen(), "? should open the help overlay")
+
 	m = key(m, "esc")
 	require.False(t, m.help.IsOpen(), "esc should dismiss the help overlay")
+}
 
-	assert.True(t, m.list.HasActiveSearch(), "list search should still be active after help-overlay cycle")
-	assert.True(t, m.list.Search().InputMode(), "list search should still be in input mode after help-overlay cycle")
-	assert.Equalf(t, "abc", m.list.Search().Query(),
-		"list search query should be preserved as %q, got %q", "abc", m.list.Search().Query())
+// TestModel_HelpOverlay_OpensDuringSearchNavigateMode verifies that the V14
+// suppression hinges on input mode, not on search-active. After Enter the
+// list search is in navigate mode — `?` behaves like `q` in navigate mode
+// and opens the help overlay.
+func TestModel_HelpOverlay_OpensDuringSearchNavigateMode(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	m = m.SetEntries(makeEntries(5))
+	m = key(m, "/")
+	m = key(m, "m") // matches "msg 0", etc.
+	m = key(m, "enter")
+	require.True(t, m.list.HasActiveSearch(), "precondition: list search should be active")
+	require.False(t, m.list.Search().InputMode(),
+		"precondition: search should be in navigate mode after Enter")
+
+	m = key(m, "?")
+
+	assert.True(t, m.help.IsOpen(), "? should open help in navigate mode (input mode is the gate, not active)")
+}
+
+// TestModel_HelpOverlay_DoesNotPreemptPaneSearchInput verifies V14 for the
+// detail pane: with pane search active in input mode, `?` is consumed as
+// a query char and help stays closed.
+func TestModel_HelpOverlay_DoesNotPreemptPaneSearchInput(t *testing.T) {
+	m := newModel()
+	m = resize(m, 80, 24)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	m = key(m, "tab") // focus → detail pane
+	m = key(m, "/")   // activate pane search (input mode)
+	require.True(t, m.paneSearch.IsActive(), "precondition: pane search should be active")
+	require.Equalf(t, detailpane.SearchModeInput, m.paneSearch.Mode(),
+		"precondition: pane search should be in input mode, got %v", m.paneSearch.Mode())
+
+	m = key(m, "?")
+
+	assert.False(t, m.help.IsOpen(), "? must NOT open help while pane search is in input mode (V14)")
+	assert.True(t, m.paneSearch.IsActive(), "pane search should remain active")
+	assert.Equalf(t, "?", m.paneSearch.Query(),
+		"? should extend the pane-search query, got %q", m.paneSearch.Query())
 }
 
 // ---------- T-154 (cavekit-entry-list R13 AC 7): mouse-click-off-list clears search ----------
