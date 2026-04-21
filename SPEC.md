@@ -95,10 +95,11 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T1 | x | human tui-mcp sign-off across all 3 themes × {80x24, 140x35} × {below, right} — README notes "not yet human tested" | V7,V10,V19,V20 |
 | T2 | x | human verify tail-follow no-scroll-animation on `logs/big.log` w/ `gloggy -f` | V1,V2 |
 | T3 | x | human verify mouse click-row resolver across orientations × focus states on `logs/small.log` | V8,V9 |
-| T4 | ~ | human verify clipboard `y` notices (copied/empty/err) | V15 |
+| T4 | x | human verify clipboard `y` notices (copied/empty/err) | V15 |
 | T5 | ~ | human verify ratio drag — below + right, tui-mcp `send_mouse` press-hold-move-release | V17,V18 |
 | T6 | x | guard `saveConfig()` in `handleRatioKey` on `newR != current`; add regression test for no-mtime-advance at ratio boundary across `-`/`+`/`=`/`\|` | V17 |
 | T7 | x | fix B1: diagnose + repair `y`-notice drop (keyhints line-replace vs bubbletea diff-renderer); add tea.Program capture-renderer OR pty-driven test for copied-N / no-marks / clipboard-err paths per V25 | V15,V25 |
+| T8 | . | automate V25 class-(b) coverage — tui-mcp / pty-driven golden-frame or contrast-check test that launches gloggy, presses `y` on no-marks, reads the bottom row, and asserts the notice cells are visually distinct from the keyhints row (e.g. differing SGR style: Bold or different fg). repeat for all 3 themes × all 3 y-feedback paths (copied-N / no-marks / clipboard-err). | V15,V25 |
 
 ## §B bugs
 
