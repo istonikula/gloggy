@@ -86,6 +86,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 - **V23** (ls:R8) tail mode available only for file inputs. stdin never tailed regardless of flags.
 - **V24** (ls:R7) loading never blocks UI. progress signals stream; UI renders partial results mid-load.
 - **V25** (as:R9) V15 coverage MUST include live-buffer verification. unit tests asserting `m.View()` contains the notice string are necessary but NOT sufficient — bubbletea's diff-renderer or keyhint line-replace edge cases can drop the row so the notice never reaches the pty. every `y`-feedback path (copied-N, no-marks, clipboard-err) requires either a tea.Program capture-renderer test OR a pty-driven integration test that reads the bottom row post-keypress and asserts the notice text is present. (gap revealed by B1: passing V15-aligned unit tests coexisted w/ fully-silent live TUI.)
+- **V26** (el:R1/R9) list `View()` prefix slot MUST be accounted for in compact-row width math. list prepends a 2-cell prefix (`"* "` mark / `"⌀ "` pin / `"↻ "` wrap-indicator) based on row state; the width passed to `RenderCompactRow` MUST be `m.width - 2` when a prefix is present, OR a dedicated 2-cell prefix column reserved at leftmost position of every row (padded empty when absent). naive `prefix + RenderCompactRow(m.width)` concatenation yields a `width+2`-cell row that soft-wraps to 2 terminal lines — violates V4 + cascades into V5 by emitting an extra row that JoinVertical steals from the adjacent header slot.
 
 ## §T tasks
 
@@ -102,5 +103,6 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | id | date | cause | fix |
 |----|------|-------|-----|
 | B1 | 2026-04-21 | `y` notice set on `m.keyhints` and present in `m.View()` output but never reaches rendered terminal buffer — bubbletea diff-renderer or KeyHintBar line-replace path silently drops the row. V15 violation observable only in live TUI (all unit tests pass). | pending: investigate keyhints line-replace vs bubbletea diff; add pty-integration test per V25 |
+| B2 | 2026-04-21 | list View() prepends 2-cell mark/pin/wrap prefix onto a row already padded to full `m.width`; sum overflows pane inner width, soft-wraps to 2 terminal rows, pushes list output past ViewportHeight, JoinVertical displaces the filename/counter header slot. V4+V5 violated. Observable: mark any entry whose content fills the row → header row disappears from Y=0. Code site: `internal/ui/entrylist/list.go:714-739`. | subtract prefix len from RenderCompactRow width arg, or reserve a 2-cell prefix column inside RenderCompactRow's padding math — covered by V26 |
 
 (historical backprops recorded in kit changelogs: F-013/F-015/F-016/F-017, F-101..F-109, F-121..F-129, F-132/F-133/F-134, F-200/F-201/F-202.)
