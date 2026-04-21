@@ -77,7 +77,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 - **V14** (as:R14) global single-key reservations (`q`, `Tab`, `?`, `Esc`) MUST NOT preempt active in-pane search input. `q` → query char, NOT `tea.Quit`. exceptions: `Tab` still dismisses search via focus-cycle; `Esc` routed through pane search first.
 - **V15** (as:R9) `y` never silent: marked-entries → notice w/ count; 0 marked → "no marked entries"; clipboard err → visible err notice. `//nolint:errcheck` on `CopyMarkedEntries` = kit violation.
 - **V16** (as:R7, dp:R6) `height_ratio` + `width_ratio` preserved **independently** across orientation flips. below-mode uses `height_ratio` only for vertical; right-mode vertical height = full main slot, NOT `height_ratio × term_h` (content-loss bug).
-- **V17** (as:R12) ratio clamp `[0.10, 0.80]`. at boundary = no-op (not wrap). detail closed → all 4 keys (`|+-=`) silent no-op.
+- **V17** (as:R12) ratio clamp `[0.10, 0.80]`. at boundary = no-op (not wrap): value unchanged AND config write-back skipped. `handleRatioKey` MUST guard `saveConfig()` on `newR != current` — unconditional save = kit violation (B3): at ratio=0.1 repeated `-` advances mtime w/o value change, inflating disk I/O + log churn. detail closed → all 4 keys (`|+-=`) silent no-op.
 - **V18** (as:R15) drag is focus-neutral + single-persist (one config write on Release, not per-Motion). bare Press+Release w/ no Motion → no config write. press-on-current-divider → current ratio unchanged (inverse math = exact inverse of forward `PaneHeight/Width`).
 - **V19** (as:R15 drag-seam) drag-seam scope: right-mode = the 1-cell `│` divider glyph. below-mode = detail pane's TOP border row ONLY — list's bottom border is an adjacent row rendered in list's focus-state color, NOT shared (F-201).
 - **V20** (cfg:R4) `DragHandle ≠ DividerColor` AND `DragHandle ≠ FocusBorder` in every bundled theme. `BaseBg ≠ UnfocusedBg` within each theme; `BaseBg` pairwise distinct across themes.
@@ -97,6 +97,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T3 | x | human verify mouse click-row resolver across orientations × focus states on `logs/small.log` | V8,V9 |
 | T4 | ~ | human verify clipboard `y` notices (copied/empty/err) | V15 |
 | T5 | ~ | human verify ratio drag — below + right, tui-mcp `send_mouse` press-hold-move-release | V17,V18 |
+| T6 | . | guard `saveConfig()` in `handleRatioKey` on `newR != current`; add regression test for no-mtime-advance at ratio boundary across `-`/`+`/`=`/`\|` | V17 |
 
 ## §B bugs
 
@@ -104,5 +105,6 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 |----|------|-------|-----|
 | B1 | 2026-04-21 | `y` notice set on `m.keyhints` and present in `m.View()` output but never reaches rendered terminal buffer — bubbletea diff-renderer or KeyHintBar line-replace path silently drops the row. V15 violation observable only in live TUI (all unit tests pass). | pending: investigate keyhints line-replace vs bubbletea diff; add pty-integration test per V25 |
 | B2 | 2026-04-21 | list View() prepends 2-cell mark/pin/wrap prefix onto a row already padded to full `m.width`; sum overflows pane inner width, soft-wraps to 2 terminal rows, pushes list output past ViewportHeight, JoinVertical displaces the filename/counter header slot. V4+V5 violated. Observable: mark any entry whose content fills the row → header row disappears from Y=0. Code site: `internal/ui/entrylist/list.go:714-739`. | subtract prefix len from RenderCompactRow width arg, or reserve a 2-cell prefix column inside RenderCompactRow's padding math — covered by V26 |
+| B3 | 2026-04-21 | `handleRatioKey` (`internal/ui/app/model.go:808`) calls `saveConfig()` unconditionally after `NextDetailRatio`; at ratio boundary 0.10/0.80, repeated `-`/`+` keypresses produce no value change (clamp-pin) but advance config mtime every press, inflating disk I/O + log churn. V17 "no-op" was value-only and silent on write side-effects. | guard `saveConfig()` on `newR != current`; covered by V17 strengthening + T6 |
 
 (historical backprops recorded in kit changelogs: F-013/F-015/F-016/F-017, F-101..F-109, F-121..F-129, F-132/F-133/F-134, F-200/F-201/F-202.)
