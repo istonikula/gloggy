@@ -3,8 +3,12 @@ package appshell
 import (
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// helpKeyDescGap is the space between the key column and description column.
+const helpKeyDescGap = 2
 
 // HelpOverlayModel shows a full-screen keybinding reference.
 // While open, it intercepts all key events so other components do not process them.
@@ -56,6 +60,12 @@ func (m HelpOverlayModel) View() string {
 	if !m.open {
 		return ""
 	}
+	// V28: pad key column with spaces, never `\t`. bubbletea's line-diff
+	// renderer does not clear cells that `\t` skips over — they retain
+	// bytes from the previous frame, bleeding prior content into the
+	// overlay. Compute the max key width across all registered bindings
+	// so the description column aligns uniformly.
+	keyCol := maxKeyWidth(m.registry) + helpKeyDescGap
 	var sb strings.Builder
 	sb.WriteString("Keybindings\n")
 	sb.WriteString(strings.Repeat("─", 40))
@@ -71,11 +81,30 @@ func (m HelpOverlayModel) View() string {
 		for _, kb := range bindings {
 			sb.WriteString("  ")
 			sb.WriteString(kb.Key)
-			sb.WriteString("\t")
+			pad := keyCol - lipgloss.Width(kb.Key)
+			if pad < 1 {
+				pad = 1
+			}
+			sb.WriteString(strings.Repeat(" ", pad))
 			sb.WriteString(kb.Desc)
 			sb.WriteByte('\n')
 		}
 	}
 	sb.WriteString("\nEsc  Close this overlay\n")
 	return sb.String()
+}
+
+// maxKeyWidth returns the widest rendered key string across the registry,
+// measured in terminal cells via lipgloss.Width so wide/East-Asian glyphs
+// and arrow chars count correctly.
+func maxKeyWidth(reg KeybindingRegistry) int {
+	max := 0
+	for _, bindings := range reg {
+		for _, kb := range bindings {
+			if w := lipgloss.Width(kb.Key); w > max {
+				max = w
+			}
+		}
+	}
+	return max
 }
