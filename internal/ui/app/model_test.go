@@ -68,6 +68,14 @@ func newModel() Model {
 	return New("", false, "", testCfg())
 }
 
+// setFocus mutates m.focus and m.keyhints in one step — mirroring the
+// pairing every test site needs (the keyhints bar reads the focus).
+func setFocus(m Model, f appshell.FocusTarget) Model {
+	m.focus = f
+	m.keyhints = m.keyhints.WithFocus(f)
+	return m
+}
+
 // ---------- smoke ----------
 
 // TestModel_View_NoPanic_Empty verifies View() does not panic on a fresh model.
@@ -530,8 +538,7 @@ func TestModel_Click_DetailZone_TransfersFocusToDetail(t *testing.T) {
 		"precondition: want right orientation at width 200, got %v", m.resize.Orientation())
 
 	// Move focus to the list first.
-	m.focus = appshell.FocusEntryList
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	m = setFocus(m, appshell.FocusEntryList)
 
 	// Click in the detail-pane zone (well past divider+buffer).
 	l := m.layout.Layout()
@@ -556,10 +563,7 @@ func TestModel_Click_ListZone_TransfersFocusToList(t *testing.T) {
 	m = m.openPane(entries[0]) // T-126: openPane does NOT transfer focus
 	// Simulate a prior focus transfer (Tab / click on pane) so we can
 	// verify that clicking the list zone returns focus to the list.
-	m.focus = appshell.FocusDetailPane
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
-	require.Equalf(t, appshell.FocusDetailPane, m.focus,
-		"precondition: focus should be detail, got %v", m.focus)
+	m = setFocus(m, appshell.FocusDetailPane)
 
 	// Click well inside the list area.
 	m = send(m, tea.MouseMsg{
@@ -606,8 +610,7 @@ func TestModel_RatioKey_PersistsToConfigFile(t *testing.T) {
 	// T-126: openPane no longer auto-focuses the pane, but the `+` ratio
 	// key only fires when the pane is focused (handleKey's FocusDetailPane
 	// branch). Simulate the Tab-to-pane step.
-	m.focus = appshell.FocusDetailPane
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+	m = setFocus(m, appshell.FocusDetailPane)
 
 	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
 		"precondition: want right orientation, got %v", m.resize.Orientation())
@@ -986,7 +989,7 @@ func TestModel_RatioKey_StillWorksInBelowMode(t *testing.T) {
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
 	// Transfer focus to the pane so the ratio keymap fires.
-	m.focus = appshell.FocusDetailPane
+	m = setFocus(m, appshell.FocusDetailPane)
 
 	before := m.paneHeight.Ratio()
 	m = key(m, "+")
@@ -1463,8 +1466,7 @@ func TestModel_MouseClick_DetailZone_ClearsActiveListSearch(t *testing.T) {
 	m = m.openPane(entries[0])
 	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
 		"precondition: want right orientation at width 200, got %v", m.resize.Orientation())
-	m.focus = appshell.FocusEntryList
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	m = setFocus(m, appshell.FocusEntryList)
 
 	m = key(m, "/")
 	m = key(m, "t")
@@ -1487,27 +1489,32 @@ func TestModel_MouseClick_DetailZone_ClearsActiveListSearch(t *testing.T) {
 
 // ---------- T-155: focus-aware keyboard resize (cavekit-app-shell R12 revised) ----------
 
+// setupRatioModel opens the detail pane at the given terminal size and
+// applies the requested focus. Common fixture for T-155/T-156/T-157/T-6.
+func setupRatioModel(t *testing.T, w, h int, listFocus bool) Model {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	m := New("", false, dir+"/config.toml", cfg)
+	m = resize(m, w, h)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	var f appshell.FocusTarget = appshell.FocusDetailPane
+	if listFocus {
+		f = appshell.FocusEntryList
+	}
+	return setFocus(m, f)
+}
+
 // setupRatioModelRight returns a model in right-orientation with the
 // detail pane open. Ratios are the defaults: detail width_ratio = 0.30,
 // so list share = 0.70.
 func setupRatioModelRight(t *testing.T, listFocus bool) Model {
 	t.Helper()
-	dir := t.TempDir()
-	cfg := config.LoadResult{Config: config.DefaultConfig()}
-	m := New("", false, dir+"/config.toml", cfg)
-	m = resize(m, 200, 24)
-	entries := makeEntries(3)
-	m = m.SetEntries(entries)
-	m = m.openPane(entries[0])
+	m := setupRatioModel(t, 200, 24, listFocus)
 	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
 		"precondition: want right orientation, got %v", m.resize.Orientation())
-	if listFocus {
-		m.focus = appshell.FocusEntryList
-		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
-	} else {
-		m.focus = appshell.FocusDetailPane
-		m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
-	}
 	return m
 }
 
@@ -1515,131 +1522,66 @@ func setupRatioModelRight(t *testing.T, listFocus bool) Model {
 // detail pane open.
 func setupRatioModelBelow(t *testing.T, listFocus bool) Model {
 	t.Helper()
-	dir := t.TempDir()
-	cfg := config.LoadResult{Config: config.DefaultConfig()}
-	m := New("", false, dir+"/config.toml", cfg)
-	m = resize(m, 80, 24)
-	entries := makeEntries(3)
-	m = m.SetEntries(entries)
-	m = m.openPane(entries[0])
+	m := setupRatioModel(t, 80, 24, listFocus)
 	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
 		"precondition: want below orientation, got %v", m.resize.Orientation())
-	if listFocus {
-		m.focus = appshell.FocusEntryList
-		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
-	} else {
-		m.focus = appshell.FocusDetailPane
-		m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
-	}
 	return m
 }
 
-// TestModel_T155_Plus_DetailFocus_GrowsDetail_Right: `+` with detail
-// focused in right-mode grows the detail width_ratio.
-func TestModel_T155_Plus_DetailFocus_GrowsDetail_Right(t *testing.T) {
-	m := setupRatioModelRight(t, false)
-	before := m.cfg.Config.DetailPane.WidthRatio
-	m = key(m, "+")
-	after := m.cfg.Config.DetailPane.WidthRatio
-	assert.Greaterf(t, after, before,
-		"+ detail-focus must grow detail ratio: before=%.3f after=%.3f", before, after)
-}
-
-// TestModel_T155_Plus_ListFocus_ShrinksDetail_Right: `+` with list
-// focused in right-mode shrinks detail width_ratio (list grows).
-func TestModel_T155_Plus_ListFocus_ShrinksDetail_Right(t *testing.T) {
-	m := setupRatioModelRight(t, true)
-	before := m.cfg.Config.DetailPane.WidthRatio
-	m = key(m, "+")
-	after := m.cfg.Config.DetailPane.WidthRatio
-	assert.Lessf(t, after, before,
-		"+ list-focus must shrink detail ratio: before=%.3f after=%.3f", before, after)
-}
-
-// TestModel_T155_Minus_SymmetricInverse_Right: `-` at each focus is the
-// inverse of `+`.
-func TestModel_T155_Minus_SymmetricInverse_Right(t *testing.T) {
-	// detail focus: `-` shrinks detail
-	m := setupRatioModelRight(t, false)
-	before := m.cfg.Config.DetailPane.WidthRatio
-	m = key(m, "-")
-	assert.Lessf(t, m.cfg.Config.DetailPane.WidthRatio, before,
-		"- detail-focus must shrink detail: before=%.3f after=%.3f",
-		before, m.cfg.Config.DetailPane.WidthRatio)
-	// list focus: `-` grows detail
-	m = setupRatioModelRight(t, true)
-	before = m.cfg.Config.DetailPane.WidthRatio
-	m = key(m, "-")
-	assert.Greaterf(t, m.cfg.Config.DetailPane.WidthRatio, before,
-		"- list-focus must grow detail: before=%.3f after=%.3f",
-		before, m.cfg.Config.DetailPane.WidthRatio)
-}
-
-// TestModel_T155_Pipe_DetailFocus_Toggles_Right: `|` with detail focused
-// toggles 0.30 ↔ 0.50.
-func TestModel_T155_Pipe_DetailFocus_Toggles_Right(t *testing.T) {
-	m := setupRatioModelRight(t, false)
-	// From default 0.30 → 0.50.
-	m = key(m, "|")
-	assert.Equalf(t, 0.50, m.cfg.Config.DetailPane.WidthRatio,
-		"| detail from 0.30: got %.3f, want 0.50", m.cfg.Config.DetailPane.WidthRatio)
-	// Back to 0.30.
-	m = key(m, "|")
-	assert.Equalf(t, 0.30, m.cfg.Config.DetailPane.WidthRatio,
-		"| detail from 0.50: got %.3f, want 0.30", m.cfg.Config.DetailPane.WidthRatio)
-}
-
-// TestModel_T155_Pipe_ListFocus_TogglesShare_Right: `|` with list
-// focused toggles list share 0.30 ↔ 0.50 (detail 0.70 ↔ 0.50).
-func TestModel_T155_Pipe_ListFocus_TogglesShare_Right(t *testing.T) {
-	m := setupRatioModelRight(t, true)
-	// Default detail=0.30 → list share=0.70 (off-preset) → first preset share=0.30 → detail=0.70.
-	m = key(m, "|")
-	assert.Equalf(t, 0.70, m.cfg.Config.DetailPane.WidthRatio,
-		"| list from detail=0.30: got %.3f, want 0.70", m.cfg.Config.DetailPane.WidthRatio)
-	// From detail=0.70 (share=0.30) → toggle to share=0.50 → detail=0.50.
-	m = key(m, "|")
-	assert.Equalf(t, 0.50, m.cfg.Config.DetailPane.WidthRatio,
-		"| list from detail=0.70: got %.3f, want 0.50", m.cfg.Config.DetailPane.WidthRatio)
-}
-
-// TestModel_T155_Equals_ResetsDefault_BothFocus_Right: `=` resets detail
-// to 0.30 regardless of focus.
-func TestModel_T155_Equals_ResetsDefault_BothFocus_Right(t *testing.T) {
-	for _, listFocus := range []bool{false, true} {
-		m := setupRatioModelRight(t, listFocus)
-		// Mutate away from default first.
-		m.cfg.Config.DetailPane.WidthRatio = 0.50
-		m.layout = m.layout.SetWidthRatio(0.50)
-		m = key(m, "=")
-		assert.Equalf(t, appshell.RatioDefault, m.cfg.Config.DetailPane.WidthRatio,
-			"= listFocus=%v: got %.3f, want %.3f",
-			listFocus, m.cfg.Config.DetailPane.WidthRatio, appshell.RatioDefault)
+// TestModel_T155_RatioKeys_Right drives every +/-/|/= scenario in
+// right-split through one table. Each step applies a key and runs its
+// assertion with the before/after width_ratio values. Multi-step entries
+// model the |-toggle round-trips.
+func TestModel_T155_RatioKeys_Right(t *testing.T) {
+	type step struct {
+		key    string
+		assert func(t *testing.T, before, after float64)
 	}
-}
-
-// TestModel_T155_ClampPin_DetailFocus_Max_Right: `+` at RatioMax is a
-// no-op with detail focused.
-func TestModel_T155_ClampPin_DetailFocus_Max_Right(t *testing.T) {
-	m := setupRatioModelRight(t, false)
-	m.cfg.Config.DetailPane.WidthRatio = appshell.RatioMax
-	m.layout = m.layout.SetWidthRatio(appshell.RatioMax)
-	m = key(m, "+")
-	assert.Equalf(t, appshell.RatioMax, m.cfg.Config.DetailPane.WidthRatio,
-		"+ at RatioMax detail-focus: got %.3f, want %.3f (no-op)",
-		m.cfg.Config.DetailPane.WidthRatio, appshell.RatioMax)
-}
-
-// TestModel_T155_ClampPin_DetailFocus_Min_Right: `-` at RatioMin is a
-// no-op with detail focused.
-func TestModel_T155_ClampPin_DetailFocus_Min_Right(t *testing.T) {
-	m := setupRatioModelRight(t, false)
-	m.cfg.Config.DetailPane.WidthRatio = appshell.RatioMin
-	m.layout = m.layout.SetWidthRatio(appshell.RatioMin)
-	m = key(m, "-")
-	assert.Equalf(t, appshell.RatioMin, m.cfg.Config.DetailPane.WidthRatio,
-		"- at RatioMin detail-focus: got %.3f, want %.3f (no-op)",
-		m.cfg.Config.DetailPane.WidthRatio, appshell.RatioMin)
+	greater := func(t *testing.T, b, a float64) {
+		t.Helper()
+		assert.Greaterf(t, a, b, "ratio must grow: before=%.3f after=%.3f", b, a)
+	}
+	less := func(t *testing.T, b, a float64) {
+		t.Helper()
+		assert.Lessf(t, a, b, "ratio must shrink: before=%.3f after=%.3f", b, a)
+	}
+	eq := func(want float64) func(t *testing.T, before, after float64) {
+		return func(t *testing.T, _, a float64) {
+			t.Helper()
+			assert.Equalf(t, want, a, "ratio: got %.3f, want %.3f", a, want)
+		}
+	}
+	cases := []struct {
+		name      string
+		seed      float64 // 0 = leave default 0.30
+		listFocus bool
+		steps     []step
+	}{
+		{"plus_detail_grows", 0, false, []step{{"+", greater}}},
+		{"plus_list_shrinks", 0, true, []step{{"+", less}}},
+		{"minus_detail_shrinks", 0, false, []step{{"-", less}}},
+		{"minus_list_grows", 0, true, []step{{"-", greater}}},
+		{"pipe_detail_0.30_roundtrip", 0, false, []step{{"|", eq(0.50)}, {"|", eq(0.30)}}},
+		{"pipe_list_from_0.30_cycles_detail_0.70_to_0.50", 0, true, []step{{"|", eq(0.70)}, {"|", eq(0.50)}}},
+		{"equals_detail_resets", 0.50, false, []step{{"=", eq(appshell.RatioDefault)}}},
+		{"equals_list_resets", 0.50, true, []step{{"=", eq(appshell.RatioDefault)}}},
+		{"plus_detail_at_max_noop", appshell.RatioMax, false, []step{{"+", eq(appshell.RatioMax)}}},
+		{"minus_detail_at_min_noop", appshell.RatioMin, false, []step{{"-", eq(appshell.RatioMin)}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := setupRatioModelRight(t, tc.listFocus)
+			if tc.seed != 0 {
+				m.cfg.Config.DetailPane.WidthRatio = tc.seed
+				m.layout = m.layout.SetWidthRatio(tc.seed)
+			}
+			for _, s := range tc.steps {
+				before := m.cfg.Config.DetailPane.WidthRatio
+				m = key(m, s.key)
+				s.assert(t, before, m.cfg.Config.DetailPane.WidthRatio)
+			}
+		})
+	}
 }
 
 // TestModel_T155_Below_ActivatesHeightRatio: below-mode mutates
@@ -1708,39 +1650,54 @@ func TestModel_T156_BelowDrag_PressOnDivider_StartsDrag(t *testing.T) {
 	assert.Truef(t, m.draggingDivider, "Press on below-mode divider row y=%d must start drag", dy)
 }
 
-// TestModel_T156_BelowDrag_MotionUp_GrowsDetail verifies motion to a
-// smaller y during an active drag pushes height_ratio upward (detail
-// grows when divider moves up).
-func TestModel_T156_BelowDrag_MotionUp_GrowsDetail(t *testing.T) {
-	m := setupRatioModelBelow(t, false)
-	dy := belowDividerY(m)
-	before := m.cfg.Config.DetailPane.HeightRatio
+// TestModel_T156_BelowDrag_Motion covers the below-mode drag motion
+// matrix: grow on up, shrink on down, pin at RatioMax/RatioMin for
+// out-of-bounds motion. `targetY(dy, termH)` returns the absolute Y the
+// Motion message should aim at — dy is the initial divider row.
+func TestModel_T156_BelowDrag_Motion(t *testing.T) {
+	greater := func(t *testing.T, b, a float64) {
+		t.Helper()
+		assert.Greaterf(t, a, b, "height_ratio must grow: before=%.3f after=%.3f", b, a)
+	}
+	less := func(t *testing.T, b, a float64) {
+		t.Helper()
+		assert.Lessf(t, a, b, "height_ratio must shrink: before=%.3f after=%.3f", b, a)
+	}
+	eq := func(want float64) func(t *testing.T, _, after float64) {
+		return func(t *testing.T, _, a float64) {
+			t.Helper()
+			assert.Equalf(t, want, a, "height_ratio: got %.3f, want %.3f", a, want)
+		}
+	}
+	cases := []struct {
+		name      string
+		seedRatio float64 // 0 = leave default
+		targetY   func(dy, termH int) int
+		assertion func(t *testing.T, before, after float64)
+	}{
+		{"motionUp_growsDetail", 0, func(dy, _ int) int { return dy - 4 }, greater},
+		{"motionDown_from_0.50_shrinksDetail", 0.50, func(dy, _ int) int { return dy + 3 }, less},
+		{"extremeUp_clampsAtMax", 0, func(_, _ int) int { return -100 }, eq(appshell.RatioMax)},
+		{"extremeDown_clampsAtMin", 0, func(_, termH int) int { return termH + 100 }, eq(appshell.RatioMin)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := setupRatioModelBelow(t, false)
+			if tc.seedRatio != 0 {
+				m.cfg.Config.DetailPane.HeightRatio = tc.seedRatio
+				m.paneHeight = m.paneHeight.SetRatio(tc.seedRatio)
+				m = m.relayout()
+			}
+			dy := belowDividerY(m)
+			termH := m.resize.Height()
+			before := m.cfg.Config.DetailPane.HeightRatio
 
-	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = send(m, tea.MouseMsg{X: 20, Y: dy - 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+			m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+			m = send(m, tea.MouseMsg{X: 20, Y: tc.targetY(dy, termH), Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 
-	after := m.cfg.Config.DetailPane.HeightRatio
-	assert.Greaterf(t, after, before,
-		"drag up should grow height_ratio: before=%.3f after=%.3f", before, after)
-}
-
-// TestModel_T156_BelowDrag_MotionDown_ShrinksDetail: motion to a larger y
-// shrinks detail when the divider moves down.
-func TestModel_T156_BelowDrag_MotionDown_ShrinksDetail(t *testing.T) {
-	m := setupRatioModelBelow(t, false)
-	// Seed a roomier starting ratio so a downward motion still fits inside clamp.
-	m.cfg.Config.DetailPane.HeightRatio = 0.50
-	m.paneHeight = m.paneHeight.SetRatio(0.50)
-	m = m.relayout()
-	dy := belowDividerY(m)
-	before := m.cfg.Config.DetailPane.HeightRatio
-
-	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = send(m, tea.MouseMsg{X: 20, Y: dy + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-
-	after := m.cfg.Config.DetailPane.HeightRatio
-	assert.Lessf(t, after, before,
-		"drag down should shrink height_ratio: before=%.3f after=%.3f", before, after)
+			tc.assertion(t, before, m.cfg.Config.DetailPane.HeightRatio)
+		})
+	}
 }
 
 // TestModel_T156_BelowDrag_Release_PersistsHeightRatio ensures the final
@@ -1819,35 +1776,6 @@ func TestModel_T156_Drag_IsFocusNeutral(t *testing.T) {
 				"drag changed focus: start=%v end=%v", startFocus, m.focus)
 		})
 	}
-}
-
-// TestModel_T156_BelowDrag_ClampsAtMax verifies a drag that would push the
-// divider past the top edge pins to RatioMax.
-func TestModel_T156_BelowDrag_ClampsAtMax(t *testing.T) {
-	m := setupRatioModelBelow(t, false)
-	dy := belowDividerY(m)
-
-	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = send(m, tea.MouseMsg{X: 20, Y: -100, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-
-	assert.Equalf(t, appshell.RatioMax, m.cfg.Config.DetailPane.HeightRatio,
-		"extreme up drag: got %.3f, want RatioMax %.3f",
-		m.cfg.Config.DetailPane.HeightRatio, appshell.RatioMax)
-}
-
-// TestModel_T156_BelowDrag_ClampsAtMin verifies a drag that would push the
-// divider past the bottom edge pins to RatioMin.
-func TestModel_T156_BelowDrag_ClampsAtMin(t *testing.T) {
-	m := setupRatioModelBelow(t, false)
-	dy := belowDividerY(m)
-	termH := m.resize.Height()
-
-	m = send(m, tea.MouseMsg{X: 20, Y: dy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = send(m, tea.MouseMsg{X: 20, Y: termH + 100, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-
-	assert.Equalf(t, appshell.RatioMin, m.cfg.Config.DetailPane.HeightRatio,
-		"extreme down drag: got %.3f, want RatioMin %.3f",
-		m.cfg.Config.DetailPane.HeightRatio, appshell.RatioMin)
 }
 
 // TestModel_T156_PaneClosed_PressIsNoOp: pressing anywhere with the pane
@@ -1955,84 +1883,51 @@ func clickAt(m Model, x, y int) Model {
 	return send(m, tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 }
 
-// TestModel_T158_Click_FirstRow_SelectsRowZero_BelowMode: click at the
-// first visible content row (terminal y=2) selects visible row 0 — NOT
-// row 2 (the prior bug).
-func TestModel_T158_Click_FirstRow_SelectsRowZero_BelowMode(t *testing.T) {
-	m := newModel()
-	m = resize(m, 80, 24)
-	m = m.SetEntries(makeEntries(20))
-	require.False(t, m.pane.IsOpen(), "precondition: pane should be closed")
-	m = clickAt(m, 10, 2)
-	assert.Equalf(t, 1, m.list.CursorPosition(),
-		"click y=2 (first content row): CursorPosition = %d (1-based), want 1", m.list.CursorPosition())
-}
-
-// TestModel_T158_Click_SecondRow_SelectsRowOne_BelowMode: y=3 → row 1.
-func TestModel_T158_Click_SecondRow_SelectsRowOne_BelowMode(t *testing.T) {
-	m := newModel()
-	m = resize(m, 80, 24)
-	m = m.SetEntries(makeEntries(20))
-	m = clickAt(m, 10, 3)
-	assert.Equalf(t, 2, m.list.CursorPosition(),
-		"click y=3 (second content row): CursorPosition = %d, want 2", m.list.CursorPosition())
-}
-
-// TestModel_T158_Click_TopBorder_NoOp: click at y=1 (list top border) does
-// not move the cursor.
-func TestModel_T158_Click_TopBorder_NoOp(t *testing.T) {
-	m := newModel()
-	m = resize(m, 80, 24)
-	m = m.SetEntries(makeEntries(20))
-	before := m.list.CursorPosition()
-	m = clickAt(m, 10, 1)
-	assert.Equalf(t, before, m.list.CursorPosition(),
-		"click on top border: CursorPosition = %d, want %d (unchanged)", m.list.CursorPosition(), before)
-}
-
-// TestModel_T158_Click_Header_NoOp: y=0 (header) routes to ZoneHeader, not
-// list — cursor does not move.
-func TestModel_T158_Click_Header_NoOp(t *testing.T) {
-	m := newModel()
-	m = resize(m, 80, 24)
-	m = m.SetEntries(makeEntries(20))
-	for i := 0; i < 5; i++ {
-		m = key(m, "j") // advance cursor to a non-zero row
+// TestModel_T158_Click_RowResolver drives the row-resolver across the
+// six parametric scenarios (below/right × pane-open/closed × valid row /
+// top-border / header). `wantCursor == 0` means the cursor must not
+// change from its pre-click position.
+func TestModel_T158_Click_RowResolver(t *testing.T) {
+	cases := []struct {
+		name       string
+		w          int // terminal width → orientation
+		paneOpen   bool
+		advance    int // j-presses before the click (0 = cursor at row 0)
+		clickY     int
+		wantCursor int // 0 = unchanged; otherwise 1-based CursorPosition
+	}{
+		{"below_firstRow_y2", 80, false, 0, 2, 1},
+		{"below_secondRow_y3", 80, false, 0, 3, 2},
+		{"below_topBorder_y1_noop", 80, false, 0, 1, 0},
+		{"below_header_y0_noop", 80, false, 5, 0, 0},
+		{"right_firstRow_y2", 200, true, 0, 2, 1},
+		{"below_paneOpen_firstRow_y2", 80, true, 0, 2, 1},
 	}
-	before := m.list.CursorPosition()
-	m = clickAt(m, 10, 0)
-	assert.Equalf(t, before, m.list.CursorPosition(),
-		"click on header: CursorPosition = %d, want %d (unchanged)", m.list.CursorPosition(), before)
-}
-
-// TestModel_T158_Click_FirstRow_RightMode: same single-owner mapping applies
-// in right-split. y=2 → row 0.
-func TestModel_T158_Click_FirstRow_RightMode(t *testing.T) {
-	m := newModel()
-	m = resize(m, 200, 24)
-	entries := makeEntries(20)
-	m = m.SetEntries(entries)
-	m = m.openPane(entries[0])
-	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
-		"precondition: want right, got %v", m.resize.Orientation())
-	m = clickAt(m, 10, 2)
-	assert.Equalf(t, 1, m.list.CursorPosition(),
-		"right-mode click y=2: CursorPosition = %d, want 1", m.list.CursorPosition())
-}
-
-// TestModel_T158_Click_FirstRow_BelowMode_PaneOpen: same mapping applies
-// with the detail pane open (EntryListHeight shrinks but contentTopY stays 2).
-func TestModel_T158_Click_FirstRow_BelowMode_PaneOpen(t *testing.T) {
-	m := newModel()
-	m = resize(m, 80, 24)
-	entries := makeEntries(20)
-	m = m.SetEntries(entries)
-	m = m.openPane(entries[0])
-	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
-		"precondition: want below, got %v", m.resize.Orientation())
-	m = clickAt(m, 10, 2)
-	assert.Equalf(t, 1, m.list.CursorPosition(),
-		"below-mode pane-open click y=2: CursorPosition = %d, want 1", m.list.CursorPosition())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newModel()
+			m = resize(m, tc.w, 24)
+			entries := makeEntries(20)
+			m = m.SetEntries(entries)
+			if tc.paneOpen {
+				m = m.openPane(entries[0])
+			}
+			for i := 0; i < tc.advance; i++ {
+				m = key(m, "j")
+			}
+			before := m.list.CursorPosition()
+			m = clickAt(m, 10, tc.clickY)
+			got := m.list.CursorPosition()
+			if tc.wantCursor == 0 {
+				assert.Equalf(t, before, got,
+					"click y=%d must be no-op: CursorPosition before=%d after=%d",
+					tc.clickY, before, got)
+			} else {
+				assert.Equalf(t, tc.wantCursor, got,
+					"click y=%d: CursorPosition = %d, want %d", tc.clickY, got, tc.wantCursor)
+			}
+		})
+	}
 }
 
 // TestModel_T158_DoubleClick_UsesSameResolver: double-click at y=3 opens the
@@ -2339,12 +2234,11 @@ func TestModel_T6_RatioKey_NoOpAtBoundary_DoesNotWriteConfig(t *testing.T) {
 			m = m.openPane(entries[0])
 			require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
 				"precondition: want right orientation at 200 cols, got %v", m.resize.Orientation())
+			var f appshell.FocusTarget = appshell.FocusDetailPane
 			if tc.listFocus {
-				m.focus = appshell.FocusEntryList
-			} else {
-				m.focus = appshell.FocusDetailPane
+				f = appshell.FocusEntryList
 			}
-			m.keyhints = m.keyhints.WithFocus(m.focus)
+			m = setFocus(m, f)
 
 			before := m.cfg.Config.DetailPane.WidthRatio
 			m = key(m, tc.key)
@@ -2378,8 +2272,7 @@ func TestModel_T6_RatioKey_NoOpAtBoundary_Below_DoesNotWriteConfig(t *testing.T)
 	m = m.openPane(entries[0])
 	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
 		"precondition: want below orientation, got %v", m.resize.Orientation())
-	m.focus = appshell.FocusDetailPane
-	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+	m = setFocus(m, appshell.FocusDetailPane)
 
 	before := m.paneHeight.Ratio()
 	m = key(m, "+") // detail-focus at RatioMax → no-op
@@ -2424,8 +2317,7 @@ func TestModel_T6_RatioKey_Change_WritesConfig(t *testing.T) {
 			m = m.openPane(entries[0])
 			require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
 				"precondition: want right orientation, got %v", m.resize.Orientation())
-			m.focus = appshell.FocusDetailPane
-			m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+			m = setFocus(m, appshell.FocusDetailPane)
 
 			before := m.cfg.Config.DetailPane.WidthRatio
 			m = key(m, tc.key)
