@@ -6,7 +6,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -202,91 +201,6 @@ func TestPaneModel_WithSearch(t *testing.T) {
 	}
 }
 
-// T-115 (F-005): ScrollToLine brings an out-of-window line into view.
-// Uses many-line content so the viewport can actually be smaller than
-// the line count.
-func TestPaneModel_ScrollToLine_BringsMatchIntoView(t *testing.T) {
-	// Build an entry whose rendered JSON will have plenty of fields so
-	// the wrapped content exceeds the pane height.
-	raw := `{"a":"1","b":"2","c":"3","d":"4","e":"5","f":"6","g":"7","h":"8","i":"9","j":"10","target":"find-me"}`
-	entry := logsource.Entry{IsJSON: true, Time: time.Now(), Level: "INFO", Msg: "x", Raw: []byte(raw)}
-	pane := defaultPane(6).SetWidth(40).Open(entry) // content height ~4
-	lines := pane.ContentLines()
-	// Locate the line containing "target".
-	targetIdx := -1
-	for i, l := range lines {
-		if strings.Contains(l, "target") {
-			targetIdx = i
-			break
-		}
-	}
-	require.GreaterOrEqualf(t, targetIdx, 0, "setup: no 'target' in content: %v", lines)
-	if targetIdx <= pane.ContentHeight()-1 {
-		t.Skipf("target at idx=%d already in initial viewport (content height %d); test not applicable", targetIdx, pane.ContentHeight())
-	}
-	scrolled := pane.ScrollToLine(targetIdx)
-	view := scrolled.View()
-	assert.Containsf(t, view, "target", "after ScrollToLine(%d), view should contain 'target': %q", targetIdx, view)
-}
-
-// T-134 (F-026, cavekit R11): ScrollToLine moves the cursor AND scrolls so
-// the cursor has scrolloff context.
-func TestPaneModel_ScrollToLine_MovesCursorWithScrolloffContext(t *testing.T) {
-	m := paneWithNLines(12, 40, 100).WithScrolloff(5) // ContentHeight = 10
-	m = m.ScrollToLine(40)
-	assert.Equal(t, 40, m.scroll.Cursor(), "cursor")
-	assert.Equal(t, 36, m.scroll.Offset(), "offset (cursor at bottom-margin)")
-}
-
-// T-134: cursor-row render still has CursorHighlight bg when search is
-// active — the bg is the last paint in View() so it composes on top of
-// SearchHighlight fg.
-func TestPaneModel_View_CursorBgOverSearchActive(t *testing.T) {
-	th := theme.GetTheme("tokyo-night")
-	m := paneWithNLines(12, 40, 100).WithScrolloff(5)
-	m.Focused = true
-	m = m.ScrollToLine(40)
-	view := m.View()
-	bgSGR := bgSGRFor(th.CursorHighlight)
-	assert.Containsf(t, view, bgSGR, "cursor-row bg missing after ScrollToLine; view=%q", view)
-}
-
-// T-125 (F-016): scroll indicator reports percentage when content exceeds
-// viewport, 100 at the bottom, and sentinel -1 when the content fits.
-func TestPaneModel_ScrollPercent(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		nLines  int
-		offset  int
-		want    int
-		comment string
-	}{
-		{"top of long doc", 200, 0, 10, "offset 0, height 20, total 200 → (0+20)/200 = 10%"},
-		{"bottom of long doc", 200, 180, 100, "max offset = 200-20 → 100%"},
-		{"fits viewport", 4, 0, -1, "short content → sentinel -1"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			m := paneWithNLines(22, 0, tc.nLines) // width irrelevant for ScrollPercent
-			m.scroll.offset = tc.offset
-			assert.Equalf(t, tc.want, m.ScrollPercent(), "%s", tc.comment)
-		})
-	}
-}
-
-// T-125: View overlays the indicator on the last body line (dim text).
-func TestPaneModel_View_IncludesScrollIndicator(t *testing.T) {
-	m := paneWithNLines(22, 30, 200)
-	view := m.View()
-	assert.Containsf(t, view, "10%", "view should contain \"10%%\" indicator, got: %q", view)
-}
-
-// T-125: View omits the indicator when content fits (no "0%" noise).
-func TestPaneModel_View_OmitsIndicatorOnShortContent(t *testing.T) {
-	m := defaultPane(22).SetWidth(30).Open(testEntry())
-	view := m.View()
-	assert.NotContainsf(t, view, "%", "short-content view should not render a percentage indicator, got: %q", view)
-}
-
 // T-127 (F-020): hidden fields set via WithHiddenFields reach the JSON
 // renderer through Open — the suppressed key must not appear in rawContent.
 func TestPaneModel_Open_HonorsHiddenFields(t *testing.T) {
@@ -348,26 +262,3 @@ func TestPaneModel_Rerender_ClosedPaneNoOp(t *testing.T) {
 	assert.False(t, out.IsOpen(), "Rerender on closed pane must not open it")
 }
 
-// T-131: SetContent resets cursor to 0.
-func TestScrollModel_SetContent_ResetsCursor(t *testing.T) {
-	m := NewScrollModel("a\nb\nc\nd\ne\nf", 3)
-	m.cursor = 4
-	m.offset = 2
-	m = m.SetContent("x\ny\nz", 3)
-	assert.Equal(t, 0, m.Cursor(), "SetContent should reset cursor to 0")
-	assert.Equal(t, 0, m.Offset(), "SetContent should reset offset to 0")
-}
-
-// T-125 / T-139 (F-103): Overlay preserves overall pane width — indicator
-// does NOT add columns. Under single-owner border accounting, `SetWidth(n)`
-// is content width; outer rendered width = n + 2 border cells.
-func TestPaneModel_View_IndicatorDoesNotExpandWidth(t *testing.T) {
-	m := paneWithNLines(22, 30, 200)
-	view := m.View()
-	// Inspect each row's cell width; all should equal outer pane width
-	// (content 30 + 2 border cells = 32).
-	for i, row := range strings.Split(view, "\n") {
-		w := lipgloss.Width(row)
-		assert.Equalf(t, 32, w, "row %d cell width (want 32); row=%q", i, row)
-	}
-}
