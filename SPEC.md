@@ -96,7 +96,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T2 | x | human verify tail-follow no-scroll-animation on `logs/big.log` w/ `gloggy -f` | V1,V2 |
 | T3 | x | human verify mouse click-row resolver across orientations × focus states on `logs/small.log` | V8,V9 |
 | T4 | x | human verify clipboard `y` notices (copied/empty/err) | V15 |
-| T5 | ~ | human verify ratio drag — below + right, tui-mcp `send_mouse` press-hold-move-release | V17,V18 |
+| T5 | x | human verify drag visuals (below+right) via tui-mcp screenshot + V18 bare-Press+Release no-config-write via `send_mouse`; motion-driven path covered by unit `TestModel_T156_*`/`_T164_*` — tui-mcp `send_mouse` exposes no Motion action, raw SGR motion via `send_text` not decoded | V17,V18,V19 |
 | T6 | x | guard `saveConfig()` in `handleRatioKey` on `newR != current`; add regression test for no-mtime-advance at ratio boundary across `-`/`+`/`=`/`\|` | V17 |
 | T7 | x | fix B1: diagnose + repair `y`-notice drop (keyhints line-replace vs bubbletea diff-renderer); add tea.Program capture-renderer OR pty-driven test for copied-N / no-marks / clipboard-err paths per V25 | V15,V25 |
 | T8 | x | automate V25 class-(b) coverage — tui-mcp / pty-driven golden-frame or contrast-check test that launches gloggy, presses `y` on no-marks, reads the bottom row, and asserts the notice cells are visually distinct from the keyhints row (e.g. differing SGR style: Bold or different fg). repeat for all 3 themes × all 3 y-feedback paths (copied-N / no-marks / clipboard-err). | V15,V25 |
