@@ -1,10 +1,11 @@
 package detailpane
 
 import (
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/theme"
 )
@@ -24,23 +25,17 @@ var testLines = []string{
 func TestSearchModel_Slash_Activates(t *testing.T) {
 	m := defaultSearch()
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")}, testLines)
-	if !m2.IsActive() {
-		t.Error("/ should activate search")
-	}
+	assert.True(t, m2.IsActive(), "/ should activate search")
 }
 
 // T-043: R7.2 — typing highlights matches.
 func TestSearchModel_Type_HighlightsMatches(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
-	if m.MatchCount() != 2 {
-		t.Errorf("expected 2 matches for 'hello', got %d", m.MatchCount())
-	}
+	assert.Equal(t, 2, m.MatchCount(), "expected 2 matches for 'hello'")
 	highlighted := m.HighlightLines(testLines)
 	// The matching lines should contain ANSI escapes wrapping "hello".
 	for _, idx := range []int{1, 3} {
-		if !strings.Contains(highlighted[idx], "hello") {
-			t.Errorf("line %d should contain highlighted 'hello': %q", idx, highlighted[idx])
-		}
+		assert.Containsf(t, highlighted[idx], "hello", "line %d should contain highlighted 'hello': %q", idx, highlighted[idx])
 	}
 }
 
@@ -48,13 +43,9 @@ func TestSearchModel_Type_HighlightsMatches(t *testing.T) {
 func TestSearchModel_N_NextMatch(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
 	// Starts at match 0 (line 1).
-	if m.CurrentMatchLine() != 1 {
-		t.Errorf("initial match line: got %d, want 1", m.CurrentMatchLine())
-	}
+	assert.Equal(t, 1, m.CurrentMatchLine(), "initial match line")
 	m2 := m.NextMatch()
-	if m2.CurrentMatchLine() != 3 {
-		t.Errorf("after next: got %d, want 3", m2.CurrentMatchLine())
-	}
+	assert.Equal(t, 3, m2.CurrentMatchLine(), "after next")
 }
 
 // T-043: R7.4 — N moves to previous match.
@@ -62,9 +53,7 @@ func TestSearchModel_BigN_PrevMatch(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
 	m2 := m.NextMatch() // at index 1 (line 3)
 	m3 := m2.PrevMatch()
-	if m3.CurrentMatchLine() != 1 {
-		t.Errorf("after prev: got %d, want 1", m3.CurrentMatchLine())
-	}
+	assert.Equal(t, 1, m3.CurrentMatchLine(), "after prev")
 }
 
 // T-043: R7.5 — wrap indicator when matches wrap around.
@@ -72,24 +61,16 @@ func TestSearchModel_WrapIndicator(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
 	m = m.NextMatch() // index 1 → line 3
 	m = m.NextMatch() // wraps to index 0 → line 1, WrapFwd
-	if m.WrapDir() != SearchWrapFwd {
-		t.Errorf("expected SearchWrapFwd, got %v", m.WrapDir())
-	}
+	assert.Equal(t, SearchWrapFwd, m.WrapDir(), "expected SearchWrapFwd")
 }
 
 // T-043: R7.6 — Esc dismisses and clears.
 func TestSearchModel_Esc_Dismisses(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc}, testLines)
-	if m2.IsActive() {
-		t.Error("Esc should dismiss search")
-	}
-	if m2.Query() != "" {
-		t.Errorf("Esc should clear query, got %q", m2.Query())
-	}
-	if m2.MatchCount() != 0 {
-		t.Errorf("Esc should clear matches, got %d", m2.MatchCount())
-	}
+	assert.False(t, m2.IsActive(), "Esc should dismiss search")
+	assert.Empty(t, m2.Query(), "Esc should clear query")
+	assert.Equal(t, 0, m2.MatchCount(), "Esc should clear matches")
 }
 
 // T-043: R7.7 — search does not affect entry-list filter (SearchModel has no FilterSet ref).
@@ -105,26 +86,18 @@ func TestSearchModel_NoFilterSetReference(t *testing.T) {
 // T-118 (F-008): Activate() leaves SearchModel in input mode.
 func TestSearchModel_Activate_StartsInputMode(t *testing.T) {
 	m := defaultSearch().Activate()
-	if m.Mode() != SearchModeInput {
-		t.Errorf("Activate should start in input mode, got %v", m.Mode())
-	}
+	assert.Equal(t, SearchModeInput, m.Mode(), "Activate should start in input mode")
 }
 
 // T-118: Enter commits input → navigate. Requires a non-empty query.
 func TestSearchModel_Enter_CommitsToNavigate(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
-	if m2.Mode() != SearchModeNavigate {
-		t.Errorf("Enter should switch to navigate mode, got %v", m2.Mode())
-	}
+	assert.Equal(t, SearchModeNavigate, m2.Mode(), "Enter should switch to navigate mode")
 	// Enter in navigate should be a no-op (not close the search).
 	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
-	if !m3.IsActive() {
-		t.Error("Enter in navigate mode should not dismiss search")
-	}
-	if m3.Mode() != SearchModeNavigate {
-		t.Errorf("Enter in navigate should stay navigate, got %v", m3.Mode())
-	}
+	assert.True(t, m3.IsActive(), "Enter in navigate mode should not dismiss search")
+	assert.Equal(t, SearchModeNavigate, m3.Mode(), "Enter in navigate should stay navigate")
 }
 
 // T-118: `/` while already active re-enters input mode without clearing
@@ -133,17 +106,11 @@ func TestSearchModel_Slash_ReentersInputMode(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
 	// Commit to navigate via Enter.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
-	if m.Mode() != SearchModeNavigate {
-		t.Fatalf("precondition: want navigate, got %v", m.Mode())
-	}
+	require.Equal(t, SearchModeNavigate, m.Mode(), "precondition: want navigate")
 	// `/` should flip back to input without dropping the query.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")}, testLines)
-	if m.Mode() != SearchModeInput {
-		t.Errorf("after '/' in navigate: want input mode, got %v", m.Mode())
-	}
-	if m.Query() != "hello" {
-		t.Errorf("'/' should preserve query, got %q", m.Query())
-	}
+	assert.Equal(t, SearchModeInput, m.Mode(), "after '/' in navigate: want input mode")
+	assert.Equal(t, "hello", m.Query(), "'/' should preserve query")
 }
 
 // T-118: in navigate mode, `n` advances to the next match rather than
@@ -153,12 +120,8 @@ func TestSearchModel_N_InNavigateMode_Advances(t *testing.T) {
 	// Commit to navigate.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}, testLines)
-	if m.CurrentMatchLine() != 3 {
-		t.Errorf("n in navigate should advance to line 3, got %d", m.CurrentMatchLine())
-	}
-	if m.Query() != "hello" {
-		t.Errorf("n in navigate should NOT mutate query, got %q", m.Query())
-	}
+	assert.Equal(t, 3, m.CurrentMatchLine(), "n in navigate should advance to line 3")
+	assert.Equal(t, "hello", m.Query(), "n in navigate should NOT mutate query")
 }
 
 // T-118: in input mode, `n` is a literal query character — this preserves
@@ -166,9 +129,7 @@ func TestSearchModel_N_InNavigateMode_Advances(t *testing.T) {
 func TestSearchModel_N_InInputMode_AppendsToQuery(t *testing.T) {
 	m := defaultSearch().Activate()
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}, testLines)
-	if m.Query() != "n" {
-		t.Errorf("n in input mode should extend query to 'n', got %q", m.Query())
-	}
+	assert.Equal(t, "n", m.Query(), "n in input mode should extend query to 'n'")
 }
 
 // T-118: backspace only edits in input mode. In navigate mode it is a
@@ -178,9 +139,7 @@ func TestSearchModel_Backspace_OnlyInInputMode(t *testing.T) {
 	m := defaultSearch().Activate().SetQuery("hello", testLines)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, testLines) // → navigate
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace}, testLines)
-	if m.Query() != "hello" {
-		t.Errorf("backspace in navigate should be no-op, got %q", m.Query())
-	}
+	assert.Equal(t, "hello", m.Query(), "backspace in navigate should be no-op")
 }
 
 // T-119 (F-009): backspace on a multi-byte rune query must trim exactly one
@@ -205,13 +164,9 @@ func TestSearchModel_UTF8Backspace(t *testing.T) {
 			for _, r := range tc.query {
 				m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}, testLines)
 			}
-			if m.Query() != tc.query {
-				t.Fatalf("setup: Query()=%q, want %q", m.Query(), tc.query)
-			}
+			require.Equalf(t, tc.query, m.Query(), "setup: Query()")
 			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace}, testLines)
-			if m.Query() != tc.want {
-				t.Errorf("after backspace: Query()=%q, want %q", m.Query(), tc.want)
-			}
+			assert.Equalf(t, tc.want, m.Query(), "after backspace: Query()")
 		})
 	}
 }

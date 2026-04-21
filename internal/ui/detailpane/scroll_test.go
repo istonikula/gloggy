@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func makeScroll(lines int, height int) ScrollModel {
@@ -21,12 +23,8 @@ func makeScroll(lines int, height int) ScrollModel {
 func TestScrollModel_JMovesCursor_NoViewportShift(t *testing.T) {
 	m := makeScroll(20, 5)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if m2.cursor != 1 {
-		t.Errorf("cursor = %d, want 1", m2.cursor)
-	}
-	if m2.offset != 0 {
-		t.Errorf("offset = %d, want 0 (cursor still inside viewport)", m2.offset)
-	}
+	assert.Equal(t, 1, m2.cursor, "cursor")
+	assert.Equal(t, 0, m2.offset, "offset (cursor still inside viewport)")
 }
 
 // T-132: once cursor reaches the bottom edge of the viewport the viewport
@@ -36,28 +34,19 @@ func TestScrollModel_JAtViewportEdge_ShiftsOffset(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	}
-	if m.cursor != 4 || m.offset != 0 {
-		t.Fatalf("precondition: cursor=%d offset=%d, want cursor=4 offset=0", m.cursor, m.offset)
-	}
+	require.Equal(t, 4, m.cursor, "precondition: cursor")
+	require.Equal(t, 0, m.offset, "precondition: offset")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if m.cursor != 5 {
-		t.Errorf("after 5th j: cursor = %d, want 5", m.cursor)
-	}
-	if m.offset != 1 {
-		t.Errorf("after 5th j: offset = %d, want 1", m.offset)
-	}
+	assert.Equal(t, 5, m.cursor, "after 5th j: cursor")
+	assert.Equal(t, 1, m.offset, "after 5th j: offset")
 }
 
 // T-132: k at top is no-op for cursor (0), offset stays 0.
 func TestScrollModel_KAtTopIsNoop(t *testing.T) {
 	m := makeScroll(20, 5)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	if m2.cursor != 0 {
-		t.Errorf("cursor = %d, want 0", m2.cursor)
-	}
-	if m2.offset != 0 {
-		t.Errorf("offset = %d, want 0", m2.offset)
-	}
+	assert.Equal(t, 0, m2.cursor, "cursor")
+	assert.Equal(t, 0, m2.offset, "offset")
 }
 
 // T-132: scrolloff=3 on viewport=10 → cursor must pass line 6 before offset
@@ -67,13 +56,11 @@ func TestScrollModel_Scrolloff3_FollowsAtRow6(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	}
-	if m.cursor != 6 || m.offset != 0 {
-		t.Errorf("after 6 j: cursor=%d offset=%d, want cursor=6 offset=0", m.cursor, m.offset)
-	}
+	assert.Equal(t, 6, m.cursor, "after 6 j: cursor")
+	assert.Equal(t, 0, m.offset, "after 6 j: offset")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if m.cursor != 7 || m.offset != 1 {
-		t.Errorf("after 7th j: cursor=%d offset=%d, want cursor=7 offset=1", m.cursor, m.offset)
-	}
+	assert.Equal(t, 7, m.cursor, "after 7th j: cursor")
+	assert.Equal(t, 1, m.offset, "after 7th j: offset")
 }
 
 // T-133: wheel scrolls offset first; cursor drags only when the margin is
@@ -82,66 +69,40 @@ func TestScrollModel_Scrolloff3_FollowsAtRow6(t *testing.T) {
 func TestScrollModel_MouseWheelScrolls(t *testing.T) {
 	m := makeScroll(20, 5)
 	m2, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
-	if m2.offset != 1 {
-		t.Errorf("WheelDown: offset = %d, want 1", m2.offset)
-	}
+	assert.Equal(t, 1, m2.offset, "WheelDown: offset")
 	m3, _ := m2.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
-	if m3.offset != 0 {
-		t.Errorf("WheelUp: offset = %d, want 0", m3.offset)
-	}
+	assert.Equal(t, 0, m3.offset, "WheelUp: offset")
 }
 
 // T-133: wheel in the middle of a doc with scrolloff=3 does NOT drag the
-// cursor until the margin is crossed. cursor=50, offset=45 (cursor at row 5
-// of 10 = middle); WheelDown x 3 → offset=48, cursor=50 unchanged (now at
-// row 2, still inside because 2 >= scrolloff? No: margin is 3 so when
-// cursor < offset+scrolloff = 48+3 = 51 drag triggers). So after 3 wheels
-// cursor=50 < 51 → drag kicks in; cursor becomes 51.
-// Refining the spec to match the formula in wheelDown exactly:
-// minCursor = offset + scrolloff. After WheelDown x 3 offset=48, minCursor=51,
-// cursor=50 < 51 → cursor dragged to 51.
-// But spec says "offset=48, cursor=50 (cursor unchanged)" — that matches when
-// scrolloff is checked AFTER offset moves so cursor only drags once margin
-// would be violated. cursor=50 vs minCursor=51 → drag triggers at the 3rd
-// tick. Spec wants no drag at 3rd; I implement it so drag engages when
-// cursor < offset+scrolloff, meaning equality (cursor == offset+scrolloff)
-// does NOT trigger drag. Adjusting expectations accordingly.
+// cursor until the margin is crossed.
 func TestScrollModel_WheelDown_DragsCursorAtScrolloffEdge(t *testing.T) {
 	m := makeScroll(100, 10).WithScrolloff(3)
 	m.offset = 45
 	m.cursor = 50
 	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
-	if m.offset != 46 || m.cursor != 50 {
-		t.Errorf("after 1 WheelDown: offset=%d cursor=%d, want offset=46 cursor=50", m.offset, m.cursor)
-	}
+	assert.Equal(t, 46, m.offset, "after 1 WheelDown: offset")
+	assert.Equal(t, 50, m.cursor, "after 1 WheelDown: cursor")
 	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
-	if m.offset != 47 || m.cursor != 50 {
-		t.Errorf("after 2 WheelDown: offset=%d cursor=%d, want offset=47 cursor=50", m.offset, m.cursor)
-	}
+	assert.Equal(t, 47, m.offset, "after 2 WheelDown: offset")
+	assert.Equal(t, 50, m.cursor, "after 2 WheelDown: cursor")
 	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
-	if m.offset != 48 || m.cursor != 51 {
-		t.Errorf("after 3 WheelDown: offset=%d cursor=%d, want offset=48 cursor=51 (dragged at margin)", m.offset, m.cursor)
-	}
+	assert.Equal(t, 48, m.offset, "after 3 WheelDown: offset")
+	assert.Equal(t, 51, m.cursor, "after 3 WheelDown: cursor (dragged at margin)")
 }
 
 // T-133 symmetric: WheelUp drags cursor when cursor would exceed the bottom
-// margin (offset + viewport - 1 - scrolloff). With offset=45 cursor=50
-// (cursor row = 5 of 10), scrolloff=3 → max allowed row = 10-1-3 = 6.
-// WheelUp by 1 (offset=44) keeps cursor at row 6 (no drag, equality).
-// WheelUp by 2 (offset=43) would push cursor to row 7 → drag to row 6 =
-// offset+6 = 49.
+// margin.
 func TestScrollModel_WheelUp_DragsCursorAtScrolloffEdge(t *testing.T) {
 	m := makeScroll(100, 10).WithScrolloff(3)
 	m.offset = 45
 	m.cursor = 50
 	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
-	if m.offset != 44 || m.cursor != 50 {
-		t.Errorf("after 1 WheelUp: offset=%d cursor=%d, want offset=44 cursor=50", m.offset, m.cursor)
-	}
+	assert.Equal(t, 44, m.offset, "after 1 WheelUp: offset")
+	assert.Equal(t, 50, m.cursor, "after 1 WheelUp: cursor")
 	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
-	if m.offset != 43 || m.cursor != 49 {
-		t.Errorf("after 2 WheelUp: offset=%d cursor=%d, want offset=43 cursor=49 (dragged at margin)", m.offset, m.cursor)
-	}
+	assert.Equal(t, 43, m.offset, "after 2 WheelUp: offset")
+	assert.Equal(t, 49, m.cursor, "after 2 WheelUp: cursor (dragged at margin)")
 }
 
 // T-132: g/Home → cursor=0, offset=0.
@@ -150,13 +111,11 @@ func TestScrollModel_GJumpsToTop(t *testing.T) {
 	m.cursor = 25
 	m.offset = 20
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
-	if m2.cursor != 0 || m2.offset != 0 {
-		t.Errorf("g: cursor=%d offset=%d, want 0/0", m2.cursor, m2.offset)
-	}
+	assert.Equal(t, 0, m2.cursor, "g: cursor")
+	assert.Equal(t, 0, m2.offset, "g: offset")
 	m3, _ := m.Update(tea.KeyMsg{Type: tea.KeyHome})
-	if m3.cursor != 0 || m3.offset != 0 {
-		t.Errorf("home: cursor=%d offset=%d, want 0/0", m3.cursor, m3.offset)
-	}
+	assert.Equal(t, 0, m3.cursor, "home: cursor")
+	assert.Equal(t, 0, m3.offset, "home: offset")
 }
 
 // T-132: G/End → cursor = last, offset = max so cursor visible at bottom.
@@ -164,25 +123,19 @@ func TestScrollModel_GJumpsToTop(t *testing.T) {
 func TestScrollModel_GCapJumpsToBottom(t *testing.T) {
 	m := makeScroll(50, 10)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if m2.cursor != 49 || m2.offset != 40 {
-		t.Errorf("G: cursor=%d offset=%d, want 49/40", m2.cursor, m2.offset)
-	}
+	assert.Equal(t, 49, m2.cursor, "G: cursor")
+	assert.Equal(t, 40, m2.offset, "G: offset")
 	m3, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnd})
-	if m3.cursor != 49 || m3.offset != 40 {
-		t.Errorf("end: cursor=%d offset=%d, want 49/40", m3.cursor, m3.offset)
-	}
+	assert.Equal(t, 49, m3.cursor, "end: cursor")
+	assert.Equal(t, 40, m3.offset, "end: offset")
 }
 
 // T-132: G on content shorter than viewport — offset stays 0, cursor=last.
 func TestScrollModel_GOnShortContent(t *testing.T) {
 	m := makeScroll(5, 20)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if m2.offset != 0 {
-		t.Errorf("G short: offset = %d, want 0", m2.offset)
-	}
-	if m2.cursor != 4 {
-		t.Errorf("G short: cursor = %d, want 4", m2.cursor)
-	}
+	assert.Equal(t, 0, m2.offset, "G short: offset")
+	assert.Equal(t, 4, m2.cursor, "G short: cursor")
 }
 
 // T-132: PgDn from top with scrolloff=0 moves cursor by height-1; cursor
@@ -200,18 +153,8 @@ func TestScrollModel_PageDownFromTop(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := makeScroll(50, 10)
 			m2, _ := m.Update(tc.msg)
-			if m2.cursor != 9 {
-				t.Errorf("%s: cursor = %d, want 9", tc.name, m2.cursor)
-			}
-			// With scrolloff=0, cursor=9 sits exactly at the viewport's
-			// last row; followCursor triggers because cursor > offset +
-			// viewport - 1 - scrolloff is false (9 == 0+9-0), so offset
-			// does not shift. Update check: in fact check margin > not >=,
-			// so equality keeps offset at 0. Both are valid;
-			// assert cursor position primarily — offset stays at 0.
-			if m2.offset != 0 {
-				t.Errorf("%s: offset = %d, want 0 (cursor at bottom of viewport)", tc.name, m2.offset)
-			}
+			assert.Equalf(t, 9, m2.cursor, "%s: cursor", tc.name)
+			assert.Equalf(t, 0, m2.offset, "%s: offset (cursor at bottom of viewport)", tc.name)
 		})
 	}
 }
@@ -230,9 +173,8 @@ func TestScrollModel_PageUpAtTopIsNoop(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := makeScroll(50, 10)
 			m2, _ := m.Update(tc.msg)
-			if m2.cursor != 0 || m2.offset != 0 {
-				t.Errorf("%s: cursor=%d offset=%d, want 0/0", tc.name, m2.cursor, m2.offset)
-			}
+			assert.Equalf(t, 0, m2.cursor, "%s: cursor", tc.name)
+			assert.Equalf(t, 0, m2.offset, "%s: offset", tc.name)
 		})
 	}
 }
@@ -243,18 +185,11 @@ func TestScrollModel_PageUpAtTopIsNoop(t *testing.T) {
 func TestScrollModel_PageUpAfterEnd(t *testing.T) {
 	m := makeScroll(50, 10)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if m2.cursor != 49 || m2.offset != 40 {
-		t.Fatalf("precondition: cursor=%d offset=%d, want 49/40", m2.cursor, m2.offset)
-	}
+	require.Equal(t, 49, m2.cursor, "precondition: cursor")
+	require.Equal(t, 40, m2.offset, "precondition: offset")
 	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyPgUp})
-	if m3.cursor != 40 {
-		t.Errorf("pgup after G: cursor = %d, want 40", m3.cursor)
-	}
-	// cursor=40 is above offset=40+0? cursor==offset so not < offset. Margin
-	// is scrolloff=0 so no shift needed.
-	if m3.offset != 40 {
-		t.Errorf("pgup after G: offset = %d, want 40 (cursor still inside)", m3.offset)
-	}
+	assert.Equal(t, 40, m3.cursor, "pgup after G: cursor")
+	assert.Equal(t, 40, m3.offset, "pgup after G: offset (cursor still inside)")
 }
 
 // T-132: PgDn clamps — cursor cannot exceed last line.
@@ -262,15 +197,13 @@ func TestScrollModel_PageDownClampsAtBottom(t *testing.T) {
 	m := makeScroll(15, 10)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	// cursor 0+9=9, viewport=10, still inside → offset=0
-	if m2.cursor != 9 || m2.offset != 0 {
-		t.Errorf("first pgdown: cursor=%d offset=%d, want cursor=9 offset=0", m2.cursor, m2.offset)
-	}
+	assert.Equal(t, 9, m2.cursor, "first pgdown: cursor")
+	assert.Equal(t, 0, m2.offset, "first pgdown: offset")
 	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	// cursor 9+9=18 clamped to 14 (last line index). offset follows: cursor=14
 	// > offset+9 (0+9=9) → offset = 14-9 = 5.
-	if m3.cursor != 14 || m3.offset != 5 {
-		t.Errorf("second pgdown: cursor=%d offset=%d, want cursor=14 offset=5", m3.cursor, m3.offset)
-	}
+	assert.Equal(t, 14, m3.cursor, "second pgdown: cursor")
+	assert.Equal(t, 5, m3.offset, "second pgdown: offset")
 }
 
 // T-132: page keys on content shorter than viewport — no shift.
@@ -285,9 +218,7 @@ func TestScrollModel_PageKeysOnShortContent(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m2, _ := m.Update(tc.msg)
-			if m2.offset != 0 {
-				t.Errorf("%s short: offset = %d, want 0", tc.name, m2.offset)
-			}
+			assert.Equalf(t, 0, m2.offset, "%s short: offset", tc.name)
 		})
 	}
 }
@@ -301,13 +232,11 @@ func TestScrollModel_ScrolloffClampedToHalfViewport(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	}
-	if m.cursor != 2 || m.offset != 0 {
-		t.Errorf("after 2 j: cursor=%d offset=%d, want 2/0", m.cursor, m.offset)
-	}
+	assert.Equal(t, 2, m.cursor, "after 2 j: cursor")
+	assert.Equal(t, 0, m.offset, "after 2 j: offset")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if m.cursor != 3 || m.offset != 1 {
-		t.Errorf("after 3rd j (margin crossed): cursor=%d offset=%d, want 3/1", m.cursor, m.offset)
-	}
+	assert.Equal(t, 3, m.cursor, "after 3rd j: cursor")
+	assert.Equal(t, 1, m.offset, "after 3rd j: offset")
 }
 
 // T-132: clamp at edges — scrolloff yields so cursor can reach line 0 and
@@ -315,13 +244,10 @@ func TestScrollModel_ScrolloffClampedToHalfViewport(t *testing.T) {
 func TestScrollModel_ScrolloffYieldsAtDocumentEdges(t *testing.T) {
 	m := makeScroll(50, 10).WithScrolloff(3)
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if m2.cursor != 49 {
-		t.Errorf("G with scrolloff: cursor = %d, want 49", m2.cursor)
-	}
+	assert.Equal(t, 49, m2.cursor, "G with scrolloff: cursor")
 	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
-	if m3.cursor != 0 || m3.offset != 0 {
-		t.Errorf("g with scrolloff: cursor=%d offset=%d, want 0/0", m3.cursor, m3.offset)
-	}
+	assert.Equal(t, 0, m3.cursor, "g with scrolloff: cursor")
+	assert.Equal(t, 0, m3.offset, "g with scrolloff: offset")
 }
 
 // T-037: R4.4 — stop at top and bottom (offset clamping still holds).
@@ -330,35 +256,24 @@ func TestScrollModel_ClampedAtBoundaries(t *testing.T) {
 
 	// Scroll up at top via k: should stay at 0 (cursor at 0).
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	if m2.offset != 0 || m2.cursor != 0 {
-		t.Errorf("top clamp: cursor=%d offset=%d, want 0/0", m2.cursor, m2.offset)
-	}
+	assert.Equal(t, 0, m2.cursor, "top clamp: cursor")
+	assert.Equal(t, 0, m2.offset, "top clamp: offset")
 
 	// Scroll to bottom via ScrollDown (offset-only helper — does not touch cursor).
 	m3 := m.ScrollDown(100)
 	maxOffset := 5 - 3
-	if m3.offset != maxOffset {
-		t.Errorf("bottom clamp: offset = %d, want %d", m3.offset, maxOffset)
-	}
-	if !m3.AtBottom() {
-		t.Error("expected AtBottom() = true")
-	}
-	if !m.AtTop() {
-		t.Error("expected AtTop() = true for initial model")
-	}
+	assert.Equal(t, maxOffset, m3.offset, "bottom clamp: offset")
+	assert.True(t, m3.AtBottom(), "expected AtBottom() = true")
+	assert.True(t, m.AtTop(), "expected AtTop() = true for initial model")
 }
 
 // View returns only the visible lines.
 func TestScrollModel_View(t *testing.T) {
 	content := "A\nB\nC\nD\nE"
 	m := NewScrollModel(content, 3)
-	if m.View() != "A\nB\nC" {
-		t.Errorf("View() = %q, want %q", m.View(), "A\nB\nC")
-	}
+	assert.Equal(t, "A\nB\nC", m.View())
 	m = m.ScrollDown(2)
-	if m.View() != "C\nD\nE" {
-		t.Errorf("after scroll View() = %q, want %q", m.View(), "C\nD\nE")
-	}
+	assert.Equal(t, "C\nD\nE", m.View(), "after scroll")
 }
 
 // F-013 visual fix: View must always return exactly height rows so the
@@ -368,12 +283,8 @@ func TestScrollModel_View_PadsShortContentToFullHeight(t *testing.T) {
 	m := NewScrollModel("A\nB\nC", 10)
 	got := m.View()
 	rows := strings.Count(got, "\n") + 1
-	if rows != 10 {
-		t.Errorf("short-content View() rows = %d, want 10 (got %q)", rows, got)
-	}
-	if !strings.HasPrefix(got, "A\nB\nC\n") {
-		t.Errorf("short-content View() must keep content prefix; got %q", got)
-	}
+	assert.Equalf(t, 10, rows, "short-content View() rows (got %q)", got)
+	assert.Truef(t, strings.HasPrefix(got, "A\nB\nC\n"), "short-content View() must keep content prefix; got %q", got)
 }
 
 // Empty content still produces a full-height blank viewport so the
@@ -382,7 +293,5 @@ func TestScrollModel_View_EmptyContentReturnsFullHeightBlank(t *testing.T) {
 	m := NewScrollModel("", 5)
 	got := m.View()
 	rows := strings.Count(got, "\n") + 1
-	if rows != 5 {
-		t.Errorf("empty View() rows = %d, want 5", rows)
-	}
+	assert.Equal(t, 5, rows, "empty View() rows")
 }

@@ -3,9 +3,11 @@ package detailpane
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -14,12 +16,12 @@ import (
 
 func testVisEntry() logsource.Entry {
 	return logsource.Entry{
-		IsJSON:  true,
-		Time:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-		Level:   "INFO",
-		Msg:     "hello",
-		Logger:  "app",
-		Raw:     []byte(`{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"hello","logger":"app"}`),
+		IsJSON: true,
+		Time:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+		Level:  "INFO",
+		Msg:    "hello",
+		Logger: "app",
+		Raw:    []byte(`{"time":"2024-01-01T12:00:00Z","level":"INFO","msg":"hello","logger":"app"}`),
 	}
 }
 
@@ -29,12 +31,8 @@ func TestVisibilityModel_HiddenFieldOmitted(t *testing.T) {
 	lr.Config.HiddenFields = []string{"level"}
 	m := NewVisibilityModel("", lr)
 	result := m.RenderEntry(testVisEntry(), theme.GetTheme("tokyo-night"))
-	if strings.Contains(result, `"level"`) {
-		t.Error("hidden field 'level' should not appear in output")
-	}
-	if !strings.Contains(result, `"msg"`) {
-		t.Error("visible field 'msg' should appear in output")
-	}
+	assert.NotContains(t, result, `"level"`, "hidden field 'level' should not appear in output")
+	assert.Contains(t, result, `"msg"`, "visible field 'msg' should appear in output")
 }
 
 // T-038: R5.2 — toggle causes re-render without the hidden field
@@ -44,26 +42,18 @@ func TestVisibilityModel_ToggleHides(t *testing.T) {
 
 	// Initially msg is visible.
 	result1 := m.RenderEntry(testVisEntry(), theme.GetTheme("tokyo-night"))
-	if !strings.Contains(result1, `"msg"`) {
-		t.Error("msg should be visible initially")
-	}
+	assert.Contains(t, result1, `"msg"`, "msg should be visible initially")
 
 	// Hide it.
 	m2, err := m.ToggleField("msg")
-	if err != nil {
-		t.Fatalf("ToggleField: %v", err)
-	}
+	require.NoError(t, err, "ToggleField")
 	result2 := m2.RenderEntry(testVisEntry(), theme.GetTheme("tokyo-night"))
-	if strings.Contains(result2, `"msg"`) {
-		t.Error("msg should be hidden after toggle")
-	}
+	assert.NotContains(t, result2, `"msg"`, "msg should be hidden after toggle")
 
 	// Toggle again — should show.
 	m3, _ := m2.ToggleField("msg")
 	result3 := m3.RenderEntry(testVisEntry(), theme.GetTheme("tokyo-night"))
-	if !strings.Contains(result3, `"msg"`) {
-		t.Error("msg should be visible after second toggle")
-	}
+	assert.Contains(t, result3, `"msg"`, "msg should be visible after second toggle")
 }
 
 // T-038: R5.3 + R5.4 — visibility change written to config file; persists after reload
@@ -73,33 +63,21 @@ func TestVisibilityModel_PersistedToConfig(t *testing.T) {
 
 	m := NewVisibilityModel(path, lr)
 	m2, err := m.ToggleField("level")
-	if err != nil {
-		t.Fatalf("ToggleField: %v", err)
-	}
+	require.NoError(t, err, "ToggleField")
 
 	// Verify config file was written.
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("config file not created: %v", err)
-	}
+	_, err = os.Stat(path)
+	require.NoError(t, err, "config file not created")
 
 	// Reload config and verify field is still hidden.
 	lr2 := config.Load(path)
-	found := false
-	for _, f := range lr2.Config.HiddenFields {
-		if f == "level" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("hidden field 'level' not persisted after reload; HiddenFields=%v", lr2.Config.HiddenFields)
-	}
+	assert.Containsf(t, lr2.Config.HiddenFields, "level",
+		"hidden field 'level' not persisted after reload; HiddenFields=%v", lr2.Config.HiddenFields)
 
 	// Verify the new VisibilityModel from reloaded config omits the field.
 	m3 := NewVisibilityModel(path, lr2)
 	result := m3.RenderEntry(testVisEntry(), theme.GetTheme("tokyo-night"))
-	if strings.Contains(result, `"level"`) {
-		t.Error("after restart, hidden field 'level' should still be omitted")
-	}
+	assert.NotContains(t, result, `"level"`, "after restart, hidden field 'level' should still be omitted")
 
 	_ = m2
 }
