@@ -1,0 +1,104 @@
+# SPEC — gloggy
+
+distilled 2026-04-21 from code + `context/kits/cavekit-*.md`. kit files remain authoritative for per-AC detail; this spec is compressed single-source for drift checks. identifiers preserved verbatim (R#, T-###, F-###).
+
+## §G goal
+
+TUI for interactive JSONL log analysis. single binary. file or stdin. go + bubbletea.
+
+## §C constraints
+
+- go ≥1.26. macOS + linux only (fsnotify). windows out of scope.
+- TUI only — bubbletea/lipgloss/termenv stack. UTF-8 assumed.
+- single file input OR stdin. no multi-file, no remote, no compressed, no format-switch.
+- TrueColor honoured via COLORTERM=truecolor|24bit (else termenv downsample).
+- terminal floor 60x15 → "too small" message (as:R2 AC7).
+- deps pinned: bubbletea v1.3.10, lipgloss v1.1.0, fsnotify v1.9.0, go-toml v2.3.0, atotto/clipboard v0.1.4.
+
+## §I interfaces
+
+### I.cli
+
+- `gloggy <file>`            — load file
+- `gloggy -f <file>`         — tail/follow (NOT stdin)
+- `gloggy` (piped stdin)     — read stdin synchronously pre-TUI
+- invalid args → stderr err + exit 1 (as:R1)
+
+### I.cfg
+
+- path: `$XDG_CONFIG_HOME/gloggy/config.toml` (via `os.UserConfigDir`)
+- created w/ defaults on first run. unknown keys preserved on write-back.
+- schema (`internal/config.Config`):
+  - `theme` ∈ {`tokyo-night`(def), `catppuccin-mocha`, `material-dark`}
+  - `compact_row.fields` def=[time,level,logger,msg]; `.sub_fields` def=[]
+  - `hidden_fields` def=[]
+  - `logger_depth` def=2
+  - `detail_pane.height_ratio` def=0.30; `.width_ratio` def=0.30
+  - `detail_pane.position` def=`auto` ∈ {`below`,`right`,`auto`}
+  - `detail_pane.orientation_threshold_cols` def=100
+  - `detail_pane.wrap_mode` def=`soft` (only mode shipped; `scroll`/`modal` future)
+  - `scrolloff` def=5 — **top-level shared key**, NOT nested (cfg:R5)
+
+### I.entry (`internal/logsource.Entry`)
+
+`{LineNumber int, IsJSON bool, Time time.Time, Level, Msg, Logger, Thread string, Extra map[string]json.RawMessage, Raw []byte}`. RFC3339Nano. unparseable time → zero (ls:R5).
+
+### I.msgs (bubbletea stream)
+
+- `EntryBatchMsg{Entries []}` + `LoadProgressMsg{Count}` + `LoadDoneMsg` — load stream (drain via `LoadFileStreamMsg.Next()`)
+- `TailMsg{Entries []}` + `TailStopMsg{Err}` — tail stream, **batched per fsnotify Write event** (ls:R8)
+
+### I.keys (canonical — full list in README + as:R5 help overlay)
+
+- nav: j/k g/G Ctrl-d/u PgDn/PgUp Space/b (dp) Home/End (dp)
+- el: e/E w/W m u/U l/h Tab Enter / n/N
+- dp: / n/N + - = | Esc
+- global: f y ? q
+
+### I.themes (`internal/theme`)
+
+tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, SearchHighlight, CursorHighlight, HeaderBg, FocusBorder, DividerColor, UnfocusedBg, DragHandle, BaseBg. each ctor cites upstream source (`TokyoNightSource` etc).
+
+## §V invariants
+
+- **V1** (ls:R8) tail batched per FS event: 1 `TailMsg` per drain, `len(Entries)` = lines made available. initial pre-watcher drain = 1 batch. per-line emission = kit violation (causes row-by-row scroll animation on `gloggy -f bigfile`).
+- **V2** (el:R14) `AppendEntries(K≥1)` ⇒ EXACTLY one cursor-snap + one viewport-adjust + one selection-signal, regardless of K. symmetric across `TailMsg` + `EntryBatchMsg`.
+- **V3** (el:R14) tail-follow pre-cond: `Cursor == Total-1` before append → auto-advance + scrolloff bottom-edge. else cursor/viewport UNCHANGED. `IsAtTail()` drives `[FOLLOW]` badge live per render.
+- **V4** (el:R1) each compact row = exactly 1 terminal line. embedded `\n` in msg/raw flattened to space pre-render.
+- **V5** (el:R6) list `View()` outputs EXACTLY `ViewportHeight` rows (padded w/ blanks if short). no buffer, no overflow — bubbletea `JoinVertical` does not tolerate extra rows.
+- **V6** (cfg:R5) `scrolloff` is **top-level** TOML int. single source of truth for el:R12 + dp:R11. NOT splittable per-pane. negative/non-int clamped to 0 + warn. at use: clamped `[0, floor(VisibleRows/2)]`.
+- **V7** (el:R3, dp:R2, as:R3, as:R10) NO hardcoded colors anywhere. every fg/bg/attribute resolves through active theme token. render output ANSI must contain theme's token value.
+- **V8** (el:R10, dp:R10) layout math has **single owner** (as:R2). pane mouse-handlers must NOT re-derive terminal-Y→row or subtract borders a 2nd time. violations: 2-row-offset click bug (F-127); detail underfill/overflow (F-103/F-104).
+- **V9** (el:R10 AC6) list click-row resolver MUST reject clicks when `contentTopY` unset — either panic-on-unset or "wired" flag returning no-row. zero-default → silent 2-row-offset regression (F-127).
+- **V10** (dp:R11) detail-pane cursor-row bg is **contiguous** across col 0..content-width. must survive inner `\x1b[0m` SGR resets from per-token syntax highlighting — strip inner resets on cursor row OR cell-level bg paint after reflow. byte-concat of `Style.Render()` is kit violation.
+- **V11** (dp:R9) soft-wrap preserves SGR state across wrap boundary. continuation line reopens same style. raw `ansi.HardwrapWc(preserveSGR=false)` forbidden.
+- **V12** (dp:R1, as:R11) opening detail pane does NOT transfer focus — stays on list for live-preview. focus transfer only via Tab, mouse-click-in-pane, or `/` (as:R13).
+- **V13** (as:R13) `/` routes by **current focus**, not pane-open state. list-focused → list search (el:R13); dp-focused → dp search (dp:R7); filter-panel-focused → literal char. never silent no-op.
+- **V14** (as:R14) global single-key reservations (`q`, `Tab`, `?`, `Esc`) MUST NOT preempt active in-pane search input. `q` → query char, NOT `tea.Quit`. exceptions: `Tab` still dismisses search via focus-cycle; `Esc` routed through pane search first.
+- **V15** (as:R9) `y` never silent: marked-entries → notice w/ count; 0 marked → "no marked entries"; clipboard err → visible err notice. `//nolint:errcheck` on `CopyMarkedEntries` = kit violation.
+- **V16** (as:R7, dp:R6) `height_ratio` + `width_ratio` preserved **independently** across orientation flips. below-mode uses `height_ratio` only for vertical; right-mode vertical height = full main slot, NOT `height_ratio × term_h` (content-loss bug).
+- **V17** (as:R12) ratio clamp `[0.10, 0.80]`. at boundary = no-op (not wrap). detail closed → all 4 keys (`|+-=`) silent no-op.
+- **V18** (as:R15) drag is focus-neutral + single-persist (one config write on Release, not per-Motion). bare Press+Release w/ no Motion → no config write. press-on-current-divider → current ratio unchanged (inverse math = exact inverse of forward `PaneHeight/Width`).
+- **V19** (as:R15 drag-seam) drag-seam scope: right-mode = the 1-cell `│` divider glyph. below-mode = detail pane's TOP border row ONLY — list's bottom border is an adjacent row rendered in list's focus-state color, NOT shared (F-201).
+- **V20** (cfg:R4) `DragHandle ≠ DividerColor` AND `DragHandle ≠ FocusBorder` in every bundled theme. `BaseBg ≠ UnfocusedBg` within each theme; `BaseBg` pairwise distinct across themes.
+- **V21** (as:R7) on `position=auto`, every `WindowSizeMsg` crossing `orientation_threshold_cols` must refresh ALL pane-local orientation-dependent flags — both in resize handler AND in `relayout()`. miss → seam renders in pre-flip colors (F-200).
+- **V22** (cfg:R3, cfg:R6) unknown TOML keys preserved on write-back. live writes preserve existing unrelated values.
+- **V23** (ls:R8) tail mode available only for file inputs. stdin never tailed regardless of flags.
+- **V24** (ls:R7) loading never blocks UI. progress signals stream; UI renders partial results mid-load.
+
+## §T tasks
+
+| id | status | desc | cites |
+|----|--------|------|-------|
+| T1 | . | human tui-mcp sign-off across all 3 themes × {80x24, 140x35} × {below, right} — README notes "not yet human tested" | V7,V10,V19,V20 |
+| T2 | . | human verify tail-follow no-scroll-animation on `logs/big.log` w/ `gloggy -f` | V1,V2 |
+| T3 | . | human verify mouse click-row resolver across orientations × focus states on `logs/small.log` | V8,V9 |
+| T4 | . | human verify clipboard `y` notices (copied/empty/err) | V15 |
+| T5 | . | human verify ratio drag — below + right, tui-mcp `send_mouse` press-hold-move-release | V17,V18 |
+
+## §B bugs
+
+| id | date | cause | fix |
+|----|------|-------|-----|
+
+(empty — historical backprops recorded in kit changelogs: F-013/F-015/F-016/F-017, F-101..F-109, F-121..F-129, F-132/F-133/F-134, F-200/F-201/F-202. if new bugs surface, append here via `/ck:spec bug: <desc>`.)
