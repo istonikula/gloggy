@@ -78,13 +78,17 @@ func (m KeyHintBarModel) focusLabelText() string {
 // View renders the key-hint bar for the current focus.
 func (m KeyHintBarModel) View() string {
 	hintsStyle := lipgloss.NewStyle().Foreground(m.th.Dim)
-	// Transient notice replaces the hints entirely (T-091). Pad to full
-	// width so the notice overwrites the previously-rendered keyhint
-	// text — lipgloss's MaxWidth truncates but does not pad, and
-	// Bubble Tea's diff renderer does not force a clear-to-EOL on a row
-	// whose content has grown shorter but not empty.
+	// Transient notice replaces the hints entirely (T-091). Rendered in a
+	// high-contrast style (Bold + FocusBorder) so it stands out against
+	// the dim keyhints row — same Dim foreground made notices visually
+	// blend into keyhints and users missed feedback (B1 / V15). Pad to
+	// full width so the notice overwrites the previously-rendered
+	// keyhint text (lipgloss's MaxWidth truncates but does not pad, and
+	// Bubble Tea's diff renderer does not force clear-to-EOL when a row
+	// grows shorter but not empty).
 	if m.notice != "" {
-		return hintsStyle.Width(m.width).MaxWidth(m.width).Render(m.notice)
+		noticeStyle := lipgloss.NewStyle().Bold(true).Foreground(m.th.FocusBorder)
+		return noticeStyle.Width(m.width).MaxWidth(m.width).Render(m.notice)
 	}
 
 	domain := focusDomain(m.focus)
