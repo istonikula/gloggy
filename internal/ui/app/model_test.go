@@ -2636,3 +2636,152 @@ func TestModel_F132_DegenerateDim_Below_GuardFiresWith_PaneOpen(t *testing.T) {
 			startRatio, m.cfg.Config.DetailPane.HeightRatio)
 	}
 }
+
+// ---------- T6 (B3): handleRatioKey guards saveConfig on newR != current ----------
+
+// TestModel_T6_RatioKey_NoOpAtBoundary_DoesNotWriteConfig covers V17 /
+// B3: at the clamp-pin or preset no-op, the ratio value is unchanged and
+// saveConfig must be skipped. Previously `handleRatioKey` wrote the
+// config file on every keypress, inflating mtime + disk I/O at the
+// boundaries where the ratio cannot move. Each subtest starts from an
+// empty cfgPath; if the guard fires, the file must not exist after the
+// no-op press.
+func TestModel_T6_RatioKey_NoOpAtBoundary_DoesNotWriteConfig(t *testing.T) {
+	cases := []struct {
+		name      string
+		key       string
+		listFocus bool
+		seedRatio float64
+	}{
+		{"plus_at_max_detail_focus", "+", false, appshell.RatioMax},
+		{"minus_at_min_detail_focus", "-", false, appshell.RatioMin},
+		{"plus_at_min_list_focus", "+", true, appshell.RatioMin},
+		{"minus_at_max_list_focus", "-", true, appshell.RatioMax},
+		{"equals_at_default_detail_focus", "=", false, appshell.RatioDefault},
+		{"equals_at_default_list_focus", "=", true, appshell.RatioDefault},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := dir + "/config.toml"
+
+			cfg := config.LoadResult{Config: config.DefaultConfig()}
+			cfg.Config.DetailPane.WidthRatio = tc.seedRatio
+			m := New("", false, cfgPath, cfg)
+			m = resize(m, 200, 24)
+			entries := makeEntries(3)
+			m = m.SetEntries(entries)
+			m = m.openPane(entries[0])
+			if m.resize.Orientation() != appshell.OrientationRight {
+				t.Fatalf("precondition: want right orientation at 200 cols, got %v", m.resize.Orientation())
+			}
+			if tc.listFocus {
+				m.focus = appshell.FocusEntryList
+			} else {
+				m.focus = appshell.FocusDetailPane
+			}
+			m.keyhints = m.keyhints.WithFocus(m.focus)
+
+			before := m.cfg.Config.DetailPane.WidthRatio
+			m = key(m, tc.key)
+			after := m.cfg.Config.DetailPane.WidthRatio
+
+			if before != after {
+				t.Fatalf("precondition: %q at ratio=%.2f listFocus=%v should be a no-op; got %.3f → %.3f",
+					tc.key, tc.seedRatio, tc.listFocus, before, after)
+			}
+			if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+				t.Errorf("B3 regression: no-op %q press wrote config file; stat err: %v", tc.key, err)
+			}
+		})
+	}
+}
+
+// TestModel_T6_RatioKey_NoOpAtBoundary_Below_DoesNotWriteConfig mirrors
+// the right-split test in below-orientation. Both branches of
+// handleRatioKey share the guard; this pins the second branch so a
+// future refactor can't drop the guard on just one axis.
+func TestModel_T6_RatioKey_NoOpAtBoundary_Below_DoesNotWriteConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.toml"
+
+	cfg := config.LoadResult{Config: config.DefaultConfig()}
+	cfg.Config.DetailPane.Position = "below"
+	cfg.Config.DetailPane.HeightRatio = appshell.RatioMax
+	m := New("", false, cfgPath, cfg)
+	m = resize(m, 80, 30)
+	entries := makeEntries(3)
+	m = m.SetEntries(entries)
+	m = m.openPane(entries[0])
+	if m.resize.Orientation() != appshell.OrientationBelow {
+		t.Fatalf("precondition: want below orientation, got %v", m.resize.Orientation())
+	}
+	m.focus = appshell.FocusDetailPane
+	m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+
+	before := m.paneHeight.Ratio()
+	m = key(m, "+") // detail-focus at RatioMax → no-op
+	after := m.paneHeight.Ratio()
+
+	if before != after {
+		t.Fatalf("precondition: `+` at height_ratio=%.2f detail-focus should be no-op; got %.3f → %.3f",
+			appshell.RatioMax, before, after)
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("B3 regression (below-mode): no-op `+` wrote config file; stat err: %v", err)
+	}
+}
+
+// TestModel_T6_RatioKey_Change_WritesConfig is the positive-case anchor.
+// The T6 guard only suppresses writes when newR==current; every key that
+// actually moves the ratio must still persist. Without this, T6 would
+// be trivially satisfied by nuking every saveConfig call. Covers `+`,
+// `-`, `=`, and `|` change paths.
+func TestModel_T6_RatioKey_Change_WritesConfig(t *testing.T) {
+	cases := []struct {
+		name      string
+		key       string
+		seedRatio float64
+	}{
+		{"plus_from_default", "+", appshell.RatioDefault},   // 0.30 → 0.35
+		{"minus_from_default", "-", appshell.RatioDefault},  // 0.30 → 0.25
+		{"equals_from_off_default", "=", 0.50},              // 0.50 → 0.30
+		{"pipe_from_default", "|", appshell.RatioDefault},   // 0.30 → 0.50 (preset cycle)
+		{"pipe_from_off_preset", "|", 0.45},                 // off-preset → 0.30
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := dir + "/config.toml"
+
+			cfg := config.LoadResult{Config: config.DefaultConfig()}
+			cfg.Config.DetailPane.WidthRatio = tc.seedRatio
+			m := New("", false, cfgPath, cfg)
+			m = resize(m, 200, 24)
+			entries := makeEntries(3)
+			m = m.SetEntries(entries)
+			m = m.openPane(entries[0])
+			if m.resize.Orientation() != appshell.OrientationRight {
+				t.Fatalf("precondition: want right orientation, got %v", m.resize.Orientation())
+			}
+			m.focus = appshell.FocusDetailPane
+			m.keyhints = m.keyhints.WithFocus(appshell.FocusDetailPane)
+
+			before := m.cfg.Config.DetailPane.WidthRatio
+			m = key(m, tc.key)
+			after := m.cfg.Config.DetailPane.WidthRatio
+
+			if before == after {
+				t.Fatalf("precondition: %q at ratio=%.2f should change the value; stayed %.3f",
+					tc.key, tc.seedRatio, before)
+			}
+			if _, err := os.Stat(cfgPath); err != nil {
+				t.Errorf("%q change path must write config: %v", tc.key, err)
+			}
+			reloaded := config.Load(cfgPath)
+			if reloaded.Config.DetailPane.WidthRatio != after {
+				t.Errorf("disk width_ratio: got %.3f, want %.3f", reloaded.Config.DetailPane.WidthRatio, after)
+			}
+		})
+	}
+}

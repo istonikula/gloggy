@@ -97,7 +97,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T3 | x | human verify mouse click-row resolver across orientations × focus states on `logs/small.log` | V8,V9 |
 | T4 | ~ | human verify clipboard `y` notices (copied/empty/err) | V15 |
 | T5 | ~ | human verify ratio drag — below + right, tui-mcp `send_mouse` press-hold-move-release | V17,V18 |
-| T6 | . | guard `saveConfig()` in `handleRatioKey` on `newR != current`; add regression test for no-mtime-advance at ratio boundary across `-`/`+`/`=`/`\|` | V17 |
+| T6 | x | guard `saveConfig()` in `handleRatioKey` on `newR != current`; add regression test for no-mtime-advance at ratio boundary across `-`/`+`/`=`/`\|` | V17 |
 
 ## §B bugs
 
