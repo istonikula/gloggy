@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/filter"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -37,13 +40,9 @@ func TestFilterList_OnlyPassingEntries(t *testing.T) {
 
 	indices := filter.Apply(fs, entries)
 	// Entries at index 1 (ERROR) and 4 (ERROR) should pass.
-	if len(indices) != 2 {
-		t.Fatalf("expected 2 filtered entries (ERROR), got %d", len(indices))
-	}
+	require.Len(t, indices, 2, "expected 2 filtered entries (ERROR)")
 	for _, idx := range indices {
-		if entries[idx].Level != "ERROR" {
-			t.Errorf("expected ERROR entry, got %s at index %d", entries[idx].Level, idx)
-		}
+		assert.Equalf(t, "ERROR", entries[idx].Level, "expected ERROR entry, got %s at index %d", entries[idx].Level, idx)
 	}
 }
 
@@ -61,20 +60,14 @@ func TestFilterList_FilterChange_UpdatesList(t *testing.T) {
 	vis := m.Marks() // just exercise the code
 	_ = vis
 	// After filter: only INFO entries (indices 0, 3) should be visible.
-	if len(indices) != 2 {
-		t.Fatalf("expected 2 INFO entries, got %d", len(indices))
-	}
+	require.Len(t, indices, 2, "expected 2 INFO entries")
 
 	// Change filter to include WARN.
 	fs2 := filter.NewFilterSet()
 	fs2.Add(filter.Filter{Field: "level", Pattern: "WARN", Mode: filter.Include, Enabled: true})
 	indices2 := filter.Apply(fs2, entries)
 	m2 := m.SetFilter(indices2)
-	if len(indices2) != 1 {
-		t.Fatalf("expected 1 WARN entry, got %d", len(indices2))
-	}
+	require.Len(t, indices2, 1, "expected 1 WARN entry")
 	// Cursor should be non-negative after filter change.
-	if m2.Cursor() < 0 {
-		t.Errorf("cursor should be non-negative after filter change: %d", m2.Cursor())
-	}
+	assert.GreaterOrEqualf(t, m2.Cursor(), 0, "cursor should be non-negative after filter change: %d", m2.Cursor())
 }
