@@ -5,72 +5,43 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultConfigPath(t *testing.T) {
 	path, err := DefaultConfigPath()
-	if err != nil {
-		t.Fatalf("DefaultConfigPath() error: %v", err)
-	}
-	if !strings.HasSuffix(path, filepath.Join("gloggy", "config.toml")) {
-		t.Errorf("path should end with gloggy/config.toml, got %s", path)
-	}
+	require.NoError(t, err)
+	assert.True(t, strings.HasSuffix(path, filepath.Join("gloggy", "config.toml")),
+		"path should end with gloggy/config.toml, got %s", path)
 }
 
 func TestDefaultConfig_Values(t *testing.T) {
 	cfg := DefaultConfig()
-	if cfg.Theme != "tokyo-night" {
-		t.Errorf("theme: want tokyo-night, got %s", cfg.Theme)
-	}
-	if cfg.LoggerDepth != 2 {
-		t.Errorf("logger_depth: want 2, got %d", cfg.LoggerDepth)
-	}
-	if cfg.DetailPane.HeightRatio != 0.30 {
-		t.Errorf("height_ratio: want 0.30, got %f", cfg.DetailPane.HeightRatio)
-	}
-	if cfg.DetailPane.WidthRatio != 0.30 {
-		t.Errorf("width_ratio: want 0.30, got %f", cfg.DetailPane.WidthRatio)
-	}
-	if cfg.DetailPane.Position != "auto" {
-		t.Errorf("position: want auto, got %s", cfg.DetailPane.Position)
-	}
-	if cfg.DetailPane.OrientationThresholdCols != 100 {
-		t.Errorf("orientation_threshold_cols: want 100, got %d", cfg.DetailPane.OrientationThresholdCols)
-	}
-	if cfg.DetailPane.WrapMode != "soft" {
-		t.Errorf("wrap_mode: want soft, got %s", cfg.DetailPane.WrapMode)
-	}
+	assert.Equal(t, "tokyo-night", cfg.Theme)
+	assert.Equal(t, 2, cfg.LoggerDepth)
+	assert.InDelta(t, 0.30, cfg.DetailPane.HeightRatio, 1e-9)
+	assert.InDelta(t, 0.30, cfg.DetailPane.WidthRatio, 1e-9)
+	assert.Equal(t, "auto", cfg.DetailPane.Position)
+	assert.Equal(t, 100, cfg.DetailPane.OrientationThresholdCols)
+	assert.Equal(t, "soft", cfg.DetailPane.WrapMode)
 	wantFields := []string{"time", "level", "logger", "msg"}
-	if len(cfg.CompactRow.Fields) != len(wantFields) {
-		t.Fatalf("compact_row.fields len: want %d, got %d", len(wantFields), len(cfg.CompactRow.Fields))
-	}
-	for i, f := range wantFields {
-		if cfg.CompactRow.Fields[i] != f {
-			t.Errorf("compact_row.fields[%d]: want %s, got %s", i, f, cfg.CompactRow.Fields[i])
-		}
-	}
+	require.Equal(t, wantFields, cfg.CompactRow.Fields)
 }
 
 func TestLoad_NoFile_ReturnsDefaults(t *testing.T) {
 	result := Load("/nonexistent/path/config.toml")
 	defaults := DefaultConfig()
-	if result.Config.Theme != defaults.Theme {
-		t.Errorf("theme: want %s, got %s", defaults.Theme, result.Config.Theme)
-	}
-	if len(result.Warnings) != 0 {
-		t.Errorf("expected no warnings for missing file, got %v", result.Warnings)
-	}
+	assert.Equal(t, defaults.Theme, result.Config.Theme)
+	assert.Empty(t, result.Warnings, "expected no warnings for missing file")
 }
 
 func TestLoad_InvalidTOML_ReturnsDefaults(t *testing.T) {
 	result := LoadFromBytes([]byte(`not valid toml [[[`))
 	defaults := DefaultConfig()
-	if result.Config.Theme != defaults.Theme {
-		t.Errorf("expected default theme, got %s", result.Config.Theme)
-	}
-	if len(result.Warnings) == 0 {
-		t.Error("expected warnings for invalid TOML")
-	}
+	assert.Equal(t, defaults.Theme, result.Config.Theme)
+	assert.NotEmpty(t, result.Warnings, "expected warnings for invalid TOML")
 }
 
 func TestLoad_InvalidFieldValues_FallbackPerField(t *testing.T) {
@@ -82,25 +53,16 @@ logger_depth = -5
 height_ratio = 2.0
 `))
 	defaults := DefaultConfig()
-	if result.Config.Theme != defaults.Theme {
-		t.Errorf("invalid theme should fallback, got %s", result.Config.Theme)
-	}
-	if result.Config.LoggerDepth != defaults.LoggerDepth {
-		t.Errorf("invalid logger_depth should fallback, got %d", result.Config.LoggerDepth)
-	}
-	if result.Config.DetailPane.HeightRatio != defaults.DetailPane.HeightRatio {
-		t.Errorf("invalid height_ratio should fallback, got %f", result.Config.DetailPane.HeightRatio)
-	}
+	assert.Equal(t, defaults.Theme, result.Config.Theme, "invalid theme should fallback")
+	assert.Equal(t, defaults.LoggerDepth, result.Config.LoggerDepth, "invalid logger_depth should fallback")
+	assert.InDelta(t, defaults.DetailPane.HeightRatio, result.Config.DetailPane.HeightRatio, 1e-9,
+		"invalid height_ratio should fallback")
 }
 
 func TestLoad_PartialOverride_DefaultsForRest(t *testing.T) {
 	result := LoadFromBytes([]byte(`logger_depth = 5`))
-	if result.Config.LoggerDepth != 5 {
-		t.Errorf("overridden field: want 5, got %d", result.Config.LoggerDepth)
-	}
-	if result.Config.Theme != DefaultConfig().Theme {
-		t.Errorf("non-overridden theme should be default, got %s", result.Config.Theme)
-	}
+	assert.Equal(t, 5, result.Config.LoggerDepth, "overridden field")
+	assert.Equal(t, DefaultConfig().Theme, result.Config.Theme, "non-overridden theme should be default")
 }
 
 func TestRoundTrip_PreservesUnknownKeys(t *testing.T) {
@@ -113,22 +75,14 @@ logger_depth = 3
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 
 	saved, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read saved: %v", err)
-	}
-	if !strings.Contains(string(saved), "future_feature") {
-		t.Error("unknown key 'future_feature' not preserved")
-	}
+	require.NoError(t, err, "read saved")
+	assert.Contains(t, string(saved), "future_feature", "unknown key 'future_feature' not preserved")
 
 	reloaded := Load(path)
-	if reloaded.Config.Theme != "catppuccin-mocha" {
-		t.Errorf("theme not preserved, got %s", reloaded.Config.Theme)
-	}
+	assert.Equal(t, "catppuccin-mocha", reloaded.Config.Theme, "theme not preserved")
 }
 
 // T-085: detail_pane orientation/width keys round-trip.
@@ -142,26 +96,24 @@ orientation_threshold_cols = 80
 wrap_mode = "soft"
 `
 	result := LoadFromBytes([]byte(input))
-	if len(result.Warnings) != 0 {
-		t.Fatalf("unexpected warnings on valid overrides: %v", result.Warnings)
-	}
+	require.Empty(t, result.Warnings, "unexpected warnings on valid overrides")
 	dp := result.Config.DetailPane
-	if dp.HeightRatio != 0.40 || dp.WidthRatio != 0.55 || dp.Position != "right" ||
-		dp.OrientationThresholdCols != 80 || dp.WrapMode != "soft" {
-		t.Errorf("override values not preserved: %+v", dp)
-	}
+	assert.InDelta(t, 0.40, dp.HeightRatio, 1e-9, "HeightRatio preserved")
+	assert.InDelta(t, 0.55, dp.WidthRatio, 1e-9, "WidthRatio preserved")
+	assert.Equal(t, "right", dp.Position)
+	assert.Equal(t, 80, dp.OrientationThresholdCols)
+	assert.Equal(t, "soft", dp.WrapMode)
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 	reloaded := Load(path)
 	dp2 := reloaded.Config.DetailPane
-	if dp2.HeightRatio != 0.40 || dp2.WidthRatio != 0.55 || dp2.Position != "right" ||
-		dp2.OrientationThresholdCols != 80 || dp2.WrapMode != "soft" {
-		t.Errorf("override values not preserved through round-trip: %+v", dp2)
-	}
+	assert.InDelta(t, 0.40, dp2.HeightRatio, 1e-9, "HeightRatio round-trip")
+	assert.InDelta(t, 0.55, dp2.WidthRatio, 1e-9, "WidthRatio round-trip")
+	assert.Equal(t, "right", dp2.Position)
+	assert.Equal(t, 80, dp2.OrientationThresholdCols)
+	assert.Equal(t, "soft", dp2.WrapMode)
 }
 
 // T-085: invalid detail_pane keys fall back to defaults with warnings.
@@ -177,58 +129,38 @@ wrap_mode = "telepathic"
 	result := LoadFromBytes([]byte(input))
 	defaults := DefaultConfig().DetailPane
 	dp := result.Config.DetailPane
-	if dp.WidthRatio != defaults.WidthRatio {
-		t.Errorf("invalid width_ratio should fallback, got %f", dp.WidthRatio)
-	}
-	if dp.Position != defaults.Position {
-		t.Errorf("invalid position should fallback to %s, got %s", defaults.Position, dp.Position)
-	}
-	if dp.OrientationThresholdCols != defaults.OrientationThresholdCols {
-		t.Errorf("invalid orientation_threshold_cols should fallback, got %d", dp.OrientationThresholdCols)
-	}
-	if dp.WrapMode != defaults.WrapMode {
-		t.Errorf("invalid wrap_mode should fallback to %s, got %s", defaults.WrapMode, dp.WrapMode)
-	}
-	if len(result.Warnings) < 4 {
-		t.Errorf("expected 4+ warnings for 4 invalid values, got %d: %v", len(result.Warnings), result.Warnings)
-	}
+	assert.InDelta(t, defaults.WidthRatio, dp.WidthRatio, 1e-9, "invalid width_ratio should fallback")
+	assert.Equal(t, defaults.Position, dp.Position, "invalid position should fallback")
+	assert.Equal(t, defaults.OrientationThresholdCols, dp.OrientationThresholdCols,
+		"invalid orientation_threshold_cols should fallback")
+	assert.Equal(t, defaults.WrapMode, dp.WrapMode, "invalid wrap_mode should fallback")
+	assert.GreaterOrEqual(t, len(result.Warnings), 4,
+		"expected 4+ warnings for 4 invalid values, got %v", result.Warnings)
 }
 
 // T-130: shared top-level scrolloff config.
 func TestDefaultConfig_ScrolloffIs5(t *testing.T) {
 	cfg := DefaultConfig()
-	if cfg.Scrolloff != 5 {
-		t.Errorf("default scrolloff: want 5, got %d", cfg.Scrolloff)
-	}
+	assert.Equal(t, 5, cfg.Scrolloff, "default scrolloff")
 }
 
 func TestScrolloff_OverrideRoundTrips(t *testing.T) {
 	input := `scrolloff = 12
 `
 	result := LoadFromBytes([]byte(input))
-	if len(result.Warnings) != 0 {
-		t.Fatalf("unexpected warnings on valid scrolloff: %v", result.Warnings)
-	}
-	if result.Config.Scrolloff != 12 {
-		t.Errorf("override scrolloff: want 12, got %d", result.Config.Scrolloff)
-	}
+	require.Empty(t, result.Warnings, "unexpected warnings on valid scrolloff")
+	assert.Equal(t, 12, result.Config.Scrolloff, "override scrolloff")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 	reloaded := Load(path)
-	if reloaded.Config.Scrolloff != 12 {
-		t.Errorf("reloaded scrolloff: want 12, got %d", reloaded.Config.Scrolloff)
-	}
+	assert.Equal(t, 12, reloaded.Config.Scrolloff, "reloaded scrolloff")
 }
 
 func TestScrolloff_NegativeClampedToZero(t *testing.T) {
 	result := LoadFromBytes([]byte(`scrolloff = -3
 `))
-	if result.Config.Scrolloff != 0 {
-		t.Errorf("negative scrolloff should clamp to 0, got %d", result.Config.Scrolloff)
-	}
+	assert.Equal(t, 0, result.Config.Scrolloff, "negative scrolloff should clamp to 0")
 	found := false
 	for _, w := range result.Warnings {
 		if strings.Contains(w, "scrolloff") {
@@ -236,26 +168,19 @@ func TestScrolloff_NegativeClampedToZero(t *testing.T) {
 			break
 		}
 	}
-	if !found {
-		t.Errorf("expected warning about scrolloff, got %v", result.Warnings)
-	}
+	assert.True(t, found, "expected warning about scrolloff, got %v", result.Warnings)
 }
 
 func TestScrolloff_MissingKeyUsesDefault(t *testing.T) {
 	result := LoadFromBytes([]byte(`theme = "tokyo-night"
 `))
-	if result.Config.Scrolloff != 5 {
-		t.Errorf("missing scrolloff should default to 5, got %d", result.Config.Scrolloff)
-	}
+	assert.Equal(t, 5, result.Config.Scrolloff, "missing scrolloff should default to 5")
 }
 
 func TestSave_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "config.toml")
-	if err := Save(path, LoadResult{Config: DefaultConfig()}); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Error("config file not created")
-	}
+	require.NoError(t, Save(path, LoadResult{Config: DefaultConfig()}))
+	_, err := os.Stat(path)
+	assert.False(t, os.IsNotExist(err), "config file not created")
 }

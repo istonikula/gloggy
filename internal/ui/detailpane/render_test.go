@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
-	"github.com/muesli/termenv"
 )
 
 func init() {
@@ -54,21 +56,15 @@ func jsonEntry() logsource.Entry {
 // T-035: R2.1 — JSONL entry renders as indented JSON
 func TestRenderJSON_IsIndented(t *testing.T) {
 	result := RenderJSON(jsonEntry(), theme.GetTheme("tokyo-night"), nil)
-	if !strings.Contains(result, "{\n") {
-		t.Error("expected indented JSON with newlines")
-	}
-	if !strings.Contains(result, "  ") {
-		t.Error("expected indentation spaces")
-	}
+	assert.Contains(t, result, "{\n", "expected indented JSON with newlines")
+	assert.Contains(t, result, "  ", "expected indentation spaces")
 }
 
 // T-035: R2.2 — All fields present including extra
 func TestRenderJSON_AllFieldsPresent(t *testing.T) {
 	result := RenderJSON(jsonEntry(), theme.GetTheme("tokyo-night"), nil)
 	for _, field := range []string{"time", "level", "msg", "count", "active", "data"} {
-		if !strings.Contains(result, `"`+field+`"`) {
-			t.Errorf("expected field %q in output", field)
-		}
+		assert.Containsf(t, result, `"`+field+`"`, "expected field %q in output", field)
 	}
 }
 
@@ -77,9 +73,7 @@ func TestRenderJSON_KeyColor(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
 	result := RenderJSON(jsonEntry(), th, nil)
 	want := colorANSI(th.SyntaxKey)
-	if !strings.Contains(result, want) {
-		t.Errorf("expected SyntaxKey ANSI code %s in output", want)
-	}
+	assert.Containsf(t, result, want, "expected SyntaxKey ANSI code %s in output", want)
 }
 
 // T-035: R2.4 — String value color
@@ -87,9 +81,7 @@ func TestRenderJSON_StringColor(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
 	result := RenderJSON(jsonEntry(), th, nil)
 	want := colorANSI(th.SyntaxString)
-	if !strings.Contains(result, want) {
-		t.Errorf("expected SyntaxString ANSI code %s in output", want)
-	}
+	assert.Containsf(t, result, want, "expected SyntaxString ANSI code %s in output", want)
 }
 
 // T-035: R2.5 — Number value color
@@ -97,9 +89,7 @@ func TestRenderJSON_NumberColor(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
 	result := RenderJSON(jsonEntry(), th, nil)
 	want := colorANSI(th.SyntaxNumber)
-	if !strings.Contains(result, want) {
-		t.Errorf("expected SyntaxNumber ANSI code %s in output", want)
-	}
+	assert.Containsf(t, result, want, "expected SyntaxNumber ANSI code %s in output", want)
 }
 
 // T-035: R2.6 — Boolean value color
@@ -107,9 +97,7 @@ func TestRenderJSON_BoolColor(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
 	result := RenderJSON(jsonEntry(), th, nil)
 	want := colorANSI(th.SyntaxBoolean)
-	if !strings.Contains(result, want) {
-		t.Errorf("expected SyntaxBoolean ANSI code %s in output", want)
-	}
+	assert.Containsf(t, result, want, "expected SyntaxBoolean ANSI code %s in output", want)
 }
 
 // T-035: R2.7 — Null value color
@@ -117,9 +105,7 @@ func TestRenderJSON_NullColor(t *testing.T) {
 	th := theme.GetTheme("tokyo-night")
 	result := RenderJSON(jsonEntry(), th, nil)
 	want := colorANSI(th.SyntaxNull)
-	if !strings.Contains(result, want) {
-		t.Errorf("expected SyntaxNull ANSI code %s in output", want)
-	}
+	assert.Containsf(t, result, want, "expected SyntaxNull ANSI code %s in output", want)
 }
 
 // T-035: R2.8 — Theme switch changes ANSI codes
@@ -133,26 +119,17 @@ func TestRenderJSON_ThemeSwitch(t *testing.T) {
 	if string(th1.SyntaxKey) == string(th2.SyntaxKey) {
 		t.Skip("themes have identical key color, skipping switch test")
 	}
-	if out1 == out2 {
-		t.Error("expected different output when switching themes")
-	}
-	if !strings.Contains(out2, colorANSI(th2.SyntaxKey)) {
-		t.Errorf("catppuccin-mocha output missing its key ANSI code %s", colorANSI(th2.SyntaxKey))
-	}
+	assert.NotEqual(t, out1, out2, "expected different output when switching themes")
+	want := colorANSI(th2.SyntaxKey)
+	assert.Containsf(t, out2, want, "catppuccin-mocha output missing its key ANSI code %s", want)
 }
 
 // T-035: hidden fields are omitted
 func TestRenderJSON_HiddenFields(t *testing.T) {
 	result := RenderJSON(jsonEntry(), theme.GetTheme("tokyo-night"), []string{"level", "count"})
-	if strings.Contains(result, `"level"`) {
-		t.Error("hidden field 'level' should not appear in output")
-	}
-	if strings.Contains(result, `"count"`) {
-		t.Error("hidden field 'count' should not appear in output")
-	}
-	if !strings.Contains(result, `"msg"`) {
-		t.Error("non-hidden field 'msg' should appear in output")
-	}
+	assert.NotContains(t, result, `"level"`, "hidden field 'level' should not appear in output")
+	assert.NotContains(t, result, `"count"`, "hidden field 'count' should not appear in output")
+	assert.Contains(t, result, `"msg"`, "non-hidden field 'msg' should appear in output")
 }
 
 // T-036: R3.1 — Non-JSON entry displays as plain raw text
@@ -162,9 +139,7 @@ func TestRenderRaw_PlainText(t *testing.T) {
 		Raw:    []byte("2024-01-01 ERROR could not connect to database"),
 	}
 	result := RenderRaw(entry)
-	if result != "2024-01-01 ERROR could not connect to database" {
-		t.Errorf("unexpected raw render: %q", result)
-	}
+	assert.Equal(t, "2024-01-01 ERROR could not connect to database", result)
 }
 
 // T-036: R3.2 — No JSON formatting applied to non-JSON entries
@@ -175,10 +150,6 @@ func TestRenderRaw_NoANSI(t *testing.T) {
 	}
 	result := RenderRaw(entry)
 	// Result must not contain ANSI escape sequences.
-	if strings.Contains(result, "\x1b[") {
-		t.Error("expected no ANSI escape codes in raw output")
-	}
-	if result != "plain text {not json}" {
-		t.Errorf("unexpected output: %q", result)
-	}
+	assert.NotContains(t, result, "\x1b[", "expected no ANSI escape codes in raw output")
+	assert.Equal(t, "plain text {not json}", result)
 }

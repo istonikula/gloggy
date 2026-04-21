@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/istonikula/gloggy/internal/logsource"
 )
 
@@ -14,9 +16,7 @@ import (
 func TestTailMode_NewEntriesAppear(t *testing.T) {
 	// Write initial content.
 	f, err := os.CreateTemp("", "gloggy-tail-test-*.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(f.Name())
 	fmt.Fprintf(f, `{"level":"INFO","msg":"initial"}`+"\n")
 	name := f.Name()
@@ -26,16 +26,12 @@ func TestTailMode_NewEntriesAppear(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := logsource.TailFile(ctx, name, 2)
-	if cmd == nil {
-		t.Fatal("TailFile should return a non-nil Cmd")
-	}
+	require.NotNil(t, cmd, "TailFile should return a non-nil Cmd")
 
 	// Append a new line after a brief delay.
 	time.Sleep(50 * time.Millisecond)
 	fAppend, err := os.OpenFile(name, os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fmt.Fprintf(fAppend, `{"level":"WARN","msg":"new line"}`+"\n")
 	fAppend.Close()
 

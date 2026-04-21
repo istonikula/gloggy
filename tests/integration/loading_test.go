@@ -5,6 +5,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/ui/appshell"
 )
@@ -13,9 +16,7 @@ import (
 func TestBackgroundLoading_ProgressTracked(t *testing.T) {
 	// Write a temp file with 50 JSONL entries.
 	f, err := os.CreateTemp("", "gloggy-test-*.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(f.Name())
 	for i := 0; i < 50; i++ {
 		fmt.Fprintf(f, `{"level":"INFO","msg":"entry %d"}`+"\n", i)
@@ -23,9 +24,7 @@ func TestBackgroundLoading_ProgressTracked(t *testing.T) {
 	f.Close()
 
 	loading := appshell.NewLoadingModel().Start()
-	if !loading.IsActive() {
-		t.Fatal("loading model should be active after Start()")
-	}
+	require.True(t, loading.IsActive(), "loading model should be active after Start()")
 
 	// Drain the stream by invoking Cmds synchronously.
 	cmd := logsource.LoadFile(f.Name())
@@ -62,26 +61,16 @@ func TestBackgroundLoading_ProgressTracked(t *testing.T) {
 	if loading.IsActive() {
 		loading = loading.Done()
 	}
-	if loading.IsActive() {
-		t.Error("loading should not be active after Done()")
-	}
-	if totalEntries < 1 {
-		t.Errorf("expected at least 1 entry loaded, got %d", totalEntries)
-	}
+	assert.False(t, loading.IsActive(), "loading should not be active after Done()")
+	assert.GreaterOrEqualf(t, totalEntries, 1, "expected at least 1 entry loaded, got %d", totalEntries)
 }
 
 // T-057: app-shell/R8 — loading indicator visible during load, hidden when done.
 func TestLoadingModel_ShowDuringLoad_HideWhenDone(t *testing.T) {
 	m := appshell.NewLoadingModel()
-	if m.View() != "" {
-		t.Error("loading indicator should be hidden initially")
-	}
+	assert.Empty(t, m.View(), "loading indicator should be hidden initially")
 	m = m.Start().Update(100)
-	if m.View() == "" {
-		t.Error("loading indicator should be visible during load")
-	}
+	assert.NotEmpty(t, m.View(), "loading indicator should be visible during load")
 	m = m.Done()
-	if m.View() != "" {
-		t.Error("loading indicator should be hidden after done")
-	}
+	assert.Empty(t, m.View(), "loading indicator should be hidden after done")
 }

@@ -1,22 +1,18 @@
 package appshell
 
 import (
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
 )
 
 // T-051: R5.1 — ? opens the help overlay.
 func TestHelpOverlay_QuestionMark_Opens(t *testing.T) {
 	m := NewHelpOverlayModel()
 	m2, forward := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	if !m2.IsOpen() {
-		t.Error("? should open the help overlay")
-	}
-	if forward {
-		t.Error("? should not be forwarded to other components")
-	}
+	assert.Truef(t, m2.IsOpen(), "? should open the help overlay")
+	assert.Falsef(t, forward, "? should not be forwarded to other components")
 }
 
 // T-051: R5.2 — overlay lists all keybindings by domain.
@@ -24,9 +20,7 @@ func TestHelpOverlay_View_ContainsDomains(t *testing.T) {
 	m := NewHelpOverlayModel().Open()
 	v := m.View()
 	for _, domain := range Domains() {
-		if !strings.Contains(v, string(domain)) {
-			t.Errorf("expected domain %q in help overlay view", domain)
-		}
+		assert.Containsf(t, v, string(domain), "expected domain %q in help overlay view", domain)
 	}
 }
 
@@ -34,27 +28,19 @@ func TestHelpOverlay_View_ContainsDomains(t *testing.T) {
 func TestHelpOverlay_Esc_Closes(t *testing.T) {
 	m := NewHelpOverlayModel().Open()
 	m2, forward := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if m2.IsOpen() {
-		t.Error("Esc should close the help overlay")
-	}
-	if forward {
-		t.Error("Esc should not be forwarded when overlay is open")
-	}
+	assert.Falsef(t, m2.IsOpen(), "Esc should close the help overlay")
+	assert.Falsef(t, forward, "Esc should not be forwarded when overlay is open")
 }
 
 // T-051: R5.4 — other keys are intercepted while overlay is open.
 func TestHelpOverlay_OtherKeys_Intercepted(t *testing.T) {
 	m := NewHelpOverlayModel().Open()
 	_, forward := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if forward {
-		t.Error("j should be intercepted while help overlay is open")
-	}
+	assert.Falsef(t, forward, "j should be intercepted while help overlay is open")
 }
 
 // Closed overlay view is empty.
 func TestHelpOverlay_Closed_ViewEmpty(t *testing.T) {
 	m := NewHelpOverlayModel()
-	if m.View() != "" {
-		t.Error("expected empty view when overlay is closed")
-	}
+	assert.Emptyf(t, m.View(), "expected empty view when overlay is closed")
 }

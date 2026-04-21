@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // T-046: R2.1 — header at top, entrylist in middle, status at bottom.
@@ -12,19 +14,11 @@ func TestLayout_Render_WithoutDetailPane(t *testing.T) {
 	m := NewLayoutModel(80, 24)
 	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
 	lines := strings.Split(out, "\n")
-	if strings.TrimSpace(lines[0]) != "HEADER" {
-		t.Errorf("first line should be HEADER, got %q", lines[0])
-	}
-	if strings.TrimSpace(lines[1]) != "ENTRYLIST" {
-		t.Errorf("second line should be ENTRYLIST, got %q", lines[1])
-	}
-	if strings.TrimSpace(lines[len(lines)-1]) != "STATUS" {
-		t.Errorf("last line should be STATUS, got %q", lines[len(lines)-1])
-	}
+	assert.Equalf(t, "HEADER", strings.TrimSpace(lines[0]), "first line should be HEADER")
+	assert.Equalf(t, "ENTRYLIST", strings.TrimSpace(lines[1]), "second line should be ENTRYLIST")
+	assert.Equalf(t, "STATUS", strings.TrimSpace(lines[len(lines)-1]), "last line should be STATUS")
 	// Detail pane should not appear when closed.
-	if strings.Contains(out, "DETAIL") {
-		t.Error("DETAIL should not appear when pane is closed")
-	}
+	assert.NotContainsf(t, out, "DETAIL", "DETAIL should not appear when pane is closed")
 }
 
 // T-046: R2.3 — detail pane appears between entry list and status bar when open.
@@ -33,81 +27,57 @@ func TestLayout_Render_WithDetailPane(t *testing.T) {
 	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
 	lines := strings.Split(out, "\n")
 	// Should be: HEADER, ENTRYLIST, DETAIL, STATUS
-	if strings.TrimSpace(lines[0]) != "HEADER" {
-		t.Errorf("line 0: want HEADER, got %q", lines[0])
-	}
-	if strings.TrimSpace(lines[1]) != "ENTRYLIST" {
-		t.Errorf("line 1: want ENTRYLIST, got %q", lines[1])
-	}
-	if strings.TrimSpace(lines[2]) != "DETAIL" {
-		t.Errorf("line 2: want DETAIL, got %q", lines[2])
-	}
-	if strings.TrimSpace(lines[3]) != "STATUS" {
-		t.Errorf("line 3: want STATUS, got %q", lines[3])
-	}
+	assert.Equalf(t, "HEADER", strings.TrimSpace(lines[0]), "line 0: want HEADER")
+	assert.Equalf(t, "ENTRYLIST", strings.TrimSpace(lines[1]), "line 1: want ENTRYLIST")
+	assert.Equalf(t, "DETAIL", strings.TrimSpace(lines[2]), "line 2: want DETAIL")
+	assert.Equalf(t, "STATUS", strings.TrimSpace(lines[3]), "line 3: want STATUS")
 }
 
 // T-046: R2.5 — entry list height fills available space.
 func TestLayout_EntryListHeight_FillsSpace(t *testing.T) {
 	l := NewLayout(80, 24, false, 0)
 	// 24 rows - 1 header - 1 status = 22
-	if l.EntryListHeight() != 22 {
-		t.Errorf("entry list height: got %d, want 22", l.EntryListHeight())
-	}
+	assert.Equalf(t, 22, l.EntryListHeight(), "entry list height")
 }
 
 // T-046: R2.3 — entry list height reduced by detail pane when open.
 func TestLayout_EntryListHeight_ReducedByDetailPane(t *testing.T) {
 	l := NewLayout(80, 24, true, 8)
 	// 24 - 1 - 1 - 8 = 14
-	if l.EntryListHeight() != 14 {
-		t.Errorf("entry list height with detail pane: got %d, want 14", l.EntryListHeight())
-	}
+	assert.Equalf(t, 14, l.EntryListHeight(), "entry list height with detail pane")
 }
 
 // SetSize updates dimensions.
 func TestLayoutModel_SetSize(t *testing.T) {
 	m := NewLayoutModel(80, 24).SetSize(120, 40)
 	l := m.Layout()
-	if l.Width != 120 || l.Height != 40 {
-		t.Errorf("SetSize: got %dx%d, want 120x40", l.Width, l.Height)
-	}
+	assert.Equalf(t, 120, l.Width, "SetSize width")
+	assert.Equalf(t, 40, l.Height, "SetSize height")
 }
 
 // T-090: terminal-too-small fallback at 59x15.
 func TestLayout_FallbackBelowMinWidth(t *testing.T) {
 	m := NewLayoutModel(59, 15)
 	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
-	if !strings.Contains(out, "terminal too small") {
-		t.Errorf("expected fallback message at 59x15, got %q", out)
-	}
-	if strings.Contains(out, "HEADER") || strings.Contains(out, "ENTRYLIST") {
-		t.Errorf("panels should be suppressed at 59x15, got %q", out)
-	}
+	assert.Containsf(t, out, "terminal too small", "expected fallback message at 59x15, got %q", out)
+	assert.NotContainsf(t, out, "HEADER", "panels should be suppressed at 59x15, got %q", out)
+	assert.NotContainsf(t, out, "ENTRYLIST", "panels should be suppressed at 59x15, got %q", out)
 }
 
 // T-090: terminal-too-small fallback at 60x14.
 func TestLayout_FallbackBelowMinHeight(t *testing.T) {
 	m := NewLayoutModel(60, 14)
 	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
-	if !strings.Contains(out, "terminal too small") {
-		t.Errorf("expected fallback message at 60x14, got %q", out)
-	}
-	if strings.Contains(out, "HEADER") {
-		t.Errorf("panels should be suppressed at 60x14, got %q", out)
-	}
+	assert.Containsf(t, out, "terminal too small", "expected fallback message at 60x14, got %q", out)
+	assert.NotContainsf(t, out, "HEADER", "panels should be suppressed at 60x14, got %q", out)
 }
 
 // T-090: normal render resumes at 60x15.
 func TestLayout_NormalRenderAtMinFloor(t *testing.T) {
 	m := NewLayoutModel(60, 15)
 	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
-	if strings.Contains(out, "terminal too small") {
-		t.Errorf("normal render should resume at 60x15, got %q", out)
-	}
-	if !strings.Contains(out, "HEADER") {
-		t.Errorf("HEADER should appear at 60x15, got %q", out)
-	}
+	assert.NotContainsf(t, out, "terminal too small", "normal render should resume at 60x15, got %q", out)
+	assert.Containsf(t, out, "HEADER", "HEADER should appear at 60x15, got %q", out)
 }
 
 // T-088: ListContentWidth + DetailContentWidth in right-split sum with chrome
@@ -130,10 +100,9 @@ func TestLayout_RightSplit_ContentWidthsSumWithChrome(t *testing.T) {
 		detailW := l.DetailContentWidth()
 		// Sum: list + 2 borders + 1 divider + 2 borders + detail.
 		got := listW + 2 + 1 + 2 + detailW
-		if got != tc.termW {
-			t.Errorf("widths+chrome (termW=%d, ratio=%.2f): list=%d, detail=%d, sum=%d, want %d",
-				tc.termW, tc.ratio, listW, detailW, got, tc.termW)
-		}
+		assert.Equalf(t, tc.termW, got,
+			"widths+chrome (termW=%d, ratio=%.2f): list=%d, detail=%d",
+			tc.termW, tc.ratio, listW, detailW)
 	}
 }
 
@@ -143,12 +112,8 @@ func TestLayout_RightSplit_DesignExampleNumbers(t *testing.T) {
 	l := NewLayout(120, 24, true, 0)
 	l.Orientation = OrientationRight
 	l.WidthRatio = 0.30
-	if got := l.ListContentWidth(); got != 80 {
-		t.Errorf("ListContentWidth(120, 0.30): got %d, want 80", got)
-	}
-	if got := l.DetailContentWidth(); got != 35 {
-		t.Errorf("DetailContentWidth(120, 0.30): got %d, want 35", got)
-	}
+	assert.Equalf(t, 80, l.ListContentWidth(), "ListContentWidth(120, 0.30)")
+	assert.Equalf(t, 35, l.DetailContentWidth(), "DetailContentWidth(120, 0.30)")
 }
 
 // T-088: Render in right-split composes JoinHorizontal(list, divider, detail)
@@ -169,22 +134,16 @@ func TestLayoutModel_Render_RightSplit_TotalWidth(t *testing.T) {
 	lines := strings.Split(out, "\n")
 	// Header is line 0; main starts at line 1; status is the last line.
 	mainLine := lines[1]
-	if w := lipgloss.Width(mainLine); w != 120 {
-		t.Errorf("main line width: got %d, want 120; line=%q", w, mainLine)
-	}
+	assert.Equalf(t, 120, lipgloss.Width(mainLine), "main line width; line=%q", mainLine)
 }
 
 // T-088: Below-mode keeps the existing vertical composition unchanged.
 func TestLayoutModel_Render_BelowMode_Unchanged(t *testing.T) {
 	m := NewLayoutModel(80, 24).SetDetailPane(true, 5) // orientation defaults to below
 	out := m.Render("HEADER", "ENTRYLIST", "DETAIL", "STATUS")
-	if !strings.Contains(out, "DETAIL") {
-		t.Error("below-mode render must include DETAIL line")
-	}
+	assert.Containsf(t, out, "DETAIL", "below-mode render must include DETAIL line")
 	// Should not contain the divider glyph.
-	if strings.Contains(out, "│") {
-		t.Errorf("below-mode render must not include the right-split divider, got %q", out)
-	}
+	assert.NotContainsf(t, out, "│", "below-mode render must not include the right-split divider, got %q", out)
 }
 
 // T-088: EntryListHeight ignores DetailPaneHeight in right-split.
@@ -193,9 +152,7 @@ func TestLayout_RightSplit_EntryListHeightFull(t *testing.T) {
 	l.Orientation = OrientationRight
 	// In right-split the detail pane is alongside, not below — list height
 	// should be height - header - status = 22, NOT reduced by 8.
-	if l.EntryListHeight() != 22 {
-		t.Errorf("right-split EntryListHeight: got %d, want 22", l.EntryListHeight())
-	}
+	assert.Equalf(t, 22, l.EntryListHeight(), "right-split EntryListHeight")
 }
 
 // T-090: IsBelowMinFloor predicate.
@@ -212,9 +169,7 @@ func TestLayout_IsBelowMinFloor(t *testing.T) {
 	}
 	for _, tc := range cases {
 		m := NewLayoutModel(tc.w, tc.h)
-		if got := m.IsBelowMinFloor(); got != tc.want {
-			t.Errorf("IsBelowMinFloor(%dx%d) = %v, want %v", tc.w, tc.h, got, tc.want)
-		}
+		assert.Equalf(t, tc.want, m.IsBelowMinFloor(), "IsBelowMinFloor(%dx%d)", tc.w, tc.h)
 	}
 }
 
@@ -226,39 +181,29 @@ func TestDetailPaneVerticalRows_RightUsesFullSlot(t *testing.T) {
 	// PaneHeight == 7. Right-mode must override to 22 (24 - 1 - 1).
 	l := NewLayout(80, 24, true, 7)
 	l.Orientation = OrientationRight
-	if got := DetailPaneVerticalRows(l); got != 22 {
-		t.Errorf("right-split vertical rows: got %d, want 22", got)
-	}
+	assert.Equalf(t, 22, DetailPaneVerticalRows(l), "right-split vertical rows")
 }
 
 // T-123: In below-mode the function preserves DetailPaneHeight (height_ratio).
 func TestDetailPaneVerticalRows_BelowUsesRatio(t *testing.T) {
 	l := NewLayout(80, 24, true, 7)
 	l.Orientation = OrientationBelow
-	if got := DetailPaneVerticalRows(l); got != 7 {
-		t.Errorf("below-mode vertical rows: got %d, want 7", got)
-	}
+	assert.Equalf(t, 7, DetailPaneVerticalRows(l), "below-mode vertical rows")
 }
 
 // T-123: closed pane returns 0 in both orientations.
 func TestDetailPaneVerticalRows_ClosedReturnsZero(t *testing.T) {
 	l := NewLayout(80, 24, false, 0)
-	if got := DetailPaneVerticalRows(l); got != 0 {
-		t.Errorf("closed below: got %d, want 0", got)
-	}
+	assert.Equalf(t, 0, DetailPaneVerticalRows(l), "closed below")
 	l.Orientation = OrientationRight
-	if got := DetailPaneVerticalRows(l); got != 0 {
-		t.Errorf("closed right: got %d, want 0", got)
-	}
+	assert.Equalf(t, 0, DetailPaneVerticalRows(l), "closed right")
 }
 
 // T-123: degenerate dimensions (header+status exceed height) still return ≥ 1.
 func TestDetailPaneVerticalRows_FloorAtOne(t *testing.T) {
 	l := NewLayout(80, 2, true, 0)
 	l.Orientation = OrientationRight
-	if got := DetailPaneVerticalRows(l); got < 1 {
-		t.Errorf("degenerate right: got %d, want ≥ 1", got)
-	}
+	assert.GreaterOrEqualf(t, DetailPaneVerticalRows(l), 1, "degenerate right")
 }
 
 // ---------- T-158: single-owner click-row resolver (cavekit-entry-list R10) ----------
@@ -266,9 +211,7 @@ func TestDetailPaneVerticalRows_FloorAtOne(t *testing.T) {
 // TestLayout_ListContentTopY_BelowMode: header(1) + list top border(1) = 2.
 func TestLayout_ListContentTopY_BelowMode(t *testing.T) {
 	l := NewLayout(80, 24, true, 7)
-	if got := l.ListContentTopY(); got != 2 {
-		t.Errorf("below-mode ListContentTopY: got %d, want 2", got)
-	}
+	assert.Equalf(t, 2, l.ListContentTopY(), "below-mode ListContentTopY")
 }
 
 // TestLayout_ListContentTopY_RightMode: right-split also has header+border,
@@ -276,30 +219,22 @@ func TestLayout_ListContentTopY_BelowMode(t *testing.T) {
 func TestLayout_ListContentTopY_RightMode(t *testing.T) {
 	l := NewLayout(200, 24, true, 0)
 	l.Orientation = OrientationRight
-	if got := l.ListContentTopY(); got != 2 {
-		t.Errorf("right-mode ListContentTopY: got %d, want 2", got)
-	}
+	assert.Equalf(t, 2, l.ListContentTopY(), "right-mode ListContentTopY")
 }
 
 // TestLayout_ListContentTopY_PaneClosed: closed-pane layouts still have a
 // header and a list top border — offset stays 2.
 func TestLayout_ListContentTopY_PaneClosed(t *testing.T) {
 	l := NewLayout(80, 24, false, 0)
-	if got := l.ListContentTopY(); got != 2 {
-		t.Errorf("pane-closed ListContentTopY: got %d, want 2", got)
-	}
+	assert.Equalf(t, 2, l.ListContentTopY(), "pane-closed ListContentTopY")
 }
 
 // TestLayout_ClickToListRow_FirstContentRow: y = ListContentTopY → row 0.
 func TestLayout_ClickToListRow_FirstContentRow(t *testing.T) {
 	l := NewLayout(80, 24, true, 7) // EntryListHeight = 15, viewport = 13
 	row, ok := l.ClickToListRow(2)
-	if !ok {
-		t.Fatalf("y=2 should be in content, got ok=false")
-	}
-	if row != 0 {
-		t.Errorf("y=2: got row %d, want 0", row)
-	}
+	require.Truef(t, ok, "y=2 should be in content, got ok=false")
+	assert.Equalf(t, 0, row, "y=2 row")
 }
 
 // TestLayout_ClickToListRow_SequentialRows: each +1 terminal Y advances the
@@ -308,13 +243,10 @@ func TestLayout_ClickToListRow_SequentialRows(t *testing.T) {
 	l := NewLayout(80, 24, true, 7)
 	for y, wantRow := range map[int]int{2: 0, 3: 1, 5: 3, 14: 12} {
 		row, ok := l.ClickToListRow(y)
-		if !ok {
-			t.Errorf("y=%d: expected in-content, got ok=false", y)
+		if !assert.Truef(t, ok, "y=%d: expected in-content, got ok=false", y) {
 			continue
 		}
-		if row != wantRow {
-			t.Errorf("y=%d: got row %d, want %d", y, row, wantRow)
-		}
+		assert.Equalf(t, wantRow, row, "y=%d row", y)
 	}
 }
 
@@ -322,18 +254,16 @@ func TestLayout_ClickToListRow_SequentialRows(t *testing.T) {
 // ok=false.
 func TestLayout_ClickToListRow_HeaderIsOutsideContent(t *testing.T) {
 	l := NewLayout(80, 24, true, 7)
-	if _, ok := l.ClickToListRow(0); ok {
-		t.Error("y=0 (header) should return ok=false")
-	}
+	_, ok := l.ClickToListRow(0)
+	assert.Falsef(t, ok, "y=0 (header) should return ok=false")
 }
 
 // TestLayout_ClickToListRow_TopBorderIsOutsideContent: y=1 (list top border)
 // returns ok=false.
 func TestLayout_ClickToListRow_TopBorderIsOutsideContent(t *testing.T) {
 	l := NewLayout(80, 24, true, 7)
-	if _, ok := l.ClickToListRow(1); ok {
-		t.Error("y=1 (list top border) should return ok=false")
-	}
+	_, ok := l.ClickToListRow(1)
+	assert.Falsef(t, ok, "y=1 (list top border) should return ok=false")
 }
 
 // TestLayout_ClickToListRow_BottomBorderIsOutsideContent: the bottom border
@@ -342,9 +272,8 @@ func TestLayout_ClickToListRow_BottomBorderIsOutsideContent(t *testing.T) {
 	// EntryListHeight = 24 - 2 - 7 = 15 → content rows = 13 → last content y = 2+12 = 14
 	// Bottom border sits at entryListEnd = 15.
 	l := NewLayout(80, 24, true, 7)
-	if _, ok := l.ClickToListRow(15); ok {
-		t.Error("y=15 (list bottom border) should return ok=false")
-	}
+	_, ok := l.ClickToListRow(15)
+	assert.Falsef(t, ok, "y=15 (list bottom border) should return ok=false")
 }
 
 // TestLayout_ClickToListRow_DividerIsOutsideContent: below-mode divider row
@@ -352,9 +281,8 @@ func TestLayout_ClickToListRow_BottomBorderIsOutsideContent(t *testing.T) {
 func TestLayout_ClickToListRow_DividerIsOutsideContent(t *testing.T) {
 	l := NewLayout(80, 24, true, 7)
 	// Divider row in below-mode = entryListEnd+1 = 16.
-	if _, ok := l.ClickToListRow(16); ok {
-		t.Error("y=16 (divider) should return ok=false")
-	}
+	_, ok := l.ClickToListRow(16)
+	assert.Falsef(t, ok, "y=16 (divider) should return ok=false")
 }
 
 // TestLayout_ClickToListRow_DegenerateHeight: a layout with no room for
@@ -362,8 +290,7 @@ func TestLayout_ClickToListRow_DividerIsOutsideContent(t *testing.T) {
 func TestLayout_ClickToListRow_DegenerateHeight(t *testing.T) {
 	l := NewLayout(80, 4, true, 0)
 	for y := 0; y < 4; y++ {
-		if _, ok := l.ClickToListRow(y); ok {
-			t.Errorf("degenerate height: y=%d should be ok=false", y)
-		}
+		_, ok := l.ClickToListRow(y)
+		assert.Falsef(t, ok, "degenerate height: y=%d should be ok=false", y)
 	}
 }

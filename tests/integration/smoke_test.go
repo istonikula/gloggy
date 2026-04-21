@@ -8,6 +8,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/filter"
@@ -23,9 +25,7 @@ import (
 func TestFullApp_SmokeTest(t *testing.T) {
 	// Create sample JSONL file.
 	f, err := os.CreateTemp("", "gloggy-smoke-*.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(f.Name())
 	levels := []string{"INFO", "ERROR", "WARN", "DEBUG", "ERROR", "INFO"}
 	for i, level := range levels {
@@ -35,21 +35,13 @@ func TestFullApp_SmokeTest(t *testing.T) {
 
 	// Parse CLI args.
 	args, err := ParseArgs(f.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if args.FilePath != f.Name() {
-		t.Fatalf("expected file path %q, got %q", f.Name(), args.FilePath)
-	}
+	require.NoError(t, err)
+	require.Equalf(t, f.Name(), args.FilePath, "expected file path %q, got %q", f.Name(), args.FilePath)
 
 	// Load entries synchronously.
 	entries, err := logsource.ReadFile(f.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 6 {
-		t.Fatalf("expected 6 entries, got %d", len(entries))
-	}
+	require.NoError(t, err)
+	require.Lenf(t, entries, 6, "expected 6 entries, got %d", len(entries))
 
 	th := theme.GetTheme("tokyo-night")
 	cfg := config.DefaultConfig()
@@ -66,14 +58,10 @@ func TestFullApp_SmokeTest(t *testing.T) {
 
 	// Open detail pane.
 	entry, ok := list.SelectedEntry()
-	if !ok {
-		t.Fatal("no selected entry")
-	}
+	require.True(t, ok, "no selected entry")
 	pane := detailpane.NewPaneModel(th, 8).Open(entry)
 	paneView := pane.View()
-	if paneView == "" {
-		t.Error("detail pane view should not be empty")
-	}
+	assert.NotEmpty(t, paneView, "detail pane view should not be empty")
 
 	// Scroll detail pane.
 	pane, _ = pane.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
@@ -81,9 +69,7 @@ func TestFullApp_SmokeTest(t *testing.T) {
 
 	// Close detail pane.
 	pane, _ = pane.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if pane.IsOpen() {
-		t.Error("pane should be closed after Esc")
-	}
+	assert.False(t, pane.IsOpen(), "pane should be closed after Esc")
 
 	// Apply filter: include only ERROR entries.
 	fs := filter.NewFilterSet()
@@ -91,17 +77,13 @@ func TestFullApp_SmokeTest(t *testing.T) {
 	indices := filter.Apply(fs, entries)
 	list = list.SetFilter(indices)
 	filterView := list.View()
-	if filterView == "" {
-		t.Error("list view should not be empty after filter")
-	}
+	assert.NotEmpty(t, filterView, "list view should not be empty after filter")
 
 	// Move to top to ensure cursor is in valid filtered range, then mark.
 	list, _ = list.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	list, _ = list.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
 	markedView := list.View()
-	if !strings.Contains(markedView, "* ") {
-		t.Error("expected mark indicator in view after marking")
-	}
+	assert.True(t, strings.Contains(markedView, "* "), "expected mark indicator in view after marking")
 
 	// Resize terminal.
 	list, _ = list.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
@@ -110,31 +92,29 @@ func TestFullApp_SmokeTest(t *testing.T) {
 	// Help overlay: open and close.
 	help := appshell.NewHelpOverlayModel()
 	help, _ = help.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	if !help.IsOpen() {
-		t.Error("help overlay should be open after ?")
-	}
+	assert.True(t, help.IsOpen(), "help overlay should be open after ?")
 	help, _ = help.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if help.IsOpen() {
-		t.Error("help overlay should be closed after Esc")
-	}
+	assert.False(t, help.IsOpen(), "help overlay should be closed after Esc")
 
 	// Layout model.
 	layout := appshell.NewLayoutModel(80, 24).SetDetailPane(true, 8)
 	rendered := layout.Render("header", "list", "detail", "status")
-	if rendered == "" {
-		t.Error("rendered layout should not be empty")
-	}
+	assert.NotEmpty(t, rendered, "rendered layout should not be empty")
 
 	// Loading indicator lifecycle.
 	loading := appshell.NewLoadingModel().Start().Update(len(entries)).Done()
-	if loading.IsActive() {
-		t.Error("loading should be done")
-	}
+	assert.False(t, loading.IsActive(), "loading should be done")
 
 	_ = time.Now() // satisfy import
 }
 
 // ParseArgs is a thin wrapper for the integration test (avoids importing main package).
-func ParseArgs(filePath string) (struct{ FilePath string; FollowMode bool }, error) {
-	return struct{ FilePath string; FollowMode bool }{FilePath: filePath, FollowMode: false}, nil
+func ParseArgs(filePath string) (struct {
+	FilePath   string
+	FollowMode bool
+}, error) {
+	return struct {
+		FilePath   string
+		FollowMode bool
+	}{FilePath: filePath, FollowMode: false}, nil
 }

@@ -3,8 +3,10 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // T-024: When hidden_fields is updated interactively and saved, the config
@@ -23,9 +25,7 @@ fields = ["time", "level", "msg"]
 [detail_pane]
 height_ratio = 0.30
 `
-	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
-		t.Fatalf("write initial config: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0o644), "write initial config")
 
 	// Load it.
 	result := Load(path)
@@ -34,21 +34,13 @@ height_ratio = 0.30
 	result.Config.HiddenFields = []string{"thread", "logger"}
 
 	// Save back.
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 
 	// Reload and verify.
 	result2 := Load(path)
-	if len(result2.Config.HiddenFields) != 2 {
-		t.Fatalf("expected 2 hidden fields, got %v", result2.Config.HiddenFields)
-	}
-	if result2.Config.Theme != "tokyo-night" {
-		t.Errorf("theme changed unexpectedly: %q", result2.Config.Theme)
-	}
-	if result2.Config.LoggerDepth != 2 {
-		t.Errorf("logger_depth changed unexpectedly: %d", result2.Config.LoggerDepth)
-	}
+	require.Len(t, result2.Config.HiddenFields, 2)
+	assert.Equal(t, "tokyo-night", result2.Config.Theme, "theme changed unexpectedly")
+	assert.Equal(t, 2, result2.Config.LoggerDepth, "logger_depth changed unexpectedly")
 
 	// R6.2: saved file must be valid TOML — reload succeeded above.
 	// R6.3: other fields not affected — checked theme and logger_depth above.
@@ -59,15 +51,11 @@ func TestSave_ProducesValidTOML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	result := LoadResult{Config: DefaultConfig(), rawData: map[string]any{}}
 
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 
 	// Loading the saved file must not produce warnings.
 	result2 := Load(path)
-	if len(result2.Warnings) != 0 {
-		t.Errorf("reloaded config has warnings: %v", result2.Warnings)
-	}
+	assert.Empty(t, result2.Warnings, "reloaded config has warnings")
 }
 
 // T-025: Unknown keys in the config survive a load-save round-trip (R7 / R3.2).
@@ -82,25 +70,17 @@ some_unknown_section = { value = 42 }
 height_ratio = 0.30
 experimental_feature = true
 `
-	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
-		t.Fatalf("write initial: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0o644), "write initial")
 
 	result := Load(path)
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read saved: %v", err)
-	}
+	require.NoError(t, err, "read saved")
 	content := string(data)
 
 	for _, key := range []string{"future_plugin", "some_unknown_section"} {
-		if !strings.Contains(content, key) {
-			t.Errorf("unknown key %q was not preserved after save", key)
-		}
+		assert.Contains(t, content, key, "unknown key %q was not preserved after save", key)
 	}
 }
 
@@ -114,29 +94,19 @@ func TestSave_RatioIndependence_HeightChange(t *testing.T) {
 height_ratio = 0.30
 width_ratio = 0.20
 `
-	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
-		t.Fatalf("write initial: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0o644), "write initial")
 
 	result := Load(path)
-	if result.Config.DetailPane.WidthRatio != 0.20 {
-		t.Fatalf("preload width_ratio: got %.2f, want 0.20", result.Config.DetailPane.WidthRatio)
-	}
+	require.InDelta(t, 0.20, result.Config.DetailPane.WidthRatio, 1e-9, "preload width_ratio")
 
 	// Change only height_ratio.
 	result.Config.DetailPane.HeightRatio = 0.50
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 
 	reloaded := Load(path)
-	if reloaded.Config.DetailPane.HeightRatio != 0.50 {
-		t.Errorf("height_ratio after save: got %.2f, want 0.50", reloaded.Config.DetailPane.HeightRatio)
-	}
-	if reloaded.Config.DetailPane.WidthRatio != 0.20 {
-		t.Errorf("width_ratio mutated by height_ratio write-back: got %.2f, want 0.20",
-			reloaded.Config.DetailPane.WidthRatio)
-	}
+	assert.InDelta(t, 0.50, reloaded.Config.DetailPane.HeightRatio, 1e-9, "height_ratio after save")
+	assert.InDelta(t, 0.20, reloaded.Config.DetailPane.WidthRatio, 1e-9,
+		"width_ratio mutated by height_ratio write-back")
 }
 
 // T-086: Reverse direction — changing width_ratio must not mutate height_ratio.
@@ -148,24 +118,16 @@ func TestSave_RatioIndependence_WidthChange(t *testing.T) {
 height_ratio = 0.60
 width_ratio = 0.30
 `
-	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
-		t.Fatalf("write initial: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0o644), "write initial")
 
 	result := Load(path)
 	result.Config.DetailPane.WidthRatio = 0.45
-	if err := Save(path, result); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, Save(path, result))
 
 	reloaded := Load(path)
-	if reloaded.Config.DetailPane.WidthRatio != 0.45 {
-		t.Errorf("width_ratio after save: got %.2f, want 0.45", reloaded.Config.DetailPane.WidthRatio)
-	}
-	if reloaded.Config.DetailPane.HeightRatio != 0.60 {
-		t.Errorf("height_ratio mutated by width_ratio write-back: got %.2f, want 0.60",
-			reloaded.Config.DetailPane.HeightRatio)
-	}
+	assert.InDelta(t, 0.45, reloaded.Config.DetailPane.WidthRatio, 1e-9, "width_ratio after save")
+	assert.InDelta(t, 0.60, reloaded.Config.DetailPane.HeightRatio, 1e-9,
+		"height_ratio mutated by width_ratio write-back")
 }
 
 // T-025: Adding a new top-level key to config does not require schema changes (R7.1).
@@ -178,16 +140,10 @@ func TestLoad_UnknownKeyDoesNotError(t *testing.T) {
 	initial := `theme = "catppuccin-mocha"
 new_version_field = "hello from the future"
 `
-	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0o644), "write")
 
 	result := Load(path)
 	// Must load without warnings.
-	if len(result.Warnings) != 0 {
-		t.Errorf("unexpected warnings: %v", result.Warnings)
-	}
-	if result.Config.Theme != "catppuccin-mocha" {
-		t.Errorf("theme = %q, want catppuccin-mocha", result.Config.Theme)
-	}
+	assert.Empty(t, result.Warnings, "unexpected warnings")
+	assert.Equal(t, "catppuccin-mocha", result.Config.Theme)
 }

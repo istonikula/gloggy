@@ -8,6 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -40,12 +42,9 @@ func TestListModel_VirtualRendering_100k(t *testing.T) {
 	m := defaultListModel(height).SetEntries(makeEntries(total))
 
 	count := m.RenderedRowCount()
-	if count > height {
-		t.Errorf("rendered %d rows for 100k entries, max expected %d (viewport height)", count, height)
-	}
-	if count == 0 {
-		t.Error("rendered 0 rows — expected at least some")
-	}
+	assert.LessOrEqualf(t, count, height,
+		"rendered %d rows for 100k entries, max expected %d (viewport height)", count, height)
+	assert.Greater(t, count, 0, "rendered 0 rows — expected at least some")
 }
 
 // T-029: R6.2 — render time < 16ms for large dataset
@@ -58,9 +57,7 @@ func TestListModel_RenderSpeed_100k(t *testing.T) {
 	_ = m.View()
 	elapsed := time.Since(start)
 
-	if elapsed > 16*time.Millisecond {
-		t.Errorf("View() took %v, expected < 16ms", elapsed)
-	}
+	assert.Lessf(t, elapsed, 16*time.Millisecond, "View() took %v, expected < 16ms", elapsed)
 }
 
 // Virtual rendering: scrolled to middle still only renders viewport height
@@ -74,9 +71,7 @@ func TestListModel_VirtualRendering_Scrolled(t *testing.T) {
 	m.scroll.Offset = 490
 
 	count := m.RenderedRowCount()
-	if count > height {
-		t.Errorf("rendered %d rows when scrolled, max expected %d", count, height)
-	}
+	assert.LessOrEqualf(t, count, height, "rendered %d rows when scrolled, max expected %d", count, height)
 }
 
 // No SelectionMsg when cursor doesn't move (already at boundary).
@@ -86,44 +81,30 @@ func TestListModel_NoSelectionMsg_AtBoundary(t *testing.T) {
 
 	// Already at top — k should not emit.
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	if cmd != nil {
-		t.Error("expected nil cmd when cursor cannot move")
-	}
+	assert.Nil(t, cmd, "expected nil cmd when cursor cannot move")
 }
 
 // T-080: R11 — CursorPosition returns 1-based index
 func TestCursorPosition_EmptyList(t *testing.T) {
 	m := defaultListModel(10)
-	if pos := m.CursorPosition(); pos != 0 {
-		t.Fatalf("CursorPosition on empty = %d, want 0", pos)
-	}
+	require.Equal(t, 0, m.CursorPosition(), "CursorPosition on empty")
 }
 
 func TestCursorPosition_JK(t *testing.T) {
 	m := defaultListModel(10).SetEntries(makeEntries(5))
-	if pos := m.CursorPosition(); pos != 1 {
-		t.Fatalf("initial CursorPosition = %d, want 1", pos)
-	}
+	require.Equal(t, 1, m.CursorPosition(), "initial CursorPosition")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if pos := m.CursorPosition(); pos != 2 {
-		t.Fatalf("after j: CursorPosition = %d, want 2", pos)
-	}
+	require.Equal(t, 2, m.CursorPosition(), "after j: CursorPosition")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	if pos := m.CursorPosition(); pos != 1 {
-		t.Fatalf("after k: CursorPosition = %d, want 1", pos)
-	}
+	require.Equal(t, 1, m.CursorPosition(), "after k: CursorPosition")
 }
 
 func TestCursorPosition_gG(t *testing.T) {
 	m := defaultListModel(10).SetEntries(makeEntries(5))
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if pos := m.CursorPosition(); pos != 5 {
-		t.Fatalf("after G: CursorPosition = %d, want 5", pos)
-	}
+	require.Equal(t, 5, m.CursorPosition(), "after G: CursorPosition")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
-	if pos := m.CursorPosition(); pos != 1 {
-		t.Fatalf("after g: CursorPosition = %d, want 1", pos)
-	}
+	require.Equal(t, 1, m.CursorPosition(), "after g: CursorPosition")
 }
 
 func TestCursorPosition_AfterFilter(t *testing.T) {
@@ -131,9 +112,7 @@ func TestCursorPosition_AfterFilter(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	// Filter to indices 0,1 → cursor clamps
 	m = m.SetFilter([]int{0, 1})
-	if pos := m.CursorPosition(); pos != 2 {
-		t.Fatalf("after filter: CursorPosition = %d, want 2", pos)
-	}
+	require.Equal(t, 2, m.CursorPosition(), "after filter: CursorPosition")
 }
 
 // T-079: R1.8 — cursor row rendered with CursorHighlight background.
@@ -144,17 +123,14 @@ func TestView_CursorHighlight(t *testing.T) {
 	m.Focused = true
 	v := m.View()
 	lines := strings.Split(v, "\n")
-	if len(lines) < 3 {
-		t.Fatalf("expected at least 3 lines (top border + content): got %d", len(lines))
-	}
+	require.GreaterOrEqualf(t, len(lines), 3,
+		"expected at least 3 lines (top border + content): got %d", len(lines))
 	// First line is top border; cursor row is the next content line.
 	cursorRow := lines[1]
-	if !strings.Contains(cursorRow, "\x1b[") {
-		t.Errorf("cursor row should have ANSI styling: %q", cursorRow)
-	}
+	assert.Containsf(t, cursorRow, "\x1b[", "cursor row should have ANSI styling: %q", cursorRow)
 	// Non-cursor rows should not match the cursor row.
-	if len(lines) > 2 && cursorRow == lines[2] {
-		t.Error("cursor row should differ from non-cursor row")
+	if len(lines) > 2 {
+		assert.NotEqual(t, lines[2], cursorRow, "cursor row should differ from non-cursor row")
 	}
 	// "48;" is the ANSI SGR background prefix (CursorHighlight).
 	if !strings.Contains(cursorRow, "48;") {
@@ -162,7 +138,7 @@ func TestView_CursorHighlight(t *testing.T) {
 		if len(lines) > 2 {
 			t.Logf("non-cursor row (line 2): %q", lines[2])
 		}
-		t.Errorf("cursor row should contain background color escape (48;)")
+		assert.Fail(t, "cursor row should contain background color escape (48;)")
 	}
 }
 
@@ -174,12 +150,8 @@ func TestView_CursorHighlight(t *testing.T) {
 func TestWindowSizeMsg_ProcessedWhenEmpty(t *testing.T) {
 	m := defaultListModel(10) // no entries
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
-	if m.width != 198 {
-		t.Errorf("width = %d after WindowSizeMsg on empty list, want 198 (200 - 2 borders)", m.width)
-	}
-	if m.scroll.ViewportHeight != 48 {
-		t.Errorf("ViewportHeight = %d after WindowSizeMsg on empty list, want 48 (50 - 2 borders)", m.scroll.ViewportHeight)
-	}
+	assert.Equal(t, 198, m.width, "width after WindowSizeMsg on empty list (200 - 2 borders)")
+	assert.Equal(t, 48, m.scroll.ViewportHeight, "ViewportHeight after WindowSizeMsg on empty list (50 - 2 borders)")
 }
 
 // Messages with embedded newlines must render as exactly one terminal line.
@@ -199,9 +171,7 @@ func TestFlattenNewlines(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := flattenNewlines(tt.in)
-		if got != tt.want {
-			t.Errorf("flattenNewlines(%q) = %q, want %q", tt.in, got, tt.want)
-		}
+		assert.Equalf(t, tt.want, got, "flattenNewlines(%q)", tt.in)
 	}
 }
 
@@ -220,24 +190,16 @@ func TestView_VisualState_Unfocused_DiffersFromFocused_AndHasBg(t *testing.T) {
 	// Outer dimensions must match between focused and unfocused.
 	fLines := strings.Split(focused, "\n")
 	uLines := strings.Split(unfocused, "\n")
-	if len(fLines) != len(uLines) {
-		t.Errorf("row count mismatch: focused=%d unfocused=%d", len(fLines), len(uLines))
-	}
+	assert.Equalf(t, len(uLines), len(fLines), "row count mismatch: focused=%d unfocused=%d", len(fLines), len(uLines))
 
-	if focused == unfocused {
-		t.Errorf("focused and unfocused output must differ (border color + bg)")
-	}
+	assert.NotEqual(t, unfocused, focused, "focused and unfocused output must differ (border color + bg)")
 
 	// Unfocused render must include a background SGR (48;) for UnfocusedBg.
-	if !strings.Contains(unfocused, "48;") {
-		t.Errorf("unfocused render missing background SGR (48;): %q", unfocused)
-	}
+	assert.Containsf(t, unfocused, "48;", "unfocused render missing background SGR (48;): %q", unfocused)
 	// Focused render must NOT include a background SGR on the border.
 	// (Cursor row uses 48; for CursorHighlight; the border lines should
 	// not — a structural test would inspect line[0] only.)
-	if strings.Contains(fLines[0], "48;") {
-		t.Errorf("focused border line must not have UnfocusedBg: %q", fLines[0])
-	}
+	assert.NotContainsf(t, fLines[0], "48;", "focused border line must not have UnfocusedBg: %q", fLines[0])
 }
 
 // Regression for F-202 (color-profile-collapse, Tier 24): a previous
@@ -272,14 +234,11 @@ func TestView_BaseBg_ThemesProduceDistinctSGR_UnderTrueColor(t *testing.T) {
 		out := m.View()
 
 		baseBgSGR := bgColorANSI(th.BaseBg)
-		if baseBgSGR == "" {
-			t.Fatalf("%s: empty BaseBg SGR probe — is TrueColor forced in init()?", name)
-		}
-		if !strings.Contains(out, baseBgSGR) {
-			t.Errorf("%s: View() output missing BaseBg SGR %q", name, baseBgSGR)
-		}
+		require.NotEmptyf(t, baseBgSGR, "%s: empty BaseBg SGR probe — is TrueColor forced in init()?", name)
+		assert.Containsf(t, out, baseBgSGR, "%s: View() output missing BaseBg SGR %q", name, baseBgSGR)
 		if prev, clash := seen[baseBgSGR]; clash {
-			t.Errorf("%s and %s collapse to the same BaseBg SGR %q — profile downsampling likely active",
+			assert.Failf(t, "theme BaseBg collapse",
+				"%s and %s collapse to the same BaseBg SGR %q — profile downsampling likely active",
 				prev, name, baseBgSGR)
 		}
 		seen[baseBgSGR] = name
@@ -305,30 +264,24 @@ func TestView_LevelTokenReset_FollowedByBaseBg(t *testing.T) {
 	out := m.View()
 
 	baseBgOpen := bgColorANSI(th.BaseBg)
-	if baseBgOpen == "" {
-		t.Fatal("empty BaseBg SGR probe — is TrueColor forced in init()?")
-	}
+	require.NotEmpty(t, baseBgOpen, "empty BaseBg SGR probe — is TrueColor forced in init()?")
 
 	// `RenderCompactRow` emits the level as `…\x1b[38;2;lvlFgm<pad>INFO <pad>\x1b[0m…`.
 	// Find the INFO token and scan forward for the very next `\x1b[0m` — that
 	// is the level segment's close. It must be followed by the BaseBg open.
 	idx := strings.Index(out, "INFO")
-	if idx < 0 {
-		t.Fatal("INFO token missing from view output — test premise invalid")
-	}
+	require.GreaterOrEqual(t, idx, 0, "INFO token missing from view output — test premise invalid")
 	tail := out[idx:]
 	reset := strings.Index(tail, "\x1b[0m")
-	if reset < 0 {
-		t.Fatal("no reset after INFO — test premise invalid")
-	}
+	require.GreaterOrEqual(t, reset, 0, "no reset after INFO — test premise invalid")
 	after := tail[reset+len("\x1b[0m"):]
 	if !strings.HasPrefix(after, baseBgOpen) {
 		previewEnd := 60
 		if previewEnd > len(after) {
 			previewEnd = len(after)
 		}
-		t.Fatalf("reset after INFO not followed by BaseBg reassert %q\nsaw: %q",
-			baseBgOpen, after[:previewEnd])
+		require.Failf(t, "reset after INFO not followed by BaseBg reassert",
+			"want %q\nsaw: %q", baseBgOpen, after[:previewEnd])
 	}
 }
 
@@ -357,16 +310,12 @@ func TestView_VisualState_Alone_UsesFocusedTreatment(t *testing.T) {
 	alone := m.View()
 
 	// Alone output must match the focused treatment, not the unfocused one.
-	if alone == unfocused {
-		t.Errorf("alone pane must differ from unfocused (alone uses focused treatment)")
-	}
+	assert.NotEqual(t, unfocused, alone, "alone pane must differ from unfocused (alone uses focused treatment)")
 
 	m.Alone = false
 	m.Focused = true
 	focused := m.View()
-	if alone != focused {
-		t.Errorf("alone treatment must equal focused treatment\nalone:    %q\nfocused:  %q", alone, focused)
-	}
+	assert.Equalf(t, focused, alone, "alone treatment must equal focused treatment\nalone:    %q\nfocused:  %q", alone, focused)
 }
 
 // T-102: the cursor row is rendered with CursorHighlight regardless of
@@ -377,14 +326,10 @@ func TestView_CursorRow_AlwaysRendered_WhenUnfocused(t *testing.T) {
 	m.Focused = false
 	v := m.View()
 	lines := strings.Split(v, "\n")
-	if len(lines) < 2 {
-		t.Fatalf("expected at least 2 lines: got %d", len(lines))
-	}
+	require.GreaterOrEqualf(t, len(lines), 2, "expected at least 2 lines: got %d", len(lines))
 	// First content line (after top border) is the cursor row at index 0.
 	cursorRow := lines[1]
-	if !strings.Contains(cursorRow, "48;") {
-		t.Errorf("cursor row must carry CursorHighlight bg even when unfocused: %q", cursorRow)
-	}
+	assert.Containsf(t, cursorRow, "48;", "cursor row must carry CursorHighlight bg even when unfocused: %q", cursorRow)
 }
 
 // T-111 R8 #6 / R9 #5 — wrap indicator (↻) renders on cursor row when a
@@ -402,16 +347,10 @@ func TestListModel_View_RendersWrapIndicator(t *testing.T) {
 	// Press `e` — there is only one ERROR (the current one), so NextLevel
 	// finds it again and reports WrapForward.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
-	if m.WrapDir() == NoWrap {
-		t.Fatalf("expected wrap after pressing e past last ERROR; got NoWrap")
-	}
-	if !m.HasTransient() {
-		t.Fatalf("HasTransient must be true while wrap indicator is active")
-	}
+	require.NotEqual(t, NoWrap, m.WrapDir(), "expected wrap after pressing e past last ERROR")
+	require.True(t, m.HasTransient(), "HasTransient must be true while wrap indicator is active")
 	v := m.View()
-	if !strings.Contains(v, "↻") {
-		t.Errorf("View() must render the wrap indicator glyph ↻; got %q", v)
-	}
+	assert.Containsf(t, v, "↻", "View() must render the wrap indicator glyph ↻; got %q", v)
 }
 
 // T-111 — pressing Esc (ClearTransient) hides the wrap indicator on next View.
@@ -422,16 +361,10 @@ func TestListModel_View_NoIndicator_AfterClearTransient(t *testing.T) {
 	m.Focused = true
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
-	if m.WrapDir() == NoWrap {
-		t.Fatalf("precondition: expected wrap state before ClearTransient")
-	}
+	require.NotEqual(t, NoWrap, m.WrapDir(), "precondition: expected wrap state before ClearTransient")
 	m = m.ClearTransient()
-	if m.HasTransient() {
-		t.Errorf("ClearTransient must drop wrap state")
-	}
-	if strings.Contains(m.View(), "↻") {
-		t.Errorf("wrap glyph must not render after ClearTransient")
-	}
+	assert.False(t, m.HasTransient(), "ClearTransient must drop wrap state")
+	assert.NotContains(t, m.View(), "↻", "wrap glyph must not render after ClearTransient")
 }
 
 // T-112 R8 #7-8 — when level-jump lands on an entry excluded by the active
@@ -444,30 +377,18 @@ func TestListModel_LevelJump_LandsOnFilteredOutEntry_RendersIndicator(t *testing
 	m.Focused = true
 	// Apply filter that hides the ERROR (only INFOs pass).
 	m = m.SetFilter([]int{0, 1, 2, 3, 4})
-	if got := len(m.visibleEntries()); got != 5 {
-		t.Fatalf("precondition: filtered visible len = %d, want 5", got)
-	}
+	require.Len(t, m.visibleEntries(), 5, "precondition: filtered visible len")
 	// Press `e` — must navigate to the filtered-out ERROR and pin it.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
-	if m.PinnedFullIdx() != 5 {
-		t.Fatalf("PinnedFullIdx after `e` to filtered-out ERROR = %d, want 5", m.PinnedFullIdx())
-	}
+	require.Equal(t, 5, m.PinnedFullIdx(), "PinnedFullIdx after `e` to filtered-out ERROR")
 	vis := m.visibleEntries()
-	if len(vis) != 6 {
-		t.Errorf("visible entries after pin = %d, want 6 (5 filtered + 1 pinned)", len(vis))
-	}
+	assert.Len(t, vis, 6, "visible entries after pin (5 filtered + 1 pinned)")
 	v := m.View()
-	if !strings.Contains(v, "⌀") {
-		t.Errorf("View() must render outside-filter indicator ⌀ when level-jump pins; got %q", v)
-	}
+	assert.Containsf(t, v, "⌀", "View() must render outside-filter indicator ⌀ when level-jump pins; got %q", v)
 	// Subsequent j-nav clears the pin.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if m.PinnedFullIdx() != -1 {
-		t.Errorf("PinnedFullIdx after j = %d, want -1 (pin cleared)", m.PinnedFullIdx())
-	}
-	if strings.Contains(m.View(), "⌀") {
-		t.Errorf("⌀ glyph must not render after pin is cleared")
-	}
+	assert.Equal(t, -1, m.PinnedFullIdx(), "PinnedFullIdx after j (pin cleared)")
+	assert.NotContains(t, m.View(), "⌀", "⌀ glyph must not render after pin is cleared")
 }
 
 // An entry with embedded newlines in its message renders as one line in the list.
@@ -481,9 +402,7 @@ func TestRenderCompactRow_FlattenNewlines(t *testing.T) {
 		Raw:    []byte(`{}`),
 	}
 	row := RenderCompactRow(entry, 120, theme.GetTheme("tokyo-night"), config.DefaultConfig())
-	if strings.Contains(row, "\n") {
-		t.Errorf("compact row contains newline: %q", row)
-	}
+	assert.NotContainsf(t, row, "\n", "compact row contains newline: %q", row)
 }
 
 // ---------- T-158: click-row resolver uses contentTopY injection ----------
@@ -497,14 +416,10 @@ func TestListModel_MouseClick_HonorsContentTopY_Offset2(t *testing.T) {
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
 
 	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if got := m.Cursor(); got != 0 {
-		t.Errorf("click y=2 with contentTopY=2: Cursor = %d, want 0", got)
-	}
+	assert.Equal(t, 0, m.Cursor(), "click y=2 with contentTopY=2: Cursor")
 
 	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 5, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if got := m.Cursor(); got != 3 {
-		t.Errorf("click y=5 with contentTopY=2: Cursor = %d, want 3", got)
-	}
+	assert.Equal(t, 3, m.Cursor(), "click y=5 with contentTopY=2: Cursor")
 }
 
 // TestListModel_MouseClick_TopBorderBelowContentTopY_NoOp: click at y=1
@@ -521,9 +436,7 @@ func TestListModel_MouseClick_TopBorderBelowContentTopY_NoOp(t *testing.T) {
 
 	m, _ = m.Update(tea.MouseMsg{X: 10, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 
-	if got := m.Cursor(); got != before {
-		t.Errorf("click on top border (y=1): Cursor = %d, want %d (unchanged)", got, before)
-	}
+	assert.Equalf(t, before, m.Cursor(), "click on top border (y=1): Cursor should be unchanged (%d)", before)
 }
 
 // TestListModel_T163_RowForY_Rejects_When_ContentTopY_Unset pins the
@@ -541,19 +454,13 @@ func TestListModel_T163_RowForY_Rejects_When_ContentTopY_Unset(t *testing.T) {
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
 
 	for _, y := range []int{0, 2, 5, 10, 15} {
-		if got := m.rowForY(y); got != -1 {
-			t.Errorf("rowForY(%d) without WithContentTopY = %d, want -1 (rejected)", y, got)
-		}
+		assert.Equalf(t, -1, m.rowForY(y), "rowForY(%d) without WithContentTopY should be rejected", y)
 	}
 
 	// After injecting contentTopY the resolver comes back online.
 	m = m.WithContentTopY(2)
-	if got := m.rowForY(2); got != 0 {
-		t.Errorf("after WithContentTopY(2), rowForY(2) = %d, want 0", got)
-	}
-	if got := m.rowForY(5); got != 3 {
-		t.Errorf("after WithContentTopY(2), rowForY(5) = %d, want 3", got)
-	}
+	assert.Equal(t, 0, m.rowForY(2), "after WithContentTopY(2), rowForY(2)")
+	assert.Equal(t, 3, m.rowForY(5), "after WithContentTopY(2), rowForY(5)")
 }
 
 // R14 AC1+AC2: cursor on last entry => AppendEntries advances cursor to new
@@ -563,23 +470,16 @@ func TestAppendEntries_TailFollow_AdvancesCursorAndViewport(t *testing.T) {
 	m := defaultListModel(height).SetEntries(makeEntries(20))
 	// Land cursor on the last entry.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if m.scroll.Cursor != 19 {
-		t.Fatalf("setup: cursor=%d, want 19", m.scroll.Cursor)
-	}
+	require.Equal(t, 19, m.scroll.Cursor, "setup: cursor")
 
 	before := m.scroll.Offset
 	m = m.AppendEntries(makeEntries(5))
 
-	if m.scroll.Cursor != 24 {
-		t.Errorf("cursor after follow-append = %d, want 24 (new last)", m.scroll.Cursor)
-	}
+	assert.Equal(t, 24, m.scroll.Cursor, "cursor after follow-append (new last)")
 	// The last entry must be inside the viewport: Offset <= 24 < Offset+Height.
-	if m.scroll.Offset > 24 || 24 >= m.scroll.Offset+height {
-		t.Errorf("offset=%d with height=%d does not include cursor 24", m.scroll.Offset, height)
-	}
-	if m.scroll.Offset == before {
-		t.Errorf("offset did not advance (before=%d, after=%d)", before, m.scroll.Offset)
-	}
+	assert.Truef(t, m.scroll.Offset <= 24 && 24 < m.scroll.Offset+height,
+		"offset=%d with height=%d does not include cursor 24", m.scroll.Offset, height)
+	assert.NotEqualf(t, before, m.scroll.Offset, "offset did not advance (before=%d, after=%d)", before, m.scroll.Offset)
 }
 
 // R14 AC3+AC4: cursor not on last entry => AppendEntries leaves cursor and
@@ -594,61 +494,40 @@ func TestAppendEntries_NotAtTail_NoFollow(t *testing.T) {
 	}
 	wantCursor := m.scroll.Cursor
 	wantOffset := m.scroll.Offset
-	if wantCursor >= m.scroll.TotalEntries-1 {
-		t.Fatalf("setup: cursor at tail; expected mid-list; cursor=%d total=%d", wantCursor, m.scroll.TotalEntries)
-	}
+	require.Lessf(t, wantCursor, m.scroll.TotalEntries-1,
+		"setup: cursor at tail; expected mid-list; cursor=%d total=%d", wantCursor, m.scroll.TotalEntries)
 
 	m = m.AppendEntries(makeEntries(5))
 
-	if m.scroll.Cursor != wantCursor {
-		t.Errorf("cursor moved: was %d, now %d (must not change when not at tail)", wantCursor, m.scroll.Cursor)
-	}
-	if m.scroll.Offset != wantOffset {
-		t.Errorf("offset moved: was %d, now %d (must not change when not at tail)", wantOffset, m.scroll.Offset)
-	}
+	assert.Equalf(t, wantCursor, m.scroll.Cursor, "cursor moved: was %d, now %d (must not change when not at tail)", wantCursor, m.scroll.Cursor)
+	assert.Equalf(t, wantOffset, m.scroll.Offset, "offset moved: was %d, now %d (must not change when not at tail)", wantOffset, m.scroll.Offset)
 }
 
 // R14 AC5: empty list => first append leaves Cursor=0, Offset=0.
 func TestAppendEntries_EmptyList_FirstAppend(t *testing.T) {
 	m := defaultListModel(10)
-	if m.scroll.TotalEntries != 0 {
-		t.Fatalf("setup: total=%d, want 0", m.scroll.TotalEntries)
-	}
+	require.Equal(t, 0, m.scroll.TotalEntries, "setup: total")
 	m = m.AppendEntries(makeEntries(5))
-	if m.scroll.Cursor != 0 {
-		t.Errorf("cursor after empty-first-append = %d, want 0", m.scroll.Cursor)
-	}
-	if m.scroll.Offset != 0 {
-		t.Errorf("offset after empty-first-append = %d, want 0", m.scroll.Offset)
-	}
+	assert.Equal(t, 0, m.scroll.Cursor, "cursor after empty-first-append")
+	assert.Equal(t, 0, m.scroll.Offset, "offset after empty-first-append")
 }
 
 // R14 AC6: IsAtTail reflects cursor==last; k breaks it, G restores it.
 func TestIsAtTail_ReflectsCursorAtLast(t *testing.T) {
 	m := defaultListModel(10).SetEntries(makeEntries(20))
-	if m.IsAtTail() {
-		t.Error("IsAtTail on fresh list (cursor=0) should be false")
-	}
+	assert.False(t, m.IsAtTail(), "IsAtTail on fresh list (cursor=0) should be false")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if !m.IsAtTail() {
-		t.Error("IsAtTail after G should be true")
-	}
+	assert.True(t, m.IsAtTail(), "IsAtTail after G should be true")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	if m.IsAtTail() {
-		t.Error("IsAtTail after k should be false")
-	}
+	assert.False(t, m.IsAtTail(), "IsAtTail after k should be false")
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	if !m.IsAtTail() {
-		t.Error("IsAtTail after return-to-tail (G) should be true again")
-	}
+	assert.True(t, m.IsAtTail(), "IsAtTail after return-to-tail (G) should be true again")
 }
 
 // R14 AC6 edge: empty list is not "at tail".
 func TestIsAtTail_EmptyIsFalse(t *testing.T) {
 	m := defaultListModel(10)
-	if m.IsAtTail() {
-		t.Error("IsAtTail on empty list must be false")
-	}
+	assert.False(t, m.IsAtTail(), "IsAtTail on empty list must be false")
 }
 
 // R14 combined: after k, subsequent appends must NOT advance viewport even if
@@ -658,9 +537,7 @@ func TestAppendEntries_PauseWithK_ResumeWithG(t *testing.T) {
 	m := defaultListModel(height).SetEntries(makeEntries(20))
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	m = m.AppendEntries(makeEntries(3)) // following: advances
-	if m.scroll.Cursor != 22 {
-		t.Fatalf("setup: cursor=%d, want 22", m.scroll.Cursor)
-	}
+	require.Equal(t, 22, m.scroll.Cursor, "setup: cursor")
 
 	// User presses k to pause.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
@@ -669,20 +546,14 @@ func TestAppendEntries_PauseWithK_ResumeWithG(t *testing.T) {
 
 	// Appends arrive while paused — no follow.
 	m = m.AppendEntries(makeEntries(3))
-	if m.scroll.Cursor != pausedCursor {
-		t.Errorf("paused: cursor moved %d -> %d", pausedCursor, m.scroll.Cursor)
-	}
-	if m.scroll.Offset != pausedOffset {
-		t.Errorf("paused: offset moved %d -> %d", pausedOffset, m.scroll.Offset)
-	}
+	assert.Equalf(t, pausedCursor, m.scroll.Cursor, "paused: cursor moved %d -> %d", pausedCursor, m.scroll.Cursor)
+	assert.Equalf(t, pausedOffset, m.scroll.Offset, "paused: offset moved %d -> %d", pausedOffset, m.scroll.Offset)
 
 	// User presses G to resume.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	m = m.AppendEntries(makeEntries(3))
 	wantLast := 20 + 3 + 3 + 3 - 1
-	if m.scroll.Cursor != wantLast {
-		t.Errorf("resumed: cursor=%d, want %d", m.scroll.Cursor, wantLast)
-	}
+	assert.Equal(t, wantLast, m.scroll.Cursor, "resumed: cursor")
 }
 
 // T9 (I.keys): `M` clears all marks. Cursor/viewport unchanged, no
@@ -694,24 +565,14 @@ func TestListModel_M_ClearsAllMarks(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
-	if got := m.Marks().Count(); got != 2 {
-		t.Fatalf("pre-M count = %d, want 2", got)
-	}
+	require.Equal(t, 2, m.Marks().Count(), "pre-M count")
 	cursorBefore := m.scroll.Cursor
 	offsetBefore := m.scroll.Offset
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
-	if got := m2.Marks().Count(); got != 0 {
-		t.Errorf("post-M count = %d, want 0", got)
-	}
-	if m2.scroll.Cursor != cursorBefore {
-		t.Errorf("M moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
-	}
-	if m2.scroll.Offset != offsetBefore {
-		t.Errorf("M moved offset: %d → %d", offsetBefore, m2.scroll.Offset)
-	}
-	if cmd != nil {
-		t.Errorf("M emitted cmd %v, want nil (no SelectionMsg on clear-all-marks)", cmd)
-	}
+	assert.Equal(t, 0, m2.Marks().Count(), "post-M count")
+	assert.Equalf(t, cursorBefore, m2.scroll.Cursor, "M moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
+	assert.Equalf(t, offsetBefore, m2.scroll.Offset, "M moved offset: %d → %d", offsetBefore, m2.scroll.Offset)
+	assert.Nilf(t, cmd, "M emitted cmd %v, want nil (no SelectionMsg on clear-all-marks)", cmd)
 }
 
 // T10 (V4, V5, V26): a marked row must not overflow `m.width`. Previously
@@ -737,18 +598,16 @@ func TestListModel_V26_MarkedRow_NoWidthOverflow(t *testing.T) {
 
 	// V5: applyPaneStyle wraps the inner ViewportHeight rows with top +
 	// bottom border → exactly innerHeight + 2 output lines.
-	if got, want := len(lines), innerHeight+2; got != want {
-		t.Errorf("View line count = %d, want %d (top border + %d inner rows + bottom border)", got, want, innerHeight)
-	}
+	assert.Lenf(t, lines, innerHeight+2,
+		"View line count should be %d (top border + %d inner rows + bottom border)", innerHeight+2, innerHeight)
 
 	// V4 + V26: each line's visible width must fit in innerWidth + 2
 	// (inner content + left-/right- border). Pre-fix: marked row = innerWidth+2
 	// content + border = innerWidth+4 → fails here.
 	maxAllowed := innerWidth + 2
 	for i, line := range lines {
-		if w := lipgloss.Width(line); w > maxAllowed {
-			t.Errorf("line %d visible width = %d, want ≤ %d: %q", i, w, maxAllowed, line)
-		}
+		w := lipgloss.Width(line)
+		assert.LessOrEqualf(t, w, maxAllowed, "line %d visible width = %d, want ≤ %d: %q", i, w, maxAllowed, line)
 	}
 }
 
@@ -756,18 +615,10 @@ func TestListModel_V26_MarkedRow_NoWidthOverflow(t *testing.T) {
 // change, no command.
 func TestListModel_M_EmptyNoop(t *testing.T) {
 	m := defaultListModel(10).SetEntries(makeEntries(5))
-	if got := m.Marks().Count(); got != 0 {
-		t.Fatalf("precondition: Count = %d, want 0", got)
-	}
+	require.Equal(t, 0, m.Marks().Count(), "precondition: Count")
 	cursorBefore := m.scroll.Cursor
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
-	if got := m2.Marks().Count(); got != 0 {
-		t.Errorf("post-M count = %d, want 0", got)
-	}
-	if m2.scroll.Cursor != cursorBefore {
-		t.Errorf("M on empty moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
-	}
-	if cmd != nil {
-		t.Errorf("M on empty emitted cmd %v, want nil", cmd)
-	}
+	assert.Equal(t, 0, m2.Marks().Count(), "post-M count")
+	assert.Equalf(t, cursorBefore, m2.scroll.Cursor, "M on empty moved cursor: %d → %d", cursorBefore, m2.scroll.Cursor)
+	assert.Nilf(t, cmd, "M on empty emitted cmd %v, want nil", cmd)
 }

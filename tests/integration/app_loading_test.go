@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -19,9 +21,7 @@ import (
 func TestAppModel_LoadFileStream(t *testing.T) {
 	// Write a temp file with 110 JSONL entries (exceeds batchSize=100).
 	f, err := os.CreateTemp("", "gloggy-appload-*.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(f.Name())
 	const numEntries = 110
 	for i := 0; i < numEntries; i++ {
@@ -39,9 +39,7 @@ func TestAppModel_LoadFileStream(t *testing.T) {
 
 	// Start loading — Init returns the first LoadFile command.
 	cmd := m.Init()
-	if cmd == nil {
-		t.Fatal("Init() should return a non-nil cmd for file loading")
-	}
+	require.NotNil(t, cmd, "Init() should return a non-nil cmd for file loading")
 
 	// Drain the stream through the actual app model's Update method.
 	var iterations int
@@ -66,13 +64,8 @@ func TestAppModel_LoadFileStream(t *testing.T) {
 		}
 	}
 
-	if !done {
-		t.Errorf("loading never completed after %d iterations — LoadProgressMsg likely broke the chain", iterations)
-	}
+	assert.Truef(t, done, "loading never completed after %d iterations — LoadProgressMsg likely broke the chain", iterations)
 
 	// Verify all 110 entries were loaded.
-	view := m.View()
-	if view == "" {
-		t.Error("view should not be empty after loading")
-	}
+	assert.NotEmpty(t, m.View(), "view should not be empty after loading")
 }

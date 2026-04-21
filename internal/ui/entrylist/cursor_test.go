@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/istonikula/gloggy/internal/logsource"
 )
@@ -33,9 +34,7 @@ func TestCursor_JMovesDown(t *testing.T) {
 	m := newCursor()
 	entries := []logsource.Entry{jsonCursorEntry("INFO", "a", "1"), jsonCursorEntry("WARN", "b", "2")}
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}, len(entries), entries[0])
-	if m2.EntryIndex != 1 {
-		t.Errorf("j: EntryIndex = %d, want 1", m2.EntryIndex)
-	}
+	assert.Equal(t, 1, m2.EntryIndex, "j: EntryIndex")
 }
 
 // T-030: R4.2 — k moves cursor to previous entry
@@ -44,9 +43,7 @@ func TestCursor_KMovesUp(t *testing.T) {
 	m.EntryIndex = 1
 	entries := []logsource.Entry{jsonCursorEntry("INFO", "a", "1"), jsonCursorEntry("WARN", "b", "2")}
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")}, len(entries), entries[1])
-	if m2.EntryIndex != 0 {
-		t.Errorf("k: EntryIndex = %d, want 0", m2.EntryIndex)
-	}
+	assert.Equal(t, 0, m2.EntryIndex, "k: EntryIndex")
 }
 
 // T-030: R4.3 — j/k never land on sub-rows (sub-rows are shown via expand, not as cursor positions)
@@ -54,9 +51,7 @@ func TestCursor_JKStayAtEventLevel(t *testing.T) {
 	m := newCursor()
 	entries := []logsource.Entry{jsonCursorEntry("INFO", "a", "1"), jsonCursorEntry("WARN", "b", "2")}
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}, len(entries), entries[0])
-	if m2.Level != LevelEvent {
-		t.Error("j should stay at LevelEvent, not enter sub-row level")
-	}
+	assert.Equal(t, LevelEvent, m2.Level, "j should stay at LevelEvent, not enter sub-row level")
 }
 
 // T-030: R4.4 — l/Tab enters sub-row level
@@ -65,14 +60,10 @@ func TestCursor_LEntersSubRowLevel(t *testing.T) {
 	entry := jsonCursorEntry("INFO", "app", "hello")
 
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")}, 1, entry)
-	if m2.Level != LevelSubRow {
-		t.Errorf("l: Level = %v, want LevelSubRow", m2.Level)
-	}
+	assert.Equal(t, LevelSubRow, m2.Level, "l: Level")
 
 	m3, _ := m.Update(tea.KeyMsg{Type: tea.KeyType(tea.KeyTab)}, 1, entry)
-	if m3.Level != LevelSubRow {
-		t.Errorf("Tab: Level = %v, want LevelSubRow", m3.Level)
-	}
+	assert.Equal(t, LevelSubRow, m3.Level, "Tab: Level")
 }
 
 // T-030: R4.5 — sub-rows appear indented in render
@@ -81,9 +72,8 @@ func TestCursor_SubRowsRenderedIndented(t *testing.T) {
 	m = m.EnterSubLevel()
 	entry := jsonCursorEntry("INFO", "app", "hello")
 	rendered := m.RenderEntry(entry, 0, "row-text")
-	if !containsSubRowIndent(rendered) {
-		t.Errorf("expected indented sub-rows in render, got:\n%s", rendered)
-	}
+	assert.True(t, containsSubRowIndent(rendered),
+		"expected indented sub-rows in render, got:\n%s", rendered)
 }
 
 func containsSubRowIndent(s string) bool {
@@ -117,12 +107,10 @@ func TestCursor_SubRowsShowFieldAndValue(t *testing.T) {
 	m = m.EnterSubLevel()
 	entry := jsonCursorEntry("INFO", "com.example.App", "test")
 	rendered := m.RenderEntry(entry, 0, "row-text")
-	if !contains(rendered, "logger") {
-		t.Errorf("expected 'logger' in sub-rows, got:\n%s", rendered)
-	}
-	if !contains(rendered, "com.example.App") {
-		t.Errorf("expected logger value in sub-rows, got:\n%s", rendered)
-	}
+	assert.True(t, contains(rendered, "logger"),
+		"expected 'logger' in sub-rows, got:\n%s", rendered)
+	assert.True(t, contains(rendered, "com.example.App"),
+		"expected logger value in sub-rows, got:\n%s", rendered)
 }
 
 // T-030: R4.7 — h/←/Esc exits sub-row level
@@ -132,26 +120,21 @@ func TestCursor_HExitsSubRowLevel(t *testing.T) {
 
 	for _, key := range []string{"h", "esc"} {
 		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}, 1, entry)
-		if m2.Level != LevelEvent {
-			t.Errorf("%s: Level = %v, want LevelEvent", key, m2.Level)
-		}
+		assert.Equal(t, LevelEvent, m2.Level, "%s: Level", key)
 	}
 
 	m3, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft}, 1, entry)
-	if m3.Level != LevelEvent {
-		t.Errorf("left arrow: Level = %v, want LevelEvent", m3.Level)
-	}
+	assert.Equal(t, LevelEvent, m3.Level, "left arrow: Level")
 }
 
 // T-030: R4.8 — entries with sub-row fields show visual boundary at event level
 func TestCursor_VisualBoundaryAtEventLevel(t *testing.T) {
-	m := newCursor() // at LevelEvent
+	m := newCursor()                                 // at LevelEvent
 	entry := jsonCursorEntry("INFO", "app", "hello") // has logger + thread sub-row fields
 	rendered := m.RenderEntry(entry, 0, "row-text")
 	// The "..." suffix is our visual boundary marker.
-	if !contains(rendered, "...") {
-		t.Errorf("expected visual boundary indicator for entry with sub-row fields, got:\n%s", rendered)
-	}
+	assert.True(t, contains(rendered, "..."),
+		"expected visual boundary indicator for entry with sub-row fields, got:\n%s", rendered)
 }
 
 func contains(s, sub string) bool {

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/theme"
 )
@@ -19,26 +21,20 @@ func testRouter(detailOpen bool, detailHeight int) MouseRouter {
 // T-052: R6.1 — header row is ZoneHeader.
 func TestMouseRouter_HeaderRow(t *testing.T) {
 	r := testRouter(false, 0)
-	if r.Zone(0, 0) != ZoneHeader {
-		t.Errorf("row 0 should be ZoneHeader")
-	}
+	assert.Equalf(t, ZoneHeader, r.Zone(0, 0), "row 0 should be ZoneHeader")
 }
 
 // T-052: R6.1 — status bar row is ZoneStatusBar.
 func TestMouseRouter_StatusBarRow(t *testing.T) {
 	r := testRouter(false, 0)
-	if r.Zone(0, 23) != ZoneStatusBar {
-		t.Errorf("row 23 should be ZoneStatusBar")
-	}
+	assert.Equalf(t, ZoneStatusBar, r.Zone(0, 23), "row 23 should be ZoneStatusBar")
 }
 
 // T-052: R6.1 — entry list rows without detail pane.
 func TestMouseRouter_EntryListRows_NoDetailPane(t *testing.T) {
 	r := testRouter(false, 0)
 	for y := 1; y <= 22; y++ {
-		if r.Zone(0, y) != ZoneEntryList {
-			t.Errorf("row %d should be ZoneEntryList, got %v", y, r.Zone(0, y))
-		}
+		assert.Equalf(t, ZoneEntryList, r.Zone(0, y), "row %d should be ZoneEntryList", y)
 	}
 }
 
@@ -53,20 +49,14 @@ func TestMouseRouter_DetailPaneOpen(t *testing.T) {
 	entryListHeight := l.EntryListHeight() // 24-1-1-8=14
 	// Entry list: rows 1..14
 	for y := 1; y <= entryListHeight; y++ {
-		if r.Zone(0, y) != ZoneEntryList {
-			t.Errorf("row %d should be ZoneEntryList, got %v", y, r.Zone(0, y))
-		}
+		assert.Equalf(t, ZoneEntryList, r.Zone(0, y), "row %d should be ZoneEntryList", y)
 	}
 	// Divider: row 15
 	dividerRow := 1 + entryListHeight
-	if r.Zone(0, dividerRow) != ZoneDivider {
-		t.Errorf("row %d should be ZoneDivider, got %v", dividerRow, r.Zone(0, dividerRow))
-	}
+	assert.Equalf(t, ZoneDivider, r.Zone(0, dividerRow), "row %d should be ZoneDivider", dividerRow)
 	// Detail pane: rows 16..23-1 = rows 16..22
 	for y := dividerRow + 1; y < 23; y++ {
-		if r.Zone(0, y) != ZoneDetailPane {
-			t.Errorf("row %d should be ZoneDetailPane, got %v", y, r.Zone(0, y))
-		}
+		assert.Equalf(t, ZoneDetailPane, r.Zone(0, y), "row %d should be ZoneDetailPane", y)
 	}
 }
 
@@ -82,9 +72,7 @@ func TestMouseRouter_NoCrashAnyPosition(t *testing.T) {
 func TestMouseRouter_RouteMouseMsg(t *testing.T) {
 	r := testRouter(false, 0)
 	msg := tea.MouseMsg{X: 0, Y: 0}
-	if r.RouteMouseMsg(msg) != ZoneHeader {
-		t.Error("expected ZoneHeader for Y=0")
-	}
+	assert.Equalf(t, ZoneHeader, r.RouteMouseMsg(msg), "expected ZoneHeader for Y=0")
 }
 
 // T-094 (revised T-160, F-122): right-split horizontal zoning with 1-cell
@@ -110,28 +98,23 @@ func TestMouseRouter_RightSplit_HorizontalZones(t *testing.T) {
 	const row = 5
 
 	// Click strictly inside list content → list.
-	if z := r.Zone(l.ListContentWidth()-2, row); z != ZoneEntryList {
-		t.Errorf("LCW-2 (%d): want ZoneEntryList, got %v", l.ListContentWidth()-2, z)
-	}
+	assert.Equalf(t, ZoneEntryList, r.Zone(l.ListContentWidth()-2, row),
+		"LCW-2 (%d): want ZoneEntryList", l.ListContentWidth()-2)
 	// Click on list right border → unknown.
 	listRightBorder := l.ListContentWidth() - 1
-	if z := r.Zone(listRightBorder, row); z != ZoneUnknown {
-		t.Errorf("list right border (%d): want ZoneUnknown, got %v", listRightBorder, z)
-	}
+	assert.Equalf(t, ZoneUnknown, r.Zone(listRightBorder, row),
+		"list right border (%d): want ZoneUnknown", listRightBorder)
 	// Click on divider → divider.
 	divider := l.ListContentWidth()
-	if z := r.Zone(divider, row); z != ZoneDivider {
-		t.Errorf("divider (%d): want ZoneDivider, got %v", divider, z)
-	}
+	assert.Equalf(t, ZoneDivider, r.Zone(divider, row),
+		"divider (%d): want ZoneDivider", divider)
 	// Click on detail left border → unknown.
 	detailLeftBorder := divider + 1
-	if z := r.Zone(detailLeftBorder, row); z != ZoneUnknown {
-		t.Errorf("detail left border (%d): want ZoneUnknown, got %v", detailLeftBorder, z)
-	}
+	assert.Equalf(t, ZoneUnknown, r.Zone(detailLeftBorder, row),
+		"detail left border (%d): want ZoneUnknown", detailLeftBorder)
 	// Click immediately after the left-border buffer → detail content.
-	if z := r.Zone(detailLeftBorder+1, row); z != ZoneDetailPane {
-		t.Errorf("detailLeftBorder+1 (%d): want ZoneDetailPane, got %v", detailLeftBorder+1, z)
-	}
+	assert.Equalf(t, ZoneDetailPane, r.Zone(detailLeftBorder+1, row),
+		"detailLeftBorder+1 (%d): want ZoneDetailPane", detailLeftBorder+1)
 }
 
 // T-094: header + status bar still take precedence over horizontal zones.
@@ -140,12 +123,8 @@ func TestMouseRouter_RightSplit_HeaderAndStatus(t *testing.T) {
 	l.Orientation = OrientationRight
 	l.WidthRatio = 0.30
 	r := NewMouseRouter(l)
-	if z := r.Zone(50, 0); z != ZoneHeader {
-		t.Errorf("y=0: want ZoneHeader, got %v", z)
-	}
-	if z := r.Zone(50, 23); z != ZoneStatusBar {
-		t.Errorf("y=23: want ZoneStatusBar, got %v", z)
-	}
+	assert.Equalf(t, ZoneHeader, r.Zone(50, 0), "y=0: want ZoneHeader")
+	assert.Equalf(t, ZoneStatusBar, r.Zone(50, 23), "y=23: want ZoneStatusBar")
 }
 
 // TestMouseRouter_T160_RendererTruth_DividerColMatchesGlyph is the
@@ -190,24 +169,18 @@ func TestMouseRouter_T160_RendererTruth_DividerColMatchesGlyph(t *testing.T) {
 			stubDetail := strings.Repeat("D", detailW+2)
 			out := lm.Render("H", stubList, stubDetail, "S")
 			lines := strings.Split(out, "\n")
-			if len(lines) < 3 {
-				t.Fatalf("render produced too few lines: %d", len(lines))
-			}
+			require.GreaterOrEqualf(t, len(lines), 3, "render produced too few lines: %d", len(lines))
 			midRow := len(lines) / 2
 			glyphCol := locateGlyphCol(t, lines[midRow], '│')
-			if glyphCol < 0 {
-				t.Fatalf("no `│` glyph on mid-row %d", midRow)
-			}
+			require.GreaterOrEqualf(t, glyphCol, 0, "no `│` glyph on mid-row %d", midRow)
 			r := NewMouseRouter(lay)
-			if z := r.Zone(glyphCol, midRow); z != ZoneDivider {
-				t.Errorf("renderer-truth: glyph at col %d, router returned %v (want ZoneDivider); listW=%d detailW=%d",
-					glyphCol, z, listW, detailW)
-			}
+			assert.Equalf(t, ZoneDivider, r.Zone(glyphCol, midRow),
+				"renderer-truth: glyph at col %d; listW=%d detailW=%d",
+				glyphCol, listW, detailW)
 			// Also verify the router's computed divider column equals
 			// the actual glyph col — this is the invariant T-160 fixes.
-			if want := lay.ListContentWidth(); glyphCol != want {
-				t.Errorf("glyph col mismatch: glyph=%d, ListContentWidth=%d", glyphCol, want)
-			}
+			assert.Equalf(t, lay.ListContentWidth(), glyphCol,
+				"glyph col mismatch: glyph=%d, ListContentWidth=%d", glyphCol, lay.ListContentWidth())
 		})
 	}
 }
@@ -237,9 +210,9 @@ func locateGlyphCol(t *testing.T, line string, glyph rune) int {
 func stripAnsi(s string) string {
 	b := strings.Builder{}
 	const (
-		stPlain         = 0
-		stPostEsc       = 1 // saw ESC; next byte is either `[` (→ CSI) or a single-byte escape final
-		stCsiBody       = 2 // saw ESC [; consume params/intermediates until final 0x40..0x7e
+		stPlain   = 0
+		stPostEsc = 1 // saw ESC; next byte is either `[` (→ CSI) or a single-byte escape final
+		stCsiBody = 2 // saw ESC [; consume params/intermediates until final 0x40..0x7e
 	)
 	state := stPlain
 	for _, r := range s {
@@ -289,23 +262,18 @@ func TestDragSeam_RendersInDragHandle_AllThemes(t *testing.T) {
 
 		// Data-only: config R4 AC 10 — DragHandle distinct from both
 		// neighbours so no theme collapses into an ambiguous cue.
-		if string(th.DragHandle) == "" {
-			t.Fatalf("[%s] DragHandle empty", themeName)
-		}
-		if string(th.DragHandle) == string(th.DividerColor) {
-			t.Errorf("[%s] DragHandle == DividerColor (%s)", themeName, th.DragHandle)
-		}
-		if string(th.DragHandle) == string(th.FocusBorder) {
-			t.Errorf("[%s] DragHandle == FocusBorder (%s)", themeName, th.DragHandle)
-		}
+		require.NotEmptyf(t, string(th.DragHandle), "[%s] DragHandle empty", themeName)
+		assert.NotEqualf(t, string(th.DividerColor), string(th.DragHandle),
+			"[%s] DragHandle == DividerColor (%s)", themeName, th.DragHandle)
+		assert.NotEqualf(t, string(th.FocusBorder), string(th.DragHandle),
+			"[%s] DragHandle == FocusBorder (%s)", themeName, th.DragHandle)
 
 		drag := colorANSI(th.DragHandle)
 		div := colorANSI(th.DividerColor)
 		focus := colorANSI(th.FocusBorder)
-		if drag == "" || div == "" || focus == "" {
-			t.Fatalf("[%s] empty SGR probe (drag=%q div=%q focus=%q) — check TrueColor profile",
-				themeName, drag, div, focus)
-		}
+		require.NotEmptyf(t, drag, "[%s] empty DragHandle SGR probe — check TrueColor profile", themeName)
+		require.NotEmptyf(t, div, "[%s] empty DividerColor SGR probe — check TrueColor profile", themeName)
+		require.NotEmptyf(t, focus, "[%s] empty FocusBorder SGR probe — check TrueColor profile", themeName)
 
 		t.Run(themeName+"/right", func(t *testing.T) {
 			lm := NewLayoutModel(120, 30).
@@ -320,19 +288,12 @@ func TestDragSeam_RendersInDragHandle_AllThemes(t *testing.T) {
 			lines := strings.Split(out, "\n")
 			midRow := len(lines) / 2
 			glyphCol := locateGlyphCol(t, lines[midRow], '│')
-			if glyphCol < 0 {
-				t.Fatalf("no `│` on mid-row %d: %q", midRow, lines[midRow])
-			}
+			require.GreaterOrEqualf(t, glyphCol, 0, "no `│` on mid-row %d: %q", midRow, lines[midRow])
 			sgr := sgrBeforeGlyph(t, lines[midRow], glyphCol, '│')
-			if !strings.Contains(sgr, drag) {
-				t.Errorf("right divider SGR missing DragHandle %q; got %q", drag, sgr)
-			}
-			if strings.Contains(sgr, div) {
-				t.Errorf("right divider SGR still carries DividerColor %q; got %q", div, sgr)
-			}
-			if strings.Contains(sgr, focus) {
-				t.Errorf("right divider SGR carries FocusBorder %q (drag-seam must be focus-neutral); got %q", focus, sgr)
-			}
+			assert.Containsf(t, sgr, drag, "right divider SGR missing DragHandle %q; got %q", drag, sgr)
+			assert.NotContainsf(t, sgr, div, "right divider SGR still carries DividerColor %q; got %q", div, sgr)
+			assert.NotContainsf(t, sgr, focus,
+				"right divider SGR carries FocusBorder %q (drag-seam must be focus-neutral); got %q", focus, sgr)
 		})
 
 		t.Run(themeName+"/below", func(t *testing.T) {
@@ -344,20 +305,15 @@ func TestDragSeam_RendersInDragHandle_AllThemes(t *testing.T) {
 				base := PaneStyle(th, state).Width(10)
 				seam := WithDragSeamTop(base, th).Render("body")
 				lines := strings.Split(seam, "\n")
-				if len(lines) < 3 {
-					t.Fatalf("rendered pane has <3 rows: %q", seam)
-				}
+				require.GreaterOrEqualf(t, len(lines), 3, "rendered pane has <3 rows: %q", seam)
 				top := lines[0]
-				if !strings.Contains(top, drag) {
-					t.Errorf("below/%v top border missing DragHandle %q; got %q", state, drag, top)
-				}
+				assert.Containsf(t, top, drag, "below/%v top border missing DragHandle %q; got %q", state, drag, top)
 				// Bottom border must still carry the focus-state
 				// colour (bottom ≠ seam). Strictly check absence of
 				// DragHandle there.
 				bottom := lines[len(lines)-1]
-				if strings.Contains(bottom, drag) {
-					t.Errorf("below/%v bottom border carries DragHandle SGR %q; override leaked off the top edge: %q", state, drag, bottom)
-				}
+				assert.NotContainsf(t, bottom, drag,
+					"below/%v bottom border carries DragHandle SGR %q; override leaked off the top edge: %q", state, drag, bottom)
 			}
 		})
 	}
@@ -448,9 +404,7 @@ func TestStripAnsi_HandlesFullCSIFinalByteRange(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := stripAnsi(tc.in)
-			if got != "X" {
-				t.Errorf("stripAnsi(%q) = %q; want %q (escape sequence leaked through)", tc.in, got, "X")
-			}
+			assert.Equalf(t, "X", got, "stripAnsi(%q) = %q; want %q (escape sequence leaked through)", tc.in, got, "X")
 		})
 	}
 }

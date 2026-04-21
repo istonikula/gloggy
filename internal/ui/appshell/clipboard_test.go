@@ -3,6 +3,9 @@ package appshell
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/istonikula/gloggy/internal/logsource"
 )
 
@@ -22,12 +25,8 @@ func makeClipEntries(n int) []logsource.Entry {
 func TestCopyMarkedEntries_NoMarks_Noop(t *testing.T) {
 	entries := makeClipEntries(3)
 	msg, err := CopyMarkedEntries(entries, map[int]bool{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if msg.Count != 0 {
-		t.Errorf("expected count=0 with no marks, got %d", msg.Count)
-	}
+	require.NoError(t, err)
+	assert.Equalf(t, 0, msg.Count, "expected count=0 with no marks, got %d", msg.Count)
 }
 
 // T-054: R9.1+R9.2 — marked entries written in original order.
@@ -43,7 +42,5 @@ func TestCopyMarkedEntries_MarkedEntries_Count(t *testing.T) {
 		// In CI without a display/clipboard, writing may fail — that's acceptable.
 		t.Skipf("clipboard write failed (likely no display): %v", err)
 	}
-	if msg.Count != 2 {
-		t.Errorf("expected count=2, got %d", msg.Count)
-	}
+	assert.Equalf(t, 2, msg.Count, "expected count=2, got %d", msg.Count)
 }

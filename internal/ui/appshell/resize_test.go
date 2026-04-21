@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 )
@@ -12,9 +14,8 @@ import (
 func TestResizeModel_HandleWindowSizeMsg(t *testing.T) {
 	m := NewResizeModel(80, 24)
 	m2, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
-	if m2.Width() != 120 || m2.Height() != 40 {
-		t.Errorf("after resize: got %dx%d, want 120x40", m2.Width(), m2.Height())
-	}
+	assert.Equalf(t, 120, m2.Width(), "after resize width")
+	assert.Equalf(t, 40, m2.Height(), "after resize height")
 }
 
 // T-053: R7.2 — layout is re-built preserving pane proportions.
@@ -27,19 +28,16 @@ func TestApplyToLayout_PreservesProportions(t *testing.T) {
 	l2 := ApplyToLayout(rm2, 0.30, true) // 30% of 40 = 12 rows
 
 	// Pane height should scale.
-	if l2.DetailPaneHeight <= l1.DetailPaneHeight {
-		t.Errorf("detail pane should be taller after terminal grows: %d vs %d",
-			l2.DetailPaneHeight, l1.DetailPaneHeight)
-	}
+	assert.Greaterf(t, l2.DetailPaneHeight, l1.DetailPaneHeight,
+		"detail pane should be taller after terminal grows: %d vs %d",
+		l2.DetailPaneHeight, l1.DetailPaneHeight)
 }
 
 // T-053: R7.3 — no clipping when detail pane is closed.
 func TestApplyToLayout_NoCrashDetailPaneClosed(t *testing.T) {
 	rm := NewResizeModel(80, 10)
 	l := ApplyToLayout(rm, 0.30, false)
-	if l.EntryListHeight() < 1 {
-		t.Errorf("entry list height should be at least 1: got %d", l.EntryListHeight())
-	}
+	assert.GreaterOrEqualf(t, l.EntryListHeight(), 1, "entry list height should be at least 1: got %d", l.EntryListHeight())
 }
 
 // T-108: with position="auto", a shrink from 120 to 90 cols flips orientation
@@ -53,28 +51,17 @@ func TestResizeModel_AutoFlipPreservesBothRatios(t *testing.T) {
 	cfg.DetailPane.WidthRatio = 0.25
 
 	rm := NewResizeModel(120, 30).WithConfig(cfg)
-	if rm.Orientation() != OrientationRight {
-		t.Fatalf("initial orientation at 120 cols: got %v, want right", rm.Orientation())
-	}
+	require.Equalf(t, OrientationRight, rm.Orientation(), "initial orientation at 120 cols")
 
 	rm, _ = rm.Update(tea.WindowSizeMsg{Width: 90, Height: 30})
-	if rm.Orientation() != OrientationBelow {
-		t.Errorf("orientation after shrink to 90 cols: got %v, want below", rm.Orientation())
-	}
+	assert.Equalf(t, OrientationBelow, rm.Orientation(), "orientation after shrink to 90 cols")
 	// ResizeModel must not mutate the cfg ratios on resize.
-	if rm.cfg.DetailPane.HeightRatio != 0.55 {
-		t.Errorf("height_ratio mutated by resize: got %.3f, want 0.550", rm.cfg.DetailPane.HeightRatio)
-	}
-	if rm.cfg.DetailPane.WidthRatio != 0.25 {
-		t.Errorf("width_ratio mutated by resize: got %.3f, want 0.250", rm.cfg.DetailPane.WidthRatio)
-	}
+	assert.Equalf(t, 0.55, rm.cfg.DetailPane.HeightRatio, "height_ratio mutated by resize")
+	assert.Equalf(t, 0.25, rm.cfg.DetailPane.WidthRatio, "width_ratio mutated by resize")
 
 	// Flip back: orientation should re-evaluate on every WindowSizeMsg.
 	rm, _ = rm.Update(tea.WindowSizeMsg{Width: 130, Height: 30})
-	if rm.Orientation() != OrientationRight {
-		t.Errorf("orientation after grow back to 130 cols: got %v, want right", rm.Orientation())
-	}
-	if rm.cfg.DetailPane.HeightRatio != 0.55 || rm.cfg.DetailPane.WidthRatio != 0.25 {
-		t.Errorf("ratios mutated by second resize: height=%.3f width=%.3f", rm.cfg.DetailPane.HeightRatio, rm.cfg.DetailPane.WidthRatio)
-	}
+	assert.Equalf(t, OrientationRight, rm.Orientation(), "orientation after grow back to 130 cols")
+	assert.Equalf(t, 0.55, rm.cfg.DetailPane.HeightRatio, "height_ratio mutated by second resize")
+	assert.Equalf(t, 0.25, rm.cfg.DetailPane.WidthRatio, "width_ratio mutated by second resize")
 }

@@ -1,33 +1,32 @@
 package logsource
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestClassify_JSONObject(t *testing.T) {
-	if Classify([]byte(`{"level":"info"}`)) != LineTypeJSONL {
-		t.Error("expected LineTypeJSONL for JSON object")
-	}
+	assert.Equal(t, LineTypeJSONL, Classify([]byte(`{"level":"info"}`)),
+		"expected LineTypeJSONL for JSON object")
 }
 
 func TestClassify_PlainText(t *testing.T) {
-	if Classify([]byte("plain text")) != LineTypeRaw {
-		t.Error("expected LineTypeRaw for plain text")
-	}
+	assert.Equal(t, LineTypeRaw, Classify([]byte("plain text")),
+		"expected LineTypeRaw for plain text")
 }
 
 func TestClassify_EmptyLine(t *testing.T) {
-	if Classify([]byte("")) != LineTypeRaw {
-		t.Error("expected LineTypeRaw for empty line")
-	}
+	assert.Equal(t, LineTypeRaw, Classify([]byte("")),
+		"expected LineTypeRaw for empty line")
 }
 
 func TestClassify_JSONArray(t *testing.T) {
-	if Classify([]byte(`[1,2,3]`)) != LineTypeRaw {
-		t.Error("expected LineTypeRaw for JSON array")
-	}
+	assert.Equal(t, LineTypeRaw, Classify([]byte(`[1,2,3]`)),
+		"expected LineTypeRaw for JSON array")
 }
 
 func TestClassify_JSONScalar(t *testing.T) {
-	if Classify([]byte(`"hello"`)) != LineTypeRaw {
-		t.Error("expected LineTypeRaw for JSON scalar")
-	}
+	assert.Equal(t, LineTypeRaw, Classify([]byte(`"hello"`)),
+		"expected LineTypeRaw for JSON scalar")
 }

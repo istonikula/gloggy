@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/logsource"
 )
@@ -19,35 +21,29 @@ func TestSoftWrap_LongLineWrapsAtWidth(t *testing.T) {
 	long := strings.Repeat("A", 120)
 	got := SoftWrap(long, 40)
 	lines := strings.Split(got, "\n")
-	if len(lines) < 3 {
-		t.Fatalf("expected at least 3 wrapped lines, got %d (%q)", len(lines), got)
-	}
+	require.GreaterOrEqualf(t, len(lines), 3, "expected at least 3 wrapped lines, got %d (%q)", len(lines), got)
 	for i, line := range lines {
 		if w := lipgloss.Width(line); w > 40 {
-			t.Errorf("line %d exceeds width 40: got %d cells (%q)", i, w, line)
+			assert.Failf(t, "line exceeds width 40", "line %d: got %d cells (%q)", i, w, line)
 		}
 	}
 	// No bytes lost.
-	if joined := strings.ReplaceAll(got, "\n", ""); joined != long {
-		t.Errorf("wrapped text dropped content:\n got=%q\n want=%q", joined, long)
-	}
+	joined := strings.ReplaceAll(got, "\n", "")
+	assert.Equalf(t, long, joined, "wrapped text dropped content:\n got=%q\n want=%q", joined, long)
 }
 
 // T-106: short lines are returned unchanged.
 func TestSoftWrap_ShortLinePassesThrough(t *testing.T) {
 	in := "hello world"
 	got := SoftWrap(in, 40)
-	if got != in {
-		t.Errorf("short line mutated: got %q want %q", got, in)
-	}
+	assert.Equalf(t, in, got, "short line mutated")
 }
 
 // T-106: width ≤ 0 returns the input unchanged (no wrap attempted).
 func TestSoftWrap_ZeroWidthPasses(t *testing.T) {
 	in := strings.Repeat("x", 50)
-	if got := SoftWrap(in, 0); got != in {
-		t.Errorf("width=0 must pass through: got %q want %q", got, in)
-	}
+	got := SoftWrap(in, 0)
+	assert.Equalf(t, in, got, "width=0 must pass through")
 }
 
 // T-106: multi-line input keeps its newline structure; each line wrapped
@@ -59,15 +55,9 @@ func TestSoftWrap_MultipleLinesIndependent(t *testing.T) {
 	got := SoftWrap(in, 20)
 	lines := strings.Split(got, "\n")
 	// 1 (short) + >=3 (long/20) + 1 (short)
-	if len(lines) < 5 {
-		t.Fatalf("expected at least 5 lines, got %d (%q)", len(lines), got)
-	}
-	if lines[0] != "short" {
-		t.Errorf("first line changed: got %q", lines[0])
-	}
-	if lines[len(lines)-1] != "short" {
-		t.Errorf("last line changed: got %q", lines[len(lines)-1])
-	}
+	require.GreaterOrEqualf(t, len(lines), 5, "expected at least 5 lines, got %d (%q)", len(lines), got)
+	assert.Equal(t, "short", lines[0], "first line changed")
+	assert.Equal(t, "short", lines[len(lines)-1], "last line changed")
 }
 
 // T-106: ANSI-styled content survives wrapping — the escape sequences are
@@ -77,13 +67,11 @@ func TestSoftWrap_PreservesANSIAcrossBreaks(t *testing.T) {
 	got := SoftWrap(styled, 20)
 	// The wrapped text must still contain the escape sequence prefix
 	// somewhere and render every original Z.
-	if !strings.Contains(got, "\x1b[") {
-		t.Errorf("expected ANSI escape preserved, got: %q", got)
-	}
+	assert.Containsf(t, got, "\x1b[", "expected ANSI escape preserved, got: %q", got)
 	// Measure each line's printable cell width ≤ 20.
 	for i, line := range strings.Split(got, "\n") {
 		if w := lipgloss.Width(line); w > 20 {
-			t.Errorf("wrapped ANSI line %d exceeds width 20: got %d cells", i, w)
+			assert.Failf(t, "wrapped ANSI line exceeds width 20", "line %d: got %d cells", i, w)
 		}
 	}
 }
@@ -95,7 +83,7 @@ func TestSoftWrap_CJKEmojiByCells(t *testing.T) {
 	got := SoftWrap(content, 10) // should wrap at 5 glyphs (= 10 cells)
 	for i, line := range strings.Split(got, "\n") {
 		if w := lipgloss.Width(line); w > 10 {
-			t.Errorf("line %d width %d exceeds 10 cells", i, w)
+			assert.Failf(t, "line exceeds 10 cells", "line %d width %d", i, w)
 		}
 	}
 }
@@ -117,7 +105,7 @@ func TestPaneModel_View_WrapsWithinAllocation(t *testing.T) {
 	out := m.View()
 	for i, line := range strings.Split(out, "\n") {
 		if w := lipgloss.Width(line); w > 50 {
-			t.Errorf("pane line %d exceeds outer width 50: got %d cells", i, w)
+			assert.Failf(t, "pane line exceeds outer width 50", "line %d: got %d cells", i, w)
 		}
 	}
 }
@@ -136,9 +124,8 @@ func TestPaneModel_SetWidth_Rewraps(t *testing.T) {
 	m = m.SetWidth(30)
 	narrowLines := len(m.scroll.lines)
 
-	if narrowLines <= wideLines {
-		t.Errorf("expected narrower pane to produce MORE wrapped scroll lines: wide=%d narrow=%d", wideLines, narrowLines)
-	}
+	assert.Greaterf(t, narrowLines, wideLines,
+		"expected narrower pane to produce MORE wrapped scroll lines: wide=%d narrow=%d", wideLines, narrowLines)
 }
 
 // T-140 (F-104): SoftWrap must re-emit the active SGR at the start of each
@@ -152,16 +139,12 @@ func TestSoftWrap_T140_SGRRestoredOnContinuation(t *testing.T) {
 	line := "\x1b[32mkey\x1b[0m: \x1b[36mlongstringvalue\x1b[0m"
 	got := SoftWrap(line, 12)
 	parts := strings.Split(got, "\n")
-	if len(parts) < 2 {
-		t.Fatalf("expected wrap to produce >=2 lines, got 1: %q", got)
-	}
+	require.GreaterOrEqualf(t, len(parts), 2, "expected wrap to produce >=2 lines, got 1: %q", got)
 	// Continuation lines (everything after the first) must contain a
 	// cyan-SGR opener so the value keeps its color; they must NOT leave
 	// the terminal in the previous (key) style.
 	for i, p := range parts[1:] {
-		if !strings.Contains(p, "\x1b[36m") {
-			t.Errorf("continuation line %d missing cyan SGR reopen: %q", i+1, p)
-		}
+		assert.Containsf(t, p, "\x1b[36m", "continuation line %d missing cyan SGR reopen: %q", i+1, p)
 	}
 }
 
@@ -174,14 +157,10 @@ func TestPaneModel_T139_ExactContentWidthFits(t *testing.T) {
 	m = m.SetWidth(40)
 	// Raw rendering yields the body with the 40-char line; the scroll
 	// model's `lines` must still be 1 entry (no wrap).
-	if got := len(m.scroll.lines); got != 1 {
-		t.Errorf("content width 40 + line 40: expected 1 scroll line (no wrap), got %d", got)
-	}
+	assert.Lenf(t, m.scroll.lines, 1, "content width 40 + line 40: expected 1 scroll line (no wrap)")
 	// Same with 41 must wrap to 2.
 	m2 := defaultPane(10).Open(logsource.Entry{IsJSON: false, LineNumber: 1, Raw: []byte(strings.Repeat("x", 41))}).SetWidth(40)
-	if got := len(m2.scroll.lines); got != 2 {
-		t.Errorf("content width 40 + line 41: expected 2 scroll lines (wrap), got %d", got)
-	}
+	assert.Lenf(t, m2.scroll.lines, 2, "content width 40 + line 41: expected 2 scroll lines (wrap)")
 }
 
 // T-106: total rendered height never exceeds the allocated pane height,
@@ -197,7 +176,5 @@ func TestPaneModel_View_HeightWithinAllocation(t *testing.T) {
 	out := m.View()
 	gotLines := len(strings.Split(out, "\n"))
 	// Outer height is content + top border = ContentHeight()+1 = 8.
-	if gotLines > 8 {
-		t.Errorf("rendered height %d exceeds allocated 8 rows", gotLines)
-	}
+	assert.LessOrEqualf(t, gotLines, 8, "rendered height %d exceeds allocated 8 rows", gotLines)
 }

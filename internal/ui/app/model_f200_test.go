@@ -6,6 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/ui/appshell"
@@ -63,58 +65,44 @@ func TestModel_F200_WindowSizeMsg_AutoFlip_RefreshesBelowMode(t *testing.T) {
 	m = m.SetEntries(entries)
 	m = m.openPane(entries[0])
 
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("precondition: 80 cols should be below, got %v", m.resize.Orientation())
-	}
-	if !m.pane.IsOpen() {
-		t.Fatalf("precondition: pane should be open after openPane")
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"precondition: 80 cols should be below, got %v", m.resize.Orientation())
+	require.Truef(t, m.pane.IsOpen(), "precondition: pane should be open after openPane")
 
 	dragSGR := colorANSIF200(m.th.DragHandle)
-	if dragSGR == "" {
-		t.Fatalf("empty DragHandle SGR — TrueColor profile not active")
-	}
+	require.NotEmptyf(t, dragSGR, "empty DragHandle SGR — TrueColor profile not active")
 
 	// Precondition: below-mode top border is the drag seam (DragHandle SGR).
 	topRow := firstRenderedRow(m.pane.View())
-	if !strings.Contains(topRow, dragSGR) {
-		t.Fatalf("precondition: below-mode pane top border should carry DragHandle SGR %q; got %q",
-			dragSGR, topRow)
-	}
+	require.Containsf(t, topRow, dragSGR,
+		"precondition: below-mode pane top border should carry DragHandle SGR %q; got %q",
+		dragSGR, topRow)
 
 	// Flip 1: below → right via WindowSizeMsg crossing orientation_threshold_cols.
 	m = resize(m, 140, 24)
-	if m.resize.Orientation() != appshell.OrientationRight {
-		t.Fatalf("140 cols should flip to right, got %v", m.resize.Orientation())
-	}
-	if !m.pane.IsOpen() {
-		t.Fatalf("pane should still be open after flip to right")
-	}
+	require.Equalf(t, appshell.OrientationRight, m.resize.Orientation(),
+		"140 cols should flip to right, got %v", m.resize.Orientation())
+	require.Truef(t, m.pane.IsOpen(), "pane should still be open after flip to right")
 
 	// In right-mode the pane's top border is a regular pane border (NOT a
 	// drag seam — the seam in right-mode is the separate 1-cell `│` divider
 	// glyph between list and pane, not on the pane's own border). So the
 	// pane's top row must NOT carry DragHandle SGR.
 	topRow = firstRenderedRow(m.pane.View())
-	if strings.Contains(topRow, dragSGR) {
-		t.Errorf("F-200: after below→right WindowSizeMsg flip, pane.belowMode is stale — "+
+	assert.NotContainsf(t, topRow, dragSGR,
+		"F-200: after below→right WindowSizeMsg flip, pane.belowMode is stale — "+
 			"pane top border still carries DragHandle SGR %q\ntop row: %q",
-			dragSGR, topRow)
-	}
+		dragSGR, topRow)
 
 	// Flip 2: right → below. Pane should reclaim the DragHandle top border.
 	m = resize(m, 80, 24)
-	if m.resize.Orientation() != appshell.OrientationBelow {
-		t.Fatalf("80 cols should flip back to below, got %v", m.resize.Orientation())
-	}
-	if !m.pane.IsOpen() {
-		t.Fatalf("pane should still be open after flip back to below")
-	}
+	require.Equalf(t, appshell.OrientationBelow, m.resize.Orientation(),
+		"80 cols should flip back to below, got %v", m.resize.Orientation())
+	require.Truef(t, m.pane.IsOpen(), "pane should still be open after flip back to below")
 
 	topRow = firstRenderedRow(m.pane.View())
-	if !strings.Contains(topRow, dragSGR) {
-		t.Errorf("F-200: after right→below WindowSizeMsg flip, pane.belowMode is stale — "+
+	assert.Containsf(t, topRow, dragSGR,
+		"F-200: after right→below WindowSizeMsg flip, pane.belowMode is stale — "+
 			"pane top border missing DragHandle SGR %q\ntop row: %q",
-			dragSGR, topRow)
-	}
+		dragSGR, topRow)
 }

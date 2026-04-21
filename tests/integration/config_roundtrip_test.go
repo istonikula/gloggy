@@ -4,7 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"strings"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -16,9 +17,7 @@ import (
 func TestConfigWriteBack_HiddenFieldPersists(t *testing.T) {
 	// Create a temp config file.
 	f, err := os.CreateTemp("", "gloggy-config-*.toml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cfgPath := f.Name()
 	f.Close()
 	defer os.Remove(cfgPath)
@@ -29,22 +28,11 @@ func TestConfigWriteBack_HiddenFieldPersists(t *testing.T) {
 	// Create a VisibilityModel and toggle "level" field to hidden.
 	vm := detailpane.NewVisibilityModel(cfgPath, lr)
 	vm2, err := vm.ToggleField("level")
-	if err != nil {
-		t.Fatalf("ToggleField: %v", err)
-	}
+	require.NoError(t, err, "ToggleField")
 
 	// Verify the field is in the hidden list.
 	hidden := vm2.HiddenFields()
-	found := false
-	for _, f := range hidden {
-		if f == "level" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected 'level' in hidden fields after toggle, got: %v", hidden)
-	}
+	assert.Containsf(t, hidden, "level", "expected 'level' in hidden fields after toggle, got: %v", hidden)
 
 	// "Restart": load config again from the same file.
 	lr2 := config.Load(cfgPath)
@@ -52,16 +40,7 @@ func TestConfigWriteBack_HiddenFieldPersists(t *testing.T) {
 	// Verify the field is still hidden after reload.
 	vm3 := detailpane.NewVisibilityModel(cfgPath, lr2)
 	hidden2 := vm3.HiddenFields()
-	found2 := false
-	for _, f := range hidden2 {
-		if f == "level" {
-			found2 = true
-			break
-		}
-	}
-	if !found2 {
-		t.Errorf("expected 'level' to remain hidden after config reload, got: %v", hidden2)
-	}
+	assert.Containsf(t, hidden2, "level", "expected 'level' to remain hidden after config reload, got: %v", hidden2)
 
 	// Verify the field is omitted from the detail pane render.
 	entry := logsource.Entry{
@@ -73,7 +52,5 @@ func TestConfigWriteBack_HiddenFieldPersists(t *testing.T) {
 	}
 	th := theme.GetTheme("tokyo-night")
 	rendered := detailpane.RenderJSON(entry, th, hidden2)
-	if strings.Contains(rendered, `"level"`) {
-		t.Errorf("hidden field 'level' should not appear in rendered output:\n%s", rendered)
-	}
+	assert.NotContainsf(t, rendered, `"level"`, "hidden field 'level' should not appear in rendered output:\n%s", rendered)
 }

@@ -6,6 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // forceTrueColor pins lipgloss's renderer to TrueColor for this test file's
@@ -22,25 +24,16 @@ func TestBgSGROpen_TrueColor(t *testing.T) {
 	forceTrueColor(t)
 	open := BgSGROpen(lipgloss.Color("#1a1b26"))
 	// #1a1b26 = (26, 27, 38). TrueColor bg SGR is `48;2;R;G;B`.
-	if !strings.Contains(open, "48;2;26;27;38") {
-		t.Fatalf("BgSGROpen returned %q, want 48;2;26;27;38 fragment", open)
-	}
-	if !strings.HasPrefix(open, "\x1b[") {
-		t.Fatalf("BgSGROpen %q: missing CSI prefix", open)
-	}
-	if !strings.HasSuffix(open, "m") {
-		t.Fatalf("BgSGROpen %q: missing SGR terminator", open)
-	}
-	if strings.Contains(open, "\x1b[0m") {
-		t.Fatalf("BgSGROpen %q: must not include reset", open)
-	}
+	require.Containsf(t, open, "48;2;26;27;38", "BgSGROpen returned %q, want 48;2;26;27;38 fragment", open)
+	require.Truef(t, strings.HasPrefix(open, "\x1b["), "BgSGROpen %q: missing CSI prefix", open)
+	require.Truef(t, strings.HasSuffix(open, "m"), "BgSGROpen %q: missing SGR terminator", open)
+	require.NotContainsf(t, open, "\x1b[0m", "BgSGROpen %q: must not include reset", open)
 }
 
 func TestBgSGROpen_EmptyColorReturnsEmpty(t *testing.T) {
 	forceTrueColor(t)
-	if got := BgSGROpen(lipgloss.Color("")); got != "" {
-		t.Fatalf("BgSGROpen(\"\") = %q, want empty", got)
-	}
+	got := BgSGROpen(lipgloss.Color(""))
+	require.Emptyf(t, got, "BgSGROpen(\"\") = %q, want empty", got)
 }
 
 func TestRepaintBg_RewritesEveryReset(t *testing.T) {
@@ -56,9 +49,8 @@ func TestRepaintBg_RewritesEveryReset(t *testing.T) {
 
 	open := BgSGROpen(bg)
 	// Every `\x1b[0m` in the original body must be followed by the bg-set SGR.
-	if c := strings.Count(out, "\x1b[0m"+open); c < 3 {
-		t.Fatalf("RepaintBg: expected >= 3 reset+reassert pairs, got %d\nout=%q", c, out)
-	}
+	c := strings.Count(out, "\x1b[0m"+open)
+	require.GreaterOrEqualf(t, c, 3, "RepaintBg: expected >= 3 reset+reassert pairs, got %d\nout=%q", c, out)
 	// No bare reset must be left un-repainted.
 	scanned := out
 	for {
@@ -67,16 +59,14 @@ func TestRepaintBg_RewritesEveryReset(t *testing.T) {
 			break
 		}
 		tail := scanned[i+len("\x1b[0m"):]
-		if !strings.HasPrefix(tail, open) {
-			t.Fatalf("RepaintBg: bare reset at byte %d not followed by bg open\nout=%q", i, out)
-		}
+		require.Truef(t, strings.HasPrefix(tail, open),
+			"RepaintBg: bare reset at byte %d not followed by bg open\nout=%q", i, out)
 		scanned = tail
 	}
 }
 
 func TestRepaintBg_NoOpWhenNoBg(t *testing.T) {
 	body := "\x1b[38;2;255;0;0mred\x1b[0m rest"
-	if got := RepaintBg(body, lipgloss.Color("")); got != body {
-		t.Fatalf("RepaintBg with empty bg must be a no-op; got %q", got)
-	}
+	got := RepaintBg(body, lipgloss.Color(""))
+	assert.Equalf(t, body, got, "RepaintBg with empty bg must be a no-op; got %q", got)
 }

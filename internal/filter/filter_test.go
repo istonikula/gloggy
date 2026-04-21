@@ -1,53 +1,37 @@
 package filter
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestFilterSetAddGetAll(t *testing.T) {
 	fs := NewFilterSet()
 	id1 := fs.Add(Filter{Field: "level", Pattern: "error", Mode: Include, Enabled: true})
 	id2 := fs.Add(Filter{Field: "any", Pattern: "timeout", Mode: Exclude, Enabled: false})
-	if id1 == id2 {
-		t.Fatal("IDs should be unique")
-	}
-	all := fs.GetAll()
-	if len(all) != 2 {
-		t.Fatalf("GetAll() len = %d, want 2", len(all))
-	}
+	require.NotEqual(t, id1, id2, "IDs should be unique")
+	assert.Len(t, fs.GetAll(), 2)
 }
 
 func TestFilterSetRemove(t *testing.T) {
 	fs := NewFilterSet()
 	id := fs.Add(Filter{Field: "msg", Pattern: "test", Mode: Include, Enabled: true})
-	if !fs.Remove(id) {
-		t.Error("Remove should return true")
-	}
-	if fs.Remove(id) {
-		t.Error("Remove again should return false")
-	}
-	if len(fs.GetAll()) != 0 {
-		t.Error("GetAll should be empty")
-	}
+	assert.True(t, fs.Remove(id), "Remove should return true")
+	assert.False(t, fs.Remove(id), "Remove again should return false")
+	assert.Empty(t, fs.GetAll(), "GetAll should be empty")
 }
 
 func TestFilterSetEnableDisable(t *testing.T) {
 	fs := NewFilterSet()
 	id := fs.Add(Filter{Field: "level", Pattern: "info", Mode: Include, Enabled: true})
-	if !fs.Disable(id) {
-		t.Error("Disable should return true")
-	}
-	if fs.GetAll()[0].Enabled {
-		t.Error("should be disabled")
-	}
+	assert.True(t, fs.Disable(id), "Disable should return true")
+	assert.False(t, fs.GetAll()[0].Enabled, "should be disabled")
 	// Retained even when disabled
-	if len(fs.GetAll()) != 1 {
-		t.Error("disabled filter should still be in GetAll")
-	}
-	if !fs.Enable(id) {
-		t.Error("Enable should return true")
-	}
-	if !fs.GetAll()[0].Enabled {
-		t.Error("should be re-enabled")
-	}
+	assert.Len(t, fs.GetAll(), 1, "disabled filter should still be in GetAll")
+	assert.True(t, fs.Enable(id), "Enable should return true")
+	assert.True(t, fs.GetAll()[0].Enabled, "should be re-enabled")
 }
 
 func TestFilterSetGetEnabled(t *testing.T) {
@@ -56,21 +40,14 @@ func TestFilterSetGetEnabled(t *testing.T) {
 	id2 := fs.Add(Filter{Field: "b", Enabled: true})
 	fs.Add(Filter{Field: "c", Enabled: false})
 
-	if len(fs.GetEnabled()) != 2 {
-		t.Fatalf("GetEnabled len = %d, want 2", len(fs.GetEnabled()))
-	}
+	require.Len(t, fs.GetEnabled(), 2)
 	fs.Disable(id2)
-	if len(fs.GetEnabled()) != 1 {
-		t.Fatalf("GetEnabled len = %d, want 1", len(fs.GetEnabled()))
-	}
+	require.Len(t, fs.GetEnabled(), 1)
 }
 
 func TestModeTypedEnum(t *testing.T) {
 	f := Filter{Mode: Exclude}
-	if f.Mode != Exclude {
-		t.Error("Mode should be Exclude")
-	}
-	if Include.String() != "include" || Exclude.String() != "exclude" {
-		t.Error("Mode.String() wrong")
-	}
+	assert.Equal(t, Exclude, f.Mode)
+	assert.Equal(t, "include", Include.String())
+	assert.Equal(t, "exclude", Exclude.String())
 }

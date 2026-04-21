@@ -1,6 +1,10 @@
 package entrylist
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestAbbreviateLogger(t *testing.T) {
 	tests := []struct {
@@ -54,10 +58,7 @@ func TestAbbreviateLogger(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := AbbreviateLogger(tt.logger, tt.depth)
-			if got != tt.expected {
-				t.Errorf("AbbreviateLogger(%q, %d) = %q, want %q",
-					tt.logger, tt.depth, got, tt.expected)
-			}
+			assert.Equal(t, tt.expected, got, "AbbreviateLogger(%q, %d)", tt.logger, tt.depth)
 		})
 	}
 }
