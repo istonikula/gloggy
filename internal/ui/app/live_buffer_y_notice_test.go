@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,49 @@ import (
 
 	"github.com/istonikula/gloggy/internal/ui/appshell"
 )
+
+// sgrOpenRe captures the parameter string inside `\x1b[...m` SGR sequences.
+var sgrOpenRe = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
+
+// assertNoticeIsStyledDistinctly locates `notice` in `captured` and verifies
+// the last non-reset SGR sequence before it carries the Bold parameter (1).
+// After T7 the notice branch renders with `Bold(true).Foreground(FocusBorder)`
+// so the presence of Bold is the most robust signal that the notice is
+// visually distinct from the Dim keyhints row — V25 class-(b).
+func assertNoticeIsStyledDistinctly(t *testing.T, captured, notice string) {
+	t.Helper()
+	idx := strings.Index(captured, notice)
+	if idx < 0 {
+		t.Fatalf("notice %q not in captured bytes — live-buffer test preconditions failed", notice)
+	}
+	prefix := captured[:idx]
+	matches := sgrOpenRe.FindAllStringSubmatchIndex(prefix, -1)
+	for i := len(matches) - 1; i >= 0; i-- {
+		m := matches[i]
+		params := prefix[m[2]:m[3]]
+		if params == "" || params == "0" {
+			continue // reset, skip — style comes from an earlier SGR
+		}
+		if !sgrContainsParam(params, "1") {
+			t.Errorf("notice %q rendered without Bold SGR — V25 class-(b) perceptual distinctness lost.\n  preceding SGR params: %q",
+				notice, params)
+		}
+		return
+	}
+	t.Errorf("no non-reset SGR sequence precedes notice %q in captured bytes — V25 class-(b) violation",
+		notice)
+}
+
+// sgrContainsParam reports whether `target` appears as a standalone
+// parameter in the semicolon-delimited SGR parameter list `params`.
+func sgrContainsParam(params, target string) bool {
+	for _, p := range strings.Split(params, ";") {
+		if p == target {
+			return true
+		}
+	}
+	return false
+}
 
 // runYProgramAndCapture drives a live tea.Program with the given seed Model,
 // optionally pre-marks N rows with `m`, then sends `y`, waits for the
@@ -63,6 +107,7 @@ func TestLiveBuffer_YNoMarks_NoticeReachesRenderer(t *testing.T) {
 	if !strings.Contains(got, clipboardNoMarksNotice) {
 		t.Errorf("no-marks notice %q missing from live-buffer output", clipboardNoMarksNotice)
 	}
+	assertNoticeIsStyledDistinctly(t, got, clipboardNoMarksNotice)
 }
 
 // TestLiveBuffer_YCopied_NoticeReachesRenderer covers V25 for the success
@@ -82,6 +127,7 @@ func TestLiveBuffer_YCopied_NoticeReachesRenderer(t *testing.T) {
 	if !strings.Contains(got, want) {
 		t.Errorf("copied notice %q missing from live-buffer output", want)
 	}
+	assertNoticeIsStyledDistinctly(t, got, want)
 }
 
 // TestLiveBuffer_YClipboardErr_NoticeReachesRenderer covers V25 for the
@@ -98,13 +144,16 @@ func TestLiveBuffer_YClipboardErr_NoticeReachesRenderer(t *testing.T) {
 	m = m.SetEntries(makeEntries(3))
 
 	got := runYProgramAndCapture(t, m, 2)
-	// The app phrases clipboard errors with the literal "clipboard"
-	// substring or the underlying error message — assert on the error
-	// string we injected, which is the most specific signal.
-	if !strings.Contains(got, "pbcopy: broken") && !strings.Contains(got, "clipboard") {
-		t.Errorf("clipboard-error notice missing from live-buffer output; captured bytes (first 500):\n%s",
-			truncateForLog(got, 500))
+	// model.go formats this path as "clipboard error: <err>"; assert on
+	// the full prefix so the class-(b) distinctness check has a stable
+	// anchor to locate in the captured byte stream.
+	const want = "clipboard error: pbcopy: broken"
+	if !strings.Contains(got, want) {
+		t.Errorf("clipboard-error notice %q missing from live-buffer output; captured bytes (first 500):\n%s",
+			want, truncateForLog(got, 500))
+		return
 	}
+	assertNoticeIsStyledDistinctly(t, got, want)
 }
 
 func truncateForLog(s string, n int) string {
