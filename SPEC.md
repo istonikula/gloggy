@@ -98,6 +98,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T4 | ~ | human verify clipboard `y` notices (copied/empty/err) | V15 |
 | T5 | ~ | human verify ratio drag — below + right, tui-mcp `send_mouse` press-hold-move-release | V17,V18 |
 | T6 | x | guard `saveConfig()` in `handleRatioKey` on `newR != current`; add regression test for no-mtime-advance at ratio boundary across `-`/`+`/`=`/`\|` | V17 |
+| T7 | . | fix B1: diagnose + repair `y`-notice drop (keyhints line-replace vs bubbletea diff-renderer); add tea.Program capture-renderer OR pty-driven test for copied-N / no-marks / clipboard-err paths per V25 | V15,V25 |
 
 ## §B bugs
 
