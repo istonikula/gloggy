@@ -7,12 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// T-051: R5.1 — ? opens the help overlay.
-func TestHelpOverlay_QuestionMark_Opens(t *testing.T) {
+// T15 / V14: when the overlay is closed, Update forwards all keys and does
+// NOT open the overlay on its own. Opening is the caller's responsibility
+// (app layer gates on pane-search-input-mode per V14).
+func TestHelpOverlay_Closed_QuestionMark_Forwarded(t *testing.T) {
 	m := NewHelpOverlayModel()
 	m2, forward := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	assert.Truef(t, m2.IsOpen(), "? should open the help overlay")
-	assert.Falsef(t, forward, "? should not be forwarded to other components")
+	assert.Falsef(t, m2.IsOpen(), "? must NOT open the overlay from Update — caller opens")
+	assert.Truef(t, forward, "? should be forwarded so the caller can route it")
 }
 
 // T-051: R5.2 — overlay lists all keybindings by domain.

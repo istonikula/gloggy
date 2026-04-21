@@ -33,27 +33,22 @@ func (m HelpOverlayModel) Close() HelpOverlayModel {
 	return m
 }
 
-// Update handles key events. When the overlay is open, only Esc closes it; all other
-// keys are consumed (not forwarded). When closed, '?' opens it.
-// Returns (model, shouldForward) — callers should only forward the message to other
-// components when shouldForward is true.
+// Update handles key events while the overlay is open: Esc closes it, all
+// other keys are consumed (not forwarded). Callers MUST only invoke Update
+// when IsOpen() is true — opening via '?' is the caller's responsibility
+// (see V14: gated on no pane-search in input mode).
+// Returns (model, shouldForward) — while open, shouldForward is always false.
 func (m HelpOverlayModel) Update(msg tea.Msg) (HelpOverlayModel, bool) {
-	keyMsg, ok := msg.(tea.KeyMsg)
-	if !ok {
-		return m, !m.open // forward non-key msgs unless overlay intercepts
+	if !m.open {
+		return m, true
 	}
-	if m.open {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		if keyMsg.String() == "esc" {
 			m = m.Close()
 		}
-		// All keys consumed while overlay is open — do not forward.
-		return m, false
 	}
-	if keyMsg.String() == "?" {
-		m = m.Open()
-		return m, false
-	}
-	return m, true
+	// All messages consumed while overlay is open — do not forward.
+	return m, false
 }
 
 // View renders the help overlay, or empty string when closed.

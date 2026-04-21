@@ -153,11 +153,15 @@ func (m Model) Init() tea.Cmd {
 
 // Update is the central message dispatcher.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Help overlay intercepts everything while open.
-	var forward bool
-	m.help, forward = m.help.Update(msg)
-	if !forward {
-		return m, nil
+	// Help overlay intercepts everything while open. When closed, the
+	// `?`-opens-help logic lives in handleKey so V14 can suppress it
+	// while a pane-search is in input mode.
+	if m.help.IsOpen() {
+		var forward bool
+		m.help, forward = m.help.Update(msg)
+		if !forward {
+			return m, nil
+		}
 	}
 
 	switch msg := msg.(type) {
@@ -318,6 +322,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.tailCancel()
 			}
 			return m, tea.Quit
+		}
+	}
+
+	// V14 (T15/B5): `?` opens the help overlay unless a pane-search is in
+	// input mode. During input mode, `?` falls through to the active
+	// search as a query char (same policy as `q`). Navigate mode does not
+	// suppress — a post-Enter list search does not block `?`.
+	if msg.String() == "?" {
+		listInput := m.list.HasActiveSearch() && m.list.Search().InputMode()
+		paneInput := m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeInput
+		if !listInput && !paneInput {
+			m.help = m.help.Open()
+			return m, nil
 		}
 	}
 

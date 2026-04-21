@@ -89,10 +89,10 @@ func TestFullApp_SmokeTest(t *testing.T) {
 	list, _ = list.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	_ = list.View()
 
-	// Help overlay: open and close.
-	help := appshell.NewHelpOverlayModel()
-	help, _ = help.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	assert.True(t, help.IsOpen(), "help overlay should be open after ?")
+	// Help overlay: caller opens via Open() (V14 — Update no longer owns
+	// the `?` entry point), then Esc dismisses.
+	help := appshell.NewHelpOverlayModel().Open()
+	assert.True(t, help.IsOpen(), "help overlay should be open after Open()")
 	help, _ = help.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	assert.False(t, help.IsOpen(), "help overlay should be closed after Esc")
 
