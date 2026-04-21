@@ -9,6 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
@@ -68,25 +70,12 @@ func TestSearchModel_ActivateAndType_MatchesSubstrings(t *testing.T) {
 		s = s.AppendRune(r, entries, 80, cfg)
 	}
 
-	if !s.IsActive() {
-		t.Fatal("search should be active after Activate()")
-	}
-	if s.Query() != "err" {
-		t.Errorf("query: got %q, want %q", s.Query(), "err")
-	}
+	require.True(t, s.IsActive(), "search should be active after Activate()")
+	assert.Equal(t, "err", s.Query())
 	got := s.MatchLines()
 	want := []int{1, 3} // "error ..." and "another ERROR ..." (message column only)
-	if len(got) != len(want) {
-		t.Fatalf("matches: got %v, want %v", got, want)
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			t.Errorf("match[%d]: got %d, want %d", i, got[i], want[i])
-		}
-	}
-	if s.NotFound() {
-		t.Error("NotFound should be false when matches exist")
-	}
+	require.Equal(t, want, got)
+	assert.False(t, s.NotFound(), "NotFound should be false when matches exist")
 }
 
 // T-143 (cavekit-entry-list R13 AC 3): query yielding zero matches sets
@@ -101,12 +90,8 @@ func TestSearchModel_NoMatches_SetsNotFound(t *testing.T) {
 		s = s.AppendRune(r, entries, 80, cfg)
 	}
 
-	if s.MatchCount() != 0 {
-		t.Errorf("matches: got %d, want 0", s.MatchCount())
-	}
-	if !s.NotFound() {
-		t.Error("NotFound should be true when non-empty query matches nothing")
-	}
+	assert.Equal(t, 0, s.MatchCount())
+	assert.True(t, s.NotFound(), "NotFound should be true when non-empty query matches nothing")
 }
 
 // T-143 (cavekit-entry-list R13 AC 4): Next/Prev cycle through matches
@@ -125,32 +110,20 @@ func TestSearchModel_NextPrev_CyclesWithWrap(t *testing.T) {
 	for _, r := range "error" {
 		s = s.AppendRune(r, entries, 80, cfg)
 	}
-	if s.MatchCount() != 3 {
-		t.Fatalf("precondition: want 3 matches, got %d", s.MatchCount())
-	}
+	require.Equal(t, 3, s.MatchCount(), "precondition: want 3 matches")
 
 	// Initially current=0 → first match line is 0.
-	if got := s.CurrentMatchLine(); got != 0 {
-		t.Errorf("initial CurrentMatchLine: got %d, want 0", got)
-	}
+	assert.Equal(t, 0, s.CurrentMatchLine(), "initial CurrentMatchLine")
 	s = s.Next()
-	if got := s.CurrentMatchLine(); got != 2 {
-		t.Errorf("after 1 Next: got %d, want 2", got)
-	}
+	assert.Equal(t, 2, s.CurrentMatchLine(), "after 1 Next")
 	s = s.Next()
-	if got := s.CurrentMatchLine(); got != 3 {
-		t.Errorf("after 2 Next: got %d, want 3", got)
-	}
+	assert.Equal(t, 3, s.CurrentMatchLine(), "after 2 Next")
 	// Wrap forward.
 	s = s.Next()
-	if got := s.CurrentMatchLine(); got != 0 {
-		t.Errorf("after wrap-forward: got %d, want 0", got)
-	}
+	assert.Equal(t, 0, s.CurrentMatchLine(), "after wrap-forward")
 	// Wrap back.
 	s = s.Prev()
-	if got := s.CurrentMatchLine(); got != 3 {
-		t.Errorf("after wrap-back: got %d, want 3", got)
-	}
+	assert.Equal(t, 3, s.CurrentMatchLine(), "after wrap-back")
 }
 
 // T-143 (cavekit-entry-list R13 AC 9): Backspace on a query containing a
@@ -165,22 +138,14 @@ func TestSearchModel_BackspaceRune_UTF8Safe(t *testing.T) {
 	s = s.AppendRune('a', entries, 80, cfg)
 	s = s.AppendRune('🔥', entries, 80, cfg)
 	s = s.AppendRune('b', entries, 80, cfg)
-	if s.Query() != "a🔥b" {
-		t.Fatalf("precondition: query = %q", s.Query())
-	}
+	require.Equal(t, "a🔥b", s.Query(), "precondition")
 
 	s = s.BackspaceRune(entries, 80, cfg)
-	if s.Query() != "a🔥" {
-		t.Errorf("after 1 backspace: got %q, want %q", s.Query(), "a🔥")
-	}
+	assert.Equal(t, "a🔥", s.Query(), "after 1 backspace")
 	s = s.BackspaceRune(entries, 80, cfg)
-	if s.Query() != "a" {
-		t.Errorf("after 2 backspace (multibyte rune): got %q, want %q", s.Query(), "a")
-	}
+	assert.Equal(t, "a", s.Query(), "after 2 backspace (multibyte rune)")
 	s = s.BackspaceRune(entries, 80, cfg)
-	if s.Query() != "" {
-		t.Errorf("after 3 backspace: got %q, want empty", s.Query())
-	}
+	assert.Equal(t, "", s.Query(), "after 3 backspace")
 }
 
 // T-143: Deactivate clears all state so a later Activate starts fresh.
@@ -197,21 +162,11 @@ func TestSearchModel_Deactivate_ClearsState(t *testing.T) {
 
 	s = s.Deactivate()
 
-	if s.IsActive() {
-		t.Error("after Deactivate: IsActive should be false")
-	}
-	if s.Query() != "" {
-		t.Errorf("after Deactivate: query should be empty, got %q", s.Query())
-	}
-	if s.MatchCount() != 0 {
-		t.Errorf("after Deactivate: matches should be empty, got %d", s.MatchCount())
-	}
-	if s.CurrentIndex() != 0 {
-		t.Errorf("after Deactivate: current should be 0, got %d", s.CurrentIndex())
-	}
-	if s.NotFound() {
-		t.Error("after Deactivate: NotFound should be false")
-	}
+	assert.False(t, s.IsActive(), "after Deactivate: IsActive should be false")
+	assert.Equal(t, "", s.Query(), "after Deactivate: query should be empty")
+	assert.Equal(t, 0, s.MatchCount(), "after Deactivate: matches should be empty")
+	assert.Equal(t, 0, s.CurrentIndex(), "after Deactivate: current should be 0")
+	assert.False(t, s.NotFound(), "after Deactivate: NotFound should be false")
 }
 
 // T-143 (list integration): ActivateSearch + typed query produces a
@@ -221,10 +176,10 @@ func TestListModel_View_SearchHighlightsNonCursorMatches(t *testing.T) {
 	cfg := config.DefaultConfig()
 	th := theme.GetTheme("tokyo-night")
 	entries := entriesWithMessages(
-		"quiet line",       // index 0 (cursor starts here)
-		"error one",        // index 1 — non-cursor match
-		"benign again",     // index 2
-		"error two",        // index 3 — non-cursor match
+		"quiet line",   // index 0 (cursor starts here)
+		"error one",    // index 1 — non-cursor match
+		"benign again", // index 2
+		"error two",    // index 3 — non-cursor match
 	)
 	m := NewListModel(th, cfg, 80, 10).SetEntries(entries)
 	m.Focused = true
@@ -233,12 +188,9 @@ func TestListModel_View_SearchHighlightsNonCursorMatches(t *testing.T) {
 	for _, r := range []rune("error") {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if !m.HasActiveSearch() {
-		t.Fatal("precondition: list search should be active")
-	}
-	if got := m.Search().MatchCount(); got != 2 {
-		t.Fatalf("want 2 matches, got %d (matches=%v)", got, m.Search().MatchLines())
-	}
+	require.True(t, m.HasActiveSearch(), "precondition: list search should be active")
+	require.Equal(t, 2, m.Search().MatchCount(),
+		"want 2 matches, matches=%v", m.Search().MatchLines())
 
 	view := m.View()
 	// Cursor row is row 0 ("quiet line") — not a match, no highlight
@@ -246,14 +198,11 @@ func TestListModel_View_SearchHighlightsNonCursorMatches(t *testing.T) {
 	// render with SearchHighlight bg. Match the ANSI truecolor bg
 	// escape (48;2;R;G;B) that lipgloss emits for the color.
 	bgCode := bgEscape(th.SearchHighlight)
-	if bgCode == "" {
-		t.Fatalf("could not derive bg escape for %q", th.SearchHighlight)
-	}
+	require.NotEmpty(t, bgCode, "could not derive bg escape for %q", th.SearchHighlight)
 	occurrences := strings.Count(view, bgCode)
-	if occurrences < 2 {
-		t.Errorf("expected SearchHighlight bg escape %q in view at least 2x, got %d occurrences\nview=\n%s",
-			bgCode, occurrences, view)
-	}
+	assert.GreaterOrEqual(t, occurrences, 2,
+		"expected SearchHighlight bg escape %q in view at least 2x, got %d occurrences\nview=\n%s",
+		bgCode, occurrences, view)
 }
 
 // T-143 (cavekit-entry-list R13 AC 10): on the active match row (which
@@ -276,9 +225,7 @@ func TestListModel_View_CursorRowPriorityOverSearchHighlight(t *testing.T) {
 	}
 	// Commit to navigate mode, then Next — jumps cursor to first match.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.Cursor() != 0 {
-		t.Fatalf("after Enter cursor should be at first match (0), got %d", m.Cursor())
-	}
+	require.Equal(t, 0, m.Cursor(), "after Enter cursor should be at first match (0)")
 
 	// The view wraps the list in a lipgloss border, so the first
 	// rendered data row is lines[1]. Verify that the cursor row — the
@@ -296,26 +243,16 @@ func TestListModel_View_CursorRowPriorityOverSearchHighlight(t *testing.T) {
 			secondMatchRow = ln
 		}
 	}
-	if cursorRow == "" {
-		t.Fatalf("cursor row with 'error one' not found in view:\n%s", view)
-	}
-	if secondMatchRow == "" {
-		t.Fatalf("second match row 'error two' not found in view:\n%s", view)
-	}
+	require.NotEmpty(t, cursorRow, "cursor row with 'error one' not found in view:\n%s", view)
+	require.NotEmpty(t, secondMatchRow, "second match row 'error two' not found in view:\n%s", view)
 	cursorBg := bgEscape(th.CursorHighlight)
 	searchBg := bgEscape(th.SearchHighlight)
-	if !strings.Contains(cursorRow, cursorBg) {
-		t.Errorf("cursor row should contain CursorHighlight bg %q\ncursorRow=%q",
-			cursorBg, cursorRow)
-	}
-	if strings.Contains(cursorRow, searchBg) {
-		t.Errorf("cursor row must NOT contain SearchHighlight bg (priority violation)\ncursorRow=%q",
-			cursorRow)
-	}
-	if !strings.Contains(secondMatchRow, searchBg) {
-		t.Errorf("non-cursor match row should contain SearchHighlight bg %q\nrow=%q",
-			searchBg, secondMatchRow)
-	}
+	assert.Contains(t, cursorRow, cursorBg,
+		"cursor row should contain CursorHighlight bg %q\ncursorRow=%q", cursorBg, cursorRow)
+	assert.NotContains(t, cursorRow, searchBg,
+		"cursor row must NOT contain SearchHighlight bg (priority violation)\ncursorRow=%q", cursorRow)
+	assert.Contains(t, secondMatchRow, searchBg,
+		"non-cursor match row should contain SearchHighlight bg %q\nrow=%q", searchBg, secondMatchRow)
 }
 
 // T-143 (cavekit-entry-list R13 AC): SetFilter clears active search
@@ -329,15 +266,11 @@ func TestListModel_SetFilter_ClearsActiveSearch(t *testing.T) {
 	for _, r := range []rune("error") {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if !m.HasActiveSearch() {
-		t.Fatal("precondition: search should be active")
-	}
+	require.True(t, m.HasActiveSearch(), "precondition: search should be active")
 
 	m = m.SetFilter([]int{0, 2})
 
-	if m.HasActiveSearch() {
-		t.Error("SetFilter should clear active search")
-	}
+	assert.False(t, m.HasActiveSearch(), "SetFilter should clear active search")
 }
 
 // T-143 (cavekit-entry-list R13 AC 5): Next/Prev honour scrolloff so
@@ -361,18 +294,13 @@ func TestListModel_SearchNext_HonoursScrolloff(t *testing.T) {
 	for _, r := range []rune("target") {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if got := m.Search().MatchCount(); got != 1 {
-		t.Fatalf("want 1 match, got %d", got)
-	}
+	require.Equal(t, 1, m.Search().MatchCount(), "want 1 match")
 	// Commit to navigate, then Next lands cursor on index 20.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.Cursor() != 20 {
-		t.Errorf("Enter should land on first match (20), got %d", m.Cursor())
-	}
+	assert.Equal(t, 20, m.Cursor(), "Enter should land on first match (20)")
 	// Viewport should respect scrolloff=3 from the top edge.
-	if m.scroll.Offset > 20-3 {
-		t.Errorf("scrolloff not honoured: cursor=20 but offset=%d (want ≤ 17)", m.scroll.Offset)
-	}
+	assert.LessOrEqual(t, m.scroll.Offset, 20-3,
+		"scrolloff not honoured: cursor=20 but offset=%d (want ≤ 17)", m.scroll.Offset)
 }
 
 // T-148 (cavekit-entry-list R13 streaming AC): entries appended while
@@ -388,9 +316,7 @@ func TestListModel_AppendEntries_ExtendsActiveSearchMatches(t *testing.T) {
 	for _, r := range []rune("error") {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if m.Search().MatchCount() != 1 {
-		t.Fatalf("precondition: want 1 match, got %d", m.Search().MatchCount())
-	}
+	require.Equal(t, 1, m.Search().MatchCount(), "precondition: want 1 match")
 
 	// Stream 3 new entries; two of them match "error".
 	streamed := entriesWithMessages("info c", "error d", "error e")
@@ -398,14 +324,7 @@ func TestListModel_AppendEntries_ExtendsActiveSearchMatches(t *testing.T) {
 
 	got := m.Search().MatchLines()
 	want := []int{0, 3, 4} // "error a", "error d", "error e"
-	if len(got) != len(want) {
-		t.Fatalf("matches after streaming: got %v, want %v", got, want)
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			t.Errorf("match[%d]: got %d, want %d", i, got[i], want[i])
-		}
-	}
+	require.Equal(t, want, got)
 }
 
 // T-148: streamed matches clear NotFound when the first match arrives
@@ -420,18 +339,12 @@ func TestListModel_AppendEntries_ClearsNotFound_WhenFirstStreamedMatchArrives(t 
 	for _, r := range []rune("target") {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if !m.Search().NotFound() {
-		t.Fatal("precondition: want NotFound before any match streamed")
-	}
+	require.True(t, m.Search().NotFound(), "precondition: want NotFound before any match streamed")
 
 	m = m.AppendEntries(entriesWithMessages("target hit"))
 
-	if m.Search().NotFound() {
-		t.Error("NotFound should clear after first match arrives via stream")
-	}
-	if m.Search().MatchCount() != 1 {
-		t.Errorf("want 1 match after stream, got %d", m.Search().MatchCount())
-	}
+	assert.False(t, m.Search().NotFound(), "NotFound should clear after first match arrives via stream")
+	assert.Equal(t, 1, m.Search().MatchCount(), "want 1 match after stream")
 }
 
 // T-148: AppendEntries with no active search is a no-op on search state.
@@ -439,18 +352,12 @@ func TestListModel_AppendEntries_InactiveSearch_NoOp(t *testing.T) {
 	cfg := config.DefaultConfig()
 	th := theme.GetTheme("tokyo-night")
 	m := NewListModel(th, cfg, 80, 10).SetEntries(entriesWithMessages("alpha"))
-	if m.HasActiveSearch() {
-		t.Fatal("precondition: search should be inactive")
-	}
+	require.False(t, m.HasActiveSearch(), "precondition: search should be inactive")
 
 	m = m.AppendEntries(entriesWithMessages("error b", "error c"))
 
-	if m.HasActiveSearch() {
-		t.Error("AppendEntries should not activate search")
-	}
-	if m.Search().MatchCount() != 0 {
-		t.Errorf("inactive search match count should stay 0, got %d", m.Search().MatchCount())
-	}
+	assert.False(t, m.HasActiveSearch(), "AppendEntries should not activate search")
+	assert.Equal(t, 0, m.Search().MatchCount(), "inactive search match count should stay 0")
 }
 
 // T-143 (cavekit-entry-list R13 AC 8): list search must NOT modify the
@@ -468,7 +375,5 @@ func TestListModel_Search_DoesNotChangeVisibleSet(t *testing.T) {
 	}
 	after := m.RenderedRowCount()
 
-	if before != after {
-		t.Errorf("list search changed visible-row count: before=%d after=%d", before, after)
-	}
+	assert.Equal(t, before, after, "list search changed visible-row count")
 }
