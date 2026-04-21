@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // drainLoader fully consumes a LoadFile command and returns all entries,
@@ -16,7 +19,7 @@ func drainLoader(t *testing.T, cmd func() interface{}) (entries []Entry, progres
 	for {
 		select {
 		case <-timeout:
-			t.Fatal("timed out draining loader")
+			require.Fail(t, "timed out draining loader")
 		default:
 		}
 		raw := cmd()
@@ -37,7 +40,7 @@ func drainLoader(t *testing.T, cmd func() interface{}) (entries []Entry, progres
 		case LoadDoneMsg:
 			return
 		default:
-			t.Fatalf("unexpected msg type %T", raw)
+			require.Failf(t, "unexpected msg type", "%T", raw)
 		}
 	}
 }
@@ -47,9 +50,7 @@ func TestLoadFile_ProgressAndDone(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.jsonl")
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for i := 1; i <= 250; i++ {
 		fmt.Fprintf(f, `{"level":"INFO","msg":"line %d"}`+"\n", i)
 	}
@@ -59,15 +60,9 @@ func TestLoadFile_ProgressAndDone(t *testing.T) {
 	cmd := func() interface{} { return rawCmd() }
 	entries, progressSeen, lastCount := drainLoader(t, cmd)
 
-	if !progressSeen {
-		t.Error("no LoadProgressMsg received")
-	}
-	if lastCount != 250 {
-		t.Errorf("lastCount = %d, want 250", lastCount)
-	}
-	if len(entries) != 250 {
-		t.Errorf("got %d entries, want 250", len(entries))
-	}
+	assert.True(t, progressSeen, "no LoadProgressMsg received")
+	assert.Equal(t, 250, lastCount, "lastCount")
+	assert.Len(t, entries, 250, "entries count")
 }
 
 // T-027: R7.2 — entries available before done (via batching)
@@ -75,9 +70,7 @@ func TestLoadFile_EntriesBeforeDone(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "big.jsonl")
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for i := 0; i < 500; i++ {
 		fmt.Fprintf(f, `{"msg":"entry %d"}`+"\n", i)
 	}
@@ -90,17 +83,15 @@ func TestLoadFile_EntriesBeforeDone(t *testing.T) {
 	case LoadFileStreamMsg:
 		switch inner := m.Unwrap().(type) {
 		case EntryBatchMsg:
-			if len(inner.Entries) == 0 {
-				t.Error("first batch is empty")
-			}
+			assert.NotEmpty(t, inner.Entries, "first batch is empty")
 			// Good — entries before done.
 		case LoadDoneMsg:
-			t.Error("got LoadDoneMsg as first message; expected entries first")
+			assert.Fail(t, "got LoadDoneMsg as first message; expected entries first")
 		}
 	case LoadDoneMsg:
-		t.Error("got LoadDoneMsg as first message; expected entries first")
+		assert.Fail(t, "got LoadDoneMsg as first message; expected entries first")
 	default:
-		t.Fatalf("unexpected first msg type %T", first)
+		require.Failf(t, "unexpected first msg type", "%T", first)
 	}
 }
 
@@ -109,9 +100,7 @@ func TestLoadFile_LineNumbers(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ln.jsonl")
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fmt.Fprintln(f, `{"msg":"a"}`)
 	fmt.Fprintln(f, `plain text`)
 	fmt.Fprintln(f, `{"msg":"c"}`)
@@ -121,12 +110,8 @@ func TestLoadFile_LineNumbers(t *testing.T) {
 	cmd := func() interface{} { return rawCmd() }
 	entries, _, _ := drainLoader(t, cmd)
 
-	if len(entries) != 3 {
-		t.Fatalf("got %d entries, want 3", len(entries))
-	}
+	require.Len(t, entries, 3, "entries count")
 	for i, e := range entries {
-		if e.LineNumber != i+1 {
-			t.Errorf("entry %d: LineNumber = %d, want %d", i, e.LineNumber, i+1)
-		}
+		assert.Equal(t, i+1, e.LineNumber, "entry %d LineNumber", i)
 	}
 }
