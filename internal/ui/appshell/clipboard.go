@@ -21,6 +21,16 @@ type ClipboardErrorMsg struct{ Err error }
 // on a live system clipboard.
 var clipboardWriteFn = clipboard.WriteAll
 
+// SetClipboardWriteFnForTesting swaps the clipboard write sink and returns a
+// restore closure. Cross-package live-buffer tests (V25) need this to drive
+// the y-handler success / error paths without writing to the system
+// clipboard.
+func SetClipboardWriteFnForTesting(fn func(string) error) (restore func()) {
+	prev := clipboardWriteFn
+	clipboardWriteFn = fn
+	return func() { clipboardWriteFn = prev }
+}
+
 // CopyMarkedEntries writes marked entries to the system clipboard.
 // JSONL format: one entry per line in original order.
 // Non-JSON entries are written as raw text.

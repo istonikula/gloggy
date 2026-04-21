@@ -792,19 +792,24 @@ func (m Model) visibleCount() int {
 // model + live-write command.
 func (m Model) handleRatioKey(key string) (tea.Model, tea.Cmd) {
 	listFocused := m.focus == appshell.FocusEntryList
+	var current, newR float64
 	if m.resize.Orientation() == appshell.OrientationRight {
-		current := m.cfg.Config.DetailPane.WidthRatio
-		newR, _ := appshell.NextDetailRatio(current, key, listFocused)
+		current = m.cfg.Config.DetailPane.WidthRatio
+		newR, _ = appshell.NextDetailRatio(current, key, listFocused)
 		m.cfg.Config.DetailPane.WidthRatio = newR
 		m.layout = m.layout.SetWidthRatio(newR)
 	} else {
-		current := m.paneHeight.Ratio()
-		newR, _ := appshell.NextDetailRatio(current, key, listFocused)
+		current = m.paneHeight.Ratio()
+		newR, _ = appshell.NextDetailRatio(current, key, listFocused)
 		m.paneHeight = m.paneHeight.SetRatio(newR)
 		m.cfg.Config.DetailPane.HeightRatio = newR
 		m.pane = m.pane.SetHeight(m.paneHeight.PaneHeight())
 	}
 	m = m.relayout()
-	m.saveConfig() // T-099: persist ratio change immediately.
+	// T6 / B3: skip saveConfig at clamp-pin or preset no-op — unconditional
+	// save advanced config mtime on every repeated boundary press.
+	if newR != current {
+		m.saveConfig() // T-099: persist ratio change immediately.
+	}
 	return m, nil
 }
