@@ -145,3 +145,38 @@ func TestRenderCompactRow_ThemeSwitch(t *testing.T) {
 	assert.Contains(t, out2, colorANSI(th2.LevelError),
 		"catppuccin-mocha output missing its error color ANSI")
 }
+
+// V4: messages with embedded newlines must render as exactly one terminal line.
+func TestFlattenNewlines(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"no newlines", "no newlines"},
+		{"line1\nline2", "line1 line2"},
+		{"line1\r\nline2", "line1 line2"},
+		{"tabs\t\there", "tabs\t\there"},
+		{"mixed\n\t\tindent", "mixed indent"},
+		{"trailing\n", "trailing "},
+		{"\nleading", " leading"},
+		{"multi\n\n\nnewlines", "multi newlines"},
+	}
+	for _, tt := range tests {
+		got := flattenNewlines(tt.in)
+		assert.Equalf(t, tt.want, got, "flattenNewlines(%q)", tt.in)
+	}
+}
+
+// V4: an entry with embedded newlines in its message renders as one line.
+func TestRenderCompactRow_FlattenNewlines(t *testing.T) {
+	entry := logsource.Entry{
+		IsJSON: true,
+		Time:   time.Now(),
+		Level:  "INFO",
+		Logger: "test",
+		Msg:    "line1\n\tline2\n\tline3",
+		Raw:    []byte(`{}`),
+	}
+	row := RenderCompactRow(entry, 120, theme.GetTheme("tokyo-night"), defaultCfg())
+	assert.NotContainsf(t, row, "\n", "compact row contains newline: %q", row)
+}
