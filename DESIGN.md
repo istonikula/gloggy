@@ -203,7 +203,7 @@ Any divergence is a bug.
   `DoubleBorder()` so they are visually distinct from panes.
 - Closing a pane (e.g., details on `Esc`) is an atomic redraw — no fade.
 - **Drag-handle seam:** The row/column that initiates a mouse-drag resize
-  (cavekit-app-shell R15) renders in `DragHandle`, independent of focus.
+  (SPEC.md V19) renders in `DragHandle`, independent of focus.
   Right-split: the 1-cell `│` divider glyph. Below-split: the detail
   pane's top border row (NOT the list's bottom border — those are two
   adjacent rows; only the detail pane's top is overridden to
@@ -437,7 +437,7 @@ silent no-ops (nothing to resize).
 | `=` | any | Reset detail ratio to `0.30` (list share `0.70`) |
 
 Clamp `[0.10, 0.80]`. At a clamp boundary, further motion in the same
-direction is a silent no-op — not a wrap. See cavekit-app-shell R12.
+direction is a silent no-op — not a wrap. See SPEC.md V17.
 
 ### Pane resize by mouse drag (R15)
 
@@ -451,7 +451,7 @@ neutral** — `m.focus` never changes as a result of a drag. Dragging past
 `[0.10, 0.80]` pins the ratio at the boundary; further motion in the
 same direction is a no-op until the cursor re-enters the valid range.
 Starting a drag with the detail pane closed is a silent no-op (no
-divider cell to grab). See cavekit-app-shell R15.
+divider cell to grab). See SPEC.md V18, V19.
 
 ### Border accounting (critical)
 
@@ -503,8 +503,8 @@ intensity + background tint + content contrast**.
   the list so `j`/`k` continue to move the list cursor and re-render the
   pane as a live preview. Users explicitly request focus with `Tab`
   (or mouse click on the pane). This preserves browse-without-commit as
-  the primary interaction — see `cavekit-app-shell.md` R11 for the
-  open-time focus policy and rationale.
+  the primary interaction — see SPEC.md V12 for the open-time focus
+  policy and rationale.
 - `Tab` cycles focus: `list → details → list`. When the filter overlay opens
   it takes focus and cycling is paused until it closes.
 - `Esc` is context-sensitive:
@@ -545,7 +545,7 @@ intensity + background tint + content contrast**.
 | Filter panel | `RoundedBorder()` | `FocusBorder` | — (always focused) |
 | Help overlay | `DoubleBorder()` | `FocusBorder` | — |
 
-The "drag seam" rows encode cavekit-app-shell R15's affordance: the seam is
+The "drag seam" rows encode SPEC.md V18/V19's affordance: the seam is
 focus-neutral and uses `DragHandle` (not `DividerColor`) so it is visually
 distinguishable from the adjacent unfocused pane borders. See §4.5.
 
@@ -647,12 +647,12 @@ style := lipgloss.NewStyle().
 style := lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7"))
 ```
 
-### DO: reference DESIGN.md by section in kits/impl docs
+### DO: reference DESIGN.md by section from SPEC.md and code comments
 
 ```markdown
-<!-- In cavekit-detail-pane.md -->
-- [ ] Detail pane renders a visible top border in both orientations
-      (DESIGN.md §4.4 + §6 border conventions).
+<!-- In SPEC.md §V or a code comment -->
+- Detail pane renders a visible top border in both orientations
+  (DESIGN.md §4.4 + §6 border conventions).
 ```
 
 ### Other don'ts (brief)
@@ -713,7 +713,7 @@ Definitions in `internal/theme/theme.go`. Never redeclare a hex value.
   `CursorHighlight`, `HeaderBg`, `Dim`.
 - **Drag seam:** `DragHandle` — colours the pane-resize drag seam,
   static across focus state, distinct from `DividerColor` (§2, §4.5,
-  cavekit-app-shell R15).
+  SPEC.md V18/V19).
 - **Semantic:** `Level{Error,Warn,Info,Debug}`,
   `Syntax{Key,String,Number,Boolean,Null}`.
 - **UI:** `Mark`, `SearchHighlight`.

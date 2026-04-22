@@ -1,5 +1,0 @@
-# Cavekit configuration
-# Project-level overrides
-# Add only the keys you want this repo to override.
-# See: scripts/bp-config.sh for documentation
-bp_model_preset=quality

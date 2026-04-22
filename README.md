@@ -1,6 +1,6 @@
 # gloggy
 
-> **100% vibe coded.** This project was designed, architected, and implemented entirely by [Claude](https://anthropic.com/claude) via [Claude Code](https://claude.ai/code) — zero hand-written lines of Go. No prompts like "write me a log viewer"; instead, a structured methodology called [Cavekit](https://github.com/JuliusBrussee/cavekit) was used to translate product ideas into kits, kits into a dependency-ordered build plan, and the build plan into working code — autonomously, wave by wave. Development will continue the same way.
+> **100% vibe coded.** This project was designed, architected, and implemented entirely by [Claude](https://anthropic.com/claude) via [Claude Code](https://claude.ai/code) — zero hand-written lines of Go. No prompts like "write me a log viewer"; instead, a structured methodology called [Cavekit](https://github.com/JuliusBrussee/cavekit) was used to translate product ideas into a versioned specification and then into working code. Development continues the same way.
 
 A terminal UI for interactively analyzing JSONL log files during local development. Single binary, reads from a file or stdin.
 
@@ -172,10 +172,6 @@ cat app.log | gloggy    # read from stdin
 
 ## How It Was Built
 
-gloggy was built entirely with **[Claude Code](https://claude.ai/code)** driving **[Claude](https://anthropic.com/claude)** (multiple models across phases — reasoning, execution, and exploration), using the **[Cavekit](https://github.com/JuliusBrussee/cavekit)** methodology in quality mode:
+gloggy was built with **[Claude Code](https://claude.ai/code)** driving **[Claude](https://anthropic.com/claude)**, using the **[Cavekit](https://github.com/JuliusBrussee/cavekit)** methodology. A single `SPEC.md` at the repo root drives every change via a `/ck:spec` → `/ck:build` → `/ck:check` cycle.
 
-1. **Design phase** — product requirements were translated into implementation-agnostic *kits* covering 6 domains: log source, entry list, detail pane, filter engine, config, and app shell. Currently 58 requirements across ~330 acceptance criteria.
-2. **Architecture phase** — Cavekit generated a concrete implementation plan from the kits: a tiered dependency graph (currently 137 tasks across 15 tiers) for safe parallel execution.
-3. **Build phase** — Claude Code worked through the build plan autonomously in waves, implementing each task, running tests, validating against acceptance criteria, and committing — without human intervention between tasks.
-
-The full context (kits, build site, impl tracking, loop log) lives in [`context/`](context/) and serves as the living spec for future development. When new features are needed or bugs surface, the cycle repeats: `/ck:check` surfaces gaps, kits and DESIGN.md are revised, the site gets new tasks, and `/ck:make` builds them.
+Earlier history used Cavekit v3's multi-phase flow — kits, a build-site, and autonomous wave execution — which produced the initial feature surface. That artifact tree was removed after migrating to Cavekit v4; the history remains reachable via `git log`.
