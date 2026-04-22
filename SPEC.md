@@ -53,11 +53,21 @@ TUI for interactive JSONL log analysis. single binary. file or stdin. go + bubbl
 - nav: j/k g/G Ctrl-d/u PgDn/PgUp Space/b (dp) Home/End (dp)
 - el: e/E w/W m/M u/U l/h Tab Enter / n/N  (M = clear all marks, silent no-op on zero)
 - dp: / n/N + - = | Esc
-- global: f y ? q
+- global: f y ? q T
 
 ### I.themes (`internal/theme`)
 
 tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, SearchHighlight, CursorHighlight, HeaderBg, FocusBorder, DividerColor, UnfocusedBg, DragHandle, BaseBg. each ctor cites upstream source (`TokyoNightSource` etc).
+
+### I.themesel (theme selector overlay — see V29)
+
+- trigger: global `T` (V14-gated)
+- form: full-screen modal overlay (per as:R5 help pattern)
+- nav: ↑/↓ or k/j cycle highlight; Enter commits; Esc reverts
+- shows: bundled themes only (`tokyo-night`, `catppuccin-mocha`, `material-dark`); user-defined themes out of scope
+- live preview: each highlight change → whole-TUI repaint in highlighted theme
+- commit (Enter): writes `theme=<name>` to config.toml via existing write-back (V22-preserves unknown keys) + closes
+- revert (Esc): restores pre-open theme + closes; no config write
 
 ## §V invariants
 
@@ -89,6 +99,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 - **V26** (el:R1/R9) list `View()` prefix slot MUST be accounted for in compact-row width math. list prepends a 2-cell prefix (`"* "` mark / `"⌀ "` pin / `"↻ "` wrap-indicator) based on row state; the width passed to `RenderCompactRow` MUST be `m.width - 2` when a prefix is present, OR a dedicated 2-cell prefix column reserved at leftmost position of every row (padded empty when absent). naive `prefix + RenderCompactRow(m.width)` concatenation yields a `width+2`-cell row that soft-wraps to 2 terminal lines — violates V4 + cascades into V5 by emitting an extra row that JoinVertical steals from the adjacent header slot.
 - **V27** (tests) `*_test.go` files MUST use `github.com/stretchr/testify` — `require` for fatal assertions, `assert` for non-fatal. stdlib `t.Errorf`/`t.Fatalf`/`t.Error`/`t.Fatal` forbidden in `*_test.go`. rationale: consistent failure messaging, diff-style equality output, less `if err != nil { t.Fatalf(...) }` boilerplate. at-use: `require.NoError(t, err)`, `require.Equal(t, want, got)`, `assert.Len(t, xs, 3)`. kit violation: bare `if got != want { t.Errorf(...) }` or `if err != nil { t.Fatal(err) }`. exception: `t.Helper`, `t.Skip*`, `t.Log*`, `t.Run`, `t.Cleanup`, `t.TempDir`, etc remain stdlib (not failure reporters).
 - **V28** (rendering) full-screen replacement views (help overlay + any future overlay returning its own `View()`) MUST NOT use `\t` for alignment. bubbletea's line-diff renderer does not clear cells that `\t` skips over — they retain bytes from the previous frame, bleeding prior content into the overlay. lipgloss does not expand tabs either. at-impl: pad with spaces (column width = max key length across all domains + constant gap). tests MUST assert `View()` contains zero `\t` for any full-screen-replacement view. kit violation: `sb.WriteString("\t")` (or any raw `\t` emission) in a view builder.
+- **V29** (I.themesel) theme selector overlay: trigger `T` MUST gate on V14 — active pane-search input mode → `T` becomes query char, NOT overlay-open. open → highlight = current theme. ↑/↓/k/j cycle; Enter commits + persists `theme=` via config write-back (V22 preserves unknown keys); Esc reverts to pre-open theme + no config write. live-preview: each highlight change repaints whole TUI in highlighted theme via single `theme.GetTheme` resolution path (no parallel palette code). closed overlay → zero mutation (no theme swap, no config mtime advance). overlay full-screen-replacement view → V28 applies (no `\t` padding). tests MUST cover: (a) `T` during pane-search input mode → query char (V14); (b) navigate → `View()` ANSI bytes carry highlighted theme tokens; (c) Enter → `config.toml` `theme` key updated + unrelated keys preserved; (d) Esc → pre-open theme restored + no config mtime advance.
 
 ## §T tasks
 
@@ -110,6 +121,8 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T14 | x | audit `internal/ui/entrylist/list_test.go` (~624 LOC) — siblings (cursor/scroll/row/marks/search/leveljump) already topic-owned; remainder ! View + Update integration. same method as T13: simplification sweep first, split only if still oversized. `go test ./internal/ui/entrylist/...` green each commit. | V27 |
 | T15 | x | fix B5: gate `HelpOverlayModel.Update` on pane-search-input-mode so `?` is consumed as a query char when list or detail search is active in input mode. impl option A: invert ordering — move `m.help.Update(msg)` *after* `handleKey` routes the key to the focused pane's search (cleanest — no predicate plumbing). option B: thread a "search-active" predicate through `Update` and short-circuit `m.help.Update` when true. prefer A. flip `TestModel_HelpOverlay_PreservesListSearchState` to assert `?` becomes a query char during active list search (query = `"abc?"`); add a new test covering `?` opens help when no pane-search in input mode. repeat both for detail-pane search. `go test ./internal/ui/app/... ./internal/ui/appshell/...` green. | V14 |
 | T16 | x | fix B6: replace `\t` in `HelpOverlayModel.View()` with fixed-column space padding. impl: compute max key-string width across all domains (use `lipgloss.Width` for correct East-Asian / arrow-glyph widths) + a 2-space gap, then pad each key row to that column before writing the description. add unit test asserting `View()` contains no `\t` when open. optional tui-mcp regression: launch gloggy on `logs/tiny.log`, press `?`, `snapshot`, assert no background digits/words leak between key and desc. `go test ./internal/ui/appshell/...` green. | V28 |
+| T17 | . | impl theme selector overlay per I.themesel: new `internal/ui/appshell/themeselector.go` (model + Update + View per `HelpOverlayModel` pattern); wire global `T` AFTER pane-search routing in `Model.Update` (V14-safe — same ordering lesson as T15/B5); threading: overlay holds pre-open theme + active highlight; highlight change → swap-theme msg to app model for whole-TUI repaint; Enter → existing config write-back + close; Esc → restore pre-open theme + close. update help overlay (as:R5) + README keymap. tests per V29 (a)-(d). | V14,V22,V28,V29 |
+| T18 | . | [HUMAN via tui-mcp] verify theme selector live-preview + persist + revert across all 3 themes × {below, right} orientations on `logs/small.log`: launch gloggy, press `T`, navigate ↑/↓ asserting visual repaint, Enter to commit, kill+relaunch to verify persistence, then press `T` + Esc to verify revert + no config mtime advance. | V29 |
 
 ## §B bugs
 
