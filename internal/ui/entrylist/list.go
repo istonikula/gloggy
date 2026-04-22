@@ -95,6 +95,16 @@ func (m ListModel) WithContentTopY(y int) ListModel {
 	return m
 }
 
+// WithTheme swaps the active theme. Used by the theme selector (V29) so
+// the list re-renders (level badges, mark prefix, search highlight, pane
+// border) in the newly previewed / committed theme. Cascades into the
+// embedded SearchModel so match-highlight styling tracks the new theme.
+func (m ListModel) WithTheme(th theme.Theme) ListModel {
+	m.th = th
+	m.search = m.search.WithTheme(th)
+	return m
+}
+
 // WithScrolloff sets the cursor-margin rows applied after every cursor move
 // and mouse-wheel tick (T-135, F-026). Wired from `cfg.Scrolloff` by the
 // app at WindowSizeMsg and on config reload. Shared across list + detail

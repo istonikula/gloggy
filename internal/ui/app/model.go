@@ -74,6 +74,7 @@ type Model struct {
 	loading     appshell.LoadingModel
 	keyhints    appshell.KeyHintBarModel
 	help        appshell.HelpOverlayModel
+	themesel    appshell.ThemeSelectorModel
 	layout      appshell.LayoutModel
 	resize      appshell.ResizeModel
 
@@ -111,6 +112,7 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 		filterSet:   fs,
 		filterPanel: uifilter.New(fs),
 		help:        appshell.NewHelpOverlayModel(),
+		themesel:    appshell.NewThemeSelectorModel(),
 		resize:      appshell.NewResizeModel(80, 24).WithConfig(cfgResult.Config),
 		focus:       appshell.FocusEntryList,
 	}
@@ -162,6 +164,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !forward {
 			return m, nil
 		}
+	}
+
+	// V29: theme selector intercepts everything while open. Navigation
+	// previews highlighted theme live (no config write); Enter commits +
+	// persists via saveConfig (V22); Esc restores pre-open theme (no
+	// config write). Opening `T` is handled in handleKey so V14 can
+	// suppress it while a pane-search is in input mode.
+	if m.themesel.IsOpen() {
+		if _, ok := msg.(tea.KeyMsg); ok {
+			var action appshell.ThemeSelectorAction
+			m.themesel, action = m.themesel.Update(msg)
+			switch action {
+			case appshell.ThemeSelPreview:
+				m = m.applyTheme(theme.GetTheme(m.themesel.Highlighted()))
+			case appshell.ThemeSelCommit:
+				m.cfg.Config.Theme = m.themesel.Highlighted()
+				m = m.applyTheme(theme.GetTheme(m.cfg.Config.Theme))
+				m.saveConfig()
+			case appshell.ThemeSelRevert:
+				m = m.applyTheme(theme.GetTheme(m.themesel.PreOpen()))
+			}
+		}
+		return m, nil
 	}
 
 	switch msg := msg.(type) {
@@ -334,6 +359,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		paneInput := m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeInput
 		if !listInput && !paneInput {
 			m.help = m.help.Open()
+			return m, nil
+		}
+	}
+
+	// V29 / V14: `T` opens the theme selector unless a pane-search is in
+	// input mode. Same V14 gate as `?`/`q` — reserved-global keys never
+	// preempt an active in-pane search's query input.
+	if msg.String() == "T" {
+		listInput := m.list.HasActiveSearch() && m.list.Search().InputMode()
+		paneInput := m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeInput
+		if !listInput && !paneInput {
+			m.themesel = m.themesel.Open(m.cfg.Config.Theme)
 			return m, nil
 		}
 	}
@@ -653,6 +690,9 @@ func (m Model) View() string {
 	if m.help.IsOpen() {
 		return m.help.View()
 	}
+	if m.themesel.IsOpen() {
+		return m.themesel.View()
+	}
 
 	// R14: FOLLOW badge lights when tail mode is active AND cursor is on the
 	// last entry. Upward nav off the last row clears it; `G` restores it.
@@ -788,6 +828,22 @@ func (m Model) relayout() Model {
 		WithBelowMode(m.resize.Orientation() == appshell.OrientationBelow).
 		SetHeight(appshell.DetailPaneVerticalRows(l)).
 		SetWidth(l.DetailContentWidth())
+	return m
+}
+
+// applyTheme swaps the live theme across every sub-model that carries one.
+// Used by the V29 theme selector so highlight navigation previews the
+// whole-TUI repaint, Enter commits the previewed theme, and Esc restores
+// the pre-open theme — all driven through a single theme.GetTheme
+// resolution path so there is no parallel palette code.
+func (m Model) applyTheme(th theme.Theme) Model {
+	m.th = th
+	m.list = m.list.WithTheme(th)
+	m.pane = m.pane.WithTheme(th)
+	m.paneSearch = m.paneSearch.WithTheme(th)
+	m.header = m.header.WithTheme(th)
+	m.keyhints = m.keyhints.WithTheme(th)
+	m.layout = m.layout.WithTheme(th)
 	return m
 }
 

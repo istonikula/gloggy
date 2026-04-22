@@ -164,6 +164,18 @@ func (m PaneModel) Close() PaneModel {
 	return m
 }
 
+// WithTheme swaps the active theme. The rawContent cache embeds theme
+// colors (from RenderJSON), so swapping the theme triggers a re-render of
+// the currently open entry so the pane repaints in the new palette.
+// No-op on cached content when the pane is closed. V29.
+func (m PaneModel) WithTheme(th theme.Theme) PaneModel {
+	m.th = th
+	if m.open {
+		m = m.Rerender()
+	}
+	return m
+}
+
 // SetHeight updates the outer visible height (border-inclusive) of the pane.
 // T-123 (F-014, F-018): keeps scroll.height in sync with ContentHeight so
 // offset clamping bounds the viewport to the renderable content rows — not

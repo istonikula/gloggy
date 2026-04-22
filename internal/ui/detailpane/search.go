@@ -47,6 +47,13 @@ func NewSearchModel(th theme.Theme) SearchModel {
 	return SearchModel{th: th}
 }
 
+// WithTheme swaps the active theme. Used by the theme selector (V29) so
+// the match-highlight style tracks the newly previewed / committed theme.
+func (m SearchModel) WithTheme(th theme.Theme) SearchModel {
+	m.th = th
+	return m
+}
+
 // IsActive returns true when search mode is open.
 func (m SearchModel) IsActive() bool { return m.active }
 

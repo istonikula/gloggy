@@ -27,6 +27,13 @@ type SearchModel struct {
 // NewSearchModel creates a SearchModel bound to a theme.
 func NewSearchModel(th theme.Theme) SearchModel { return SearchModel{th: th} }
 
+// WithTheme swaps the active theme. Used by the theme selector (V29) so
+// the search model tracks the current theme alongside its owning list.
+func (m SearchModel) WithTheme(th theme.Theme) SearchModel {
+	m.th = th
+	return m
+}
+
 // IsActive reports whether the search is open (activated, not yet dismissed).
 func (m SearchModel) IsActive() bool { return m.active }
 
