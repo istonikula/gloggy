@@ -1,6 +1,6 @@
 # SPEC — gloggy
 
-distilled 2026-04-21 from code + `context/kits/cavekit-*.md`. kit files remain authoritative for per-AC detail; this spec is compressed single-source for drift checks. identifiers preserved verbatim (R#, T-###, F-###).
+distilled 2026-04-21 from code + the since-removed v3 kit tree (`git log -- context/kits/`). this spec is single-source for drift checks. kit identifiers preserved verbatim (R#, T-###, F-###).
 
 ## §G goal
 
