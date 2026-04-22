@@ -56,6 +56,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "Tab", Desc: "Cycle focus between panels"},
 			{Key: "f", Desc: "Open filter panel"},
 			{Key: "y", Desc: "Copy marked entries to clipboard"},
+			{Key: "T", Desc: "Open theme selector"},
 			{Key: "q", Desc: "Quit"},
 		},
 	}

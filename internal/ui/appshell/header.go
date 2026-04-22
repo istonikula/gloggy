@@ -63,6 +63,14 @@ func (m HeaderModel) WithWidth(w int) HeaderModel {
 	return m
 }
 
+// WithTheme swaps the active theme. Used by the theme selector (V29) so the
+// header re-renders in the newly previewed / committed theme without
+// rebuilding the model from scratch.
+func (m HeaderModel) WithTheme(th theme.Theme) HeaderModel {
+	m.th = th
+	return m
+}
+
 // View renders the header bar as a single padded line, applying narrow-mode
 // degradation per DESIGN.md §4.1: drop focus label → counts → cursor-pos →
 // FOLLOW. Source is always kept; if it alone overflows, truncate with `…`.

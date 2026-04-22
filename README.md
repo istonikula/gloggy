@@ -63,7 +63,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 - **Global toggle** — disable all filters at once and restore them.
 
 ### App Shell
-- **Three themes** — `tokyo-night`, `catppuccin-mocha`, `material-dark`; set in TOML config.
+- **Three themes** — `tokyo-night`, `catppuccin-mocha`, `material-dark`; set in TOML config or switch live via `T` (live-preview on ↑/↓, Enter to persist, Esc to cancel).
 - **Header bar** — file name (or `stdin`), `[FOLLOW]` badge in tail mode, total/visible entry counts.
 - **Tail mode** — `gloggy -f <file>` follows a live file via inotify.
 - **Background loading** — large files load incrementally with a progress indicator.
@@ -128,6 +128,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 |-----|--------|
 | `f` | Open filter panel |
 | `y` | Copy marked entries to clipboard |
+| `T` | Open theme selector (↑/↓ or k/j to navigate, Enter to apply+save, Esc to cancel) |
 | `?` | Help overlay |
 | `q` | Quit |
 

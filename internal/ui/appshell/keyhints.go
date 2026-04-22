@@ -40,6 +40,13 @@ func (m KeyHintBarModel) WithWidth(w int) KeyHintBarModel {
 	return m
 }
 
+// WithTheme swaps the active theme. Used by the theme selector (V29) so the
+// key-hint bar re-renders in the newly previewed / committed theme.
+func (m KeyHintBarModel) WithTheme(th theme.Theme) KeyHintBarModel {
+	m.th = th
+	return m
+}
+
 // WithPaneOpen signals whether the detail pane is currently visible. When
 // the detail pane is open (more than one pane visible), the status bar
 // appends a right-aligned focus label (T-092).
