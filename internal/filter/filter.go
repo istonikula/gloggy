@@ -73,25 +73,45 @@ func (fs *FilterSet) Remove(id int) bool {
 }
 
 // Enable sets a filter's Enabled flag to true.
+//
+// V32 MANUAL-TOGGLE EXIT: if invoked while globallyDisabled=true, the
+// global-toggle state machine is exited — globallyDisabled is cleared
+// and savedEnabled is dropped. Without this, a subsequent `F` press
+// would hit the restore branch and silently clobber this manual
+// toggle while re-enabling filters the user thought they had cleared
+// (B11).
 func (fs *FilterSet) Enable(id int) bool {
 	for i, fid := range fs.ids {
 		if fid == id {
 			fs.filters[i].Enabled = true
+			fs.exitGloballyDisabled()
 			return true
 		}
 	}
 	return false
 }
 
-// Disable sets a filter's Enabled flag to false.
+// Disable sets a filter's Enabled flag to false. V32 MANUAL-TOGGLE
+// EXIT: see Enable.
 func (fs *FilterSet) Disable(id int) bool {
 	for i, fid := range fs.ids {
 		if fid == id {
 			fs.filters[i].Enabled = false
+			fs.exitGloballyDisabled()
 			return true
 		}
 	}
 	return false
+}
+
+// exitGloballyDisabled clears the global-toggle state machine so a
+// subsequent ToggleAll call starts a fresh 1st-press cycle from the
+// current per-filter Enabled values.
+func (fs *FilterSet) exitGloballyDisabled() {
+	if fs.globallyDisabled {
+		fs.globallyDisabled = false
+		fs.savedEnabled = nil
+	}
 }
 
 // GetAll returns a copy of all filters including disabled ones.

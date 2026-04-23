@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -143,6 +144,74 @@ func TestModel_F_NoFilters_NoticeOnly(t *testing.T) {
 	assert.Emptyf(t, m.filterSet.GetAll(), "FilterSet must stay empty")
 	assert.Containsf(t, m.view(), filterToggleNoFiltersNotice,
 		"empty-FilterSet F should surface %q notice", filterToggleNoFiltersNotice)
+}
+
+// ---------- V32 MANUAL-TOGGLE EXIT (B11) ----------
+
+// TestModel_F_AfterManualSpaceDuringGloballyDisabled_RestartsCycle —
+// reproduces the B11 tui-mcp sequence end-to-end through the app
+// Model:
+//   - seed 2 filters both enabled;
+//   - `F` → both disabled, globallyDisabled=true;
+//   - panel `Space` on cursor (filter 0) → filter 0 re-enabled;
+//     manual toggle MUST exit the state machine (V32 EXIT clause);
+//   - `F` → fresh 1st-press cycle from post-Space state ({true,false})
+//     → both disabled, globallyDisabled=true;
+//   - `F` → restore to post-Space snapshot ({true,false}).
+// Before the V32 EXIT fix, step 4 silently clobbered filter 0 back
+// to disabled and re-enabled filter 1 from the STALE pre-Space
+// savedEnabled snapshot — user reported "F not always clearing all
+// filters."
+func TestModel_F_AfterManualSpaceDuringGloballyDisabled_RestartsCycle_V32(t *testing.T) {
+	m := newModel()
+	m = resize(m, 90, 30)
+	m = m.SetEntries(makeEntries(5))
+	m.filterSet.Add(filter.Filter{Field: "level", Pattern: "INFO", Mode: filter.Include, Enabled: true})
+	m.filterSet.Add(filter.Filter{Field: "logger", Pattern: "x", Mode: filter.Include, Enabled: true})
+
+	// Step 1: F disables both. saved={true,true}.
+	m = key(m, "F")
+	require.True(t, m.filterSet.IsGloballyDisabled(), "step 1: globally-disabled")
+	require.False(t, m.filterSet.GetAll()[0].Enabled, "step 1: filter 0 disabled")
+	require.False(t, m.filterSet.GetAll()[1].Enabled, "step 1: filter 1 disabled")
+
+	// Step 2: enter filter-panel focus, Space on cursor (row 0) to re-enable
+	// filter 0. Panel.Update calls fs.Enable(id) under the hood → V32 EXIT.
+	m = key(m, "f") // focus → FocusFilterPanel
+	m = send(m, spaceKey())
+	assert.Truef(t, m.filterSet.GetAll()[0].Enabled,
+		"Space must re-enable filter 0 in the panel")
+	assert.Falsef(t, m.filterSet.IsGloballyDisabled(),
+		"V32 EXIT: Space during globally-disabled must clear globallyDisabled")
+
+	// Step 3: F again. Must be a FRESH 1st-press cycle saving the
+	// post-Space state ({true, false}), then disabling all. Close the
+	// panel first so F reaches the global handler; with the panel
+	// focused F is still global (handled before focus switch), so close
+	// here only to mirror the live-repro sequence and avoid the panel
+	// re-capturing keys.
+	m = key(m, "esc")
+	m = key(m, "F")
+	require.True(t, m.filterSet.IsGloballyDisabled(), "step 3: globally-disabled again")
+	require.False(t, m.filterSet.GetAll()[0].Enabled, "step 3: filter 0 disabled (fresh 1st press)")
+	require.False(t, m.filterSet.GetAll()[1].Enabled, "step 3: filter 1 disabled (fresh 1st press)")
+
+	// Step 4: F restores to post-Space snapshot ({true, false}). Before
+	// the fix this restored to the stale pre-Space snapshot {true,true}.
+	m = key(m, "F")
+	assert.Falsef(t, m.filterSet.IsGloballyDisabled(), "step 4: globally-disabled cleared")
+	assert.Truef(t, m.filterSet.GetAll()[0].Enabled,
+		"step 4 (B11 guard): filter 0 restored to post-Space Enabled=true")
+	assert.Falsef(t, m.filterSet.GetAll()[1].Enabled,
+		"step 4 (B11 guard): filter 1 restored to post-Space Enabled=false — before fix this was true")
+}
+
+// spaceKey constructs the tea.KeyMsg the app Update receives for a
+// literal ' ' key. The shared `key(m, ...)` helper routes single-rune
+// keys through Runes, which is exactly how the panel's Space handler
+// matches `msg.String() == " "`.
+func spaceKey() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")}
 }
 
 // view renders the model and returns it as a string, for notice assertions.
