@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -818,6 +819,14 @@ func (m Model) View() string {
 	if m.themesel.IsOpen() {
 		return m.themesel.View()
 	}
+	// T30 / B10 / V33 VIEW-AXIS: when focus is the filter panel, render
+	// it as a full-screen overlay (same pattern as help / themesel).
+	// Previously this branch was absent: `f` flipped focus + routed keys
+	// to `m.filterPanel.Update` but the panel's View was never composed
+	// into the frame, leaving `f` as a silent focus-flip in live TUI.
+	if m.focus == appshell.FocusFilterPanel {
+		return m.renderFilterPanelOverlay()
+	}
 
 	// R14: FOLLOW badge lights when tail mode is active AND cursor is on the
 	// last entry. Upward nav off the last row clears it; `G` restores it.
@@ -861,6 +870,26 @@ func (m Model) View() string {
 	}
 
 	return m.layout.Render(header, list, paneView, status)
+}
+
+// renderFilterPanelOverlay wraps the filter-panel's body with a title and
+// keyhints footer for full-screen overlay display (T30 / V33 VIEW-AXIS).
+// V28: space-padded — no `\t` — to avoid bubbletea's diff-renderer bleeding
+// cells from the previous frame through `\t`-skipped columns.
+func (m Model) renderFilterPanelOverlay() string {
+	var sb strings.Builder
+	sb.WriteString("Filters\n")
+	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteString("\n\n")
+	sb.WriteString(m.filterPanel.View())
+	sb.WriteString("\n\n")
+	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteByte('\n')
+	sb.WriteString("  j/k    Navigate filters\n")
+	sb.WriteString("  Space  Toggle filter enabled\n")
+	sb.WriteString("  d      Delete filter\n")
+	sb.WriteString("  Esc    Close panel\n")
+	return sb.String()
 }
 
 // formatListSearchNotice builds the status-bar text shown while list
