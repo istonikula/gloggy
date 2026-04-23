@@ -54,25 +54,25 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 - **Scroll-position indicator** — an `NN%` overlay on the last content row shows position within the entry; omitted when content fits.
 - **In-pane search** — `/` opens a search scoped to the pane; `n`/`N` move the cursor to the next/prev match with scrolloff context; wrap indicator and `(current/total)` counter shown; `Esc` clears.
 - **Field visibility** — hide/show individual fields; persisted to config and survives restart.
-- **Right-split or below layouts** — auto-flips based on terminal width; `|` cycles layout presets, `+`/`-` adjust the pane ratio, `=` resets; independent height/width ratios are preserved across flips. Pane is resizable by dragging the divider too.
+- **Right-split or below layouts** — auto-flips based on terminal width; `|` cycles the focused pane's share between 30% / 50%, `+`/`-` adjust the pane ratio, `=` resets; independent height/width ratios are preserved across flips. Pane is resizable by dragging the divider too.
 - **Filter from field** — click a field value to pre-fill a filter prompt.
 
 ### Filter Engine
 - **Include/exclude filters** — field:pattern rules; choose include or exclude mode per filter.
 - **Filter panel** — `f` opens an overlay listing active filters; `j`/`k` navigate, `Space` toggles enabled, `d` deletes.
-- **Global toggle** — disable all filters at once and restore them.
+- **Global toggle** — `F` disables every filter at once; a second press restores each filter's prior enabled state (filters that were individually off stay off).
 
 ### App Shell
 - **Four themes** — `tokyo-night`, `catppuccin-mocha`, `material-dark`, `solarized-dark`; set in TOML config or switch live via `T` (live-preview on ↑/↓, Enter to persist, Esc to cancel).
 - **Header bar** — file name (or `stdin`), `[FOLLOW]` badge in tail mode, total/visible entry counts.
-- **Tail mode** — `gloggy -f <file>` follows a live file via inotify.
+- **Tail mode** — `gloggy -f <file>` follows a live file via fsnotify; piping into `gloggy` also auto-follows stdin (the `[FOLLOW]` badge drops on EOF).
 - **Background loading** — large files load incrementally with a progress indicator.
 - **Clipboard** — `y` copies all marked entries to the system clipboard in JSONL format.
 - **Help overlay** — `?` shows all keybindings by domain; `Esc` closes.
 - **Context-sensitive key hints** — the bottom bar shows relevant keybindings for the focused component.
 
 ### Config
-- TOML config at `~/.config/gloggy/config.toml`
+- TOML config resolved via Go's `os.UserConfigDir`: `~/.config/gloggy/config.toml` on Linux, `~/Library/Application Support/gloggy/config.toml` on macOS.
 - Settings: theme, logger abbreviation depth, sub-row fields, hidden fields, detail pane height/width ratios, orientation (`below` / `right` / `auto`) + auto-flip threshold, wrap mode, and a shared top-level **`scrolloff`** (default 5) honoured by both the entry list and the detail pane.
 - Unknown keys are preserved on write-back (no data loss on upgrade)
 
@@ -127,6 +127,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 | Key | Action |
 |-----|--------|
 | `f` | Open filter panel |
+| `F` | Toggle all filters on/off (preserves per-filter state) |
 | `y` | Copy marked entries to clipboard |
 | `T` | Open theme selector (↑/↓ or k/j to navigate, Enter to apply+save, Esc to cancel) |
 | `t` | Cycle theme (tokyo-night → catppuccin-mocha → material-dark → solarized-dark → wrap; persists each press) |
@@ -158,9 +159,9 @@ Run `make help` to see all available targets.
 ## Usage
 
 ```sh
-gloggy app.log          # open a file
-gloggy -f app.log       # tail/follow mode
-cat app.log | gloggy    # read from stdin
+gloggy app.log              # open a file
+gloggy -f app.log           # tail/follow a file
+tail -f app.log | gloggy    # stream from stdin (auto-follows)
 ```
 
 ## Built With

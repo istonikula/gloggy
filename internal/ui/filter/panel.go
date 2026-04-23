@@ -89,7 +89,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m Model) View() string {
 	filters := m.fs.GetAll()
 	if len(filters) == 0 {
-		return "(no filters)"
+		return "(no filters — open an entry with Enter, click a field in the detail pane to add)"
 	}
 	var sb strings.Builder
 	for i, f := range filters {

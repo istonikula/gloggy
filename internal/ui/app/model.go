@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -49,6 +50,13 @@ func formatClipboardCopiedNotice(count int) string {
 	return "copied " + strconv.Itoa(count) + " entries"
 }
 
+// V32: global filter-toggle `F` feedback strings (V15-pattern never-silent).
+const (
+	filterToggleDisabledNotice  = "filters disabled"
+	filterToggleRestoredNotice  = "filters restored"
+	filterToggleNoFiltersNotice = "no filters"
+)
+
 // Model is the root Bubble Tea model.
 type Model struct {
 	// config
@@ -70,8 +78,9 @@ type Model struct {
 	paneHeight  detailpane.HeightModel
 	paneSearch  detailpane.SearchModel
 	visibility  detailpane.VisibilityModel
-	filterSet   *filter.FilterSet
-	filterPanel uifilter.Model
+	filterSet    *filter.FilterSet
+	filterPanel  uifilter.Model
+	filterPrompt uifilter.PromptModel // T28/V33: field-click-to-filter flow
 	header      appshell.HeaderModel
 	loading     appshell.LoadingModel
 	keyhints    appshell.KeyHintBarModel
@@ -111,8 +120,9 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 		followMode:  followMode,
 		tailCtx:     ctx,
 		tailCancel:  cancel,
-		filterSet:   fs,
-		filterPanel: uifilter.New(fs),
+		filterSet:    fs,
+		filterPanel:  uifilter.New(fs),
+		filterPrompt: uifilter.NewPromptModel(fs),
 		help:        appshell.NewHelpOverlayModel(),
 		themesel:    appshell.NewThemeSelectorModel(),
 		resize:      appshell.NewResizeModel(80, 24).WithConfig(cfgResult.Config),
@@ -177,6 +187,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var forward bool
 		m.help, forward = m.help.Update(msg)
 		if !forward {
+			return m, nil
+		}
+	}
+
+	// T28 / V33: filter-add prompt intercepts all KeyMsg while active.
+	// Enter adds the filter + emits FilterConfirmedMsg (handled below);
+	// Esc emits FilterCancelledMsg; Tab/Shift+Tab toggle include/exclude.
+	// Every other key is consumed silently so reserved globals (q, ?, F, /)
+	// cannot preempt the prompt — V14 pattern, same invariant that gates
+	// help/themesel vs. pane-search input mode. Mouse events are swallowed
+	// so a stray click cannot transfer focus or open a new prompt while
+	// one is pending.
+	if m.filterPrompt.IsActive() {
+		if _, ok := msg.(tea.KeyMsg); ok {
+			var cmd tea.Cmd
+			m.filterPrompt, cmd = m.filterPrompt.Update(msg)
+			return m, cmd
+		}
+		if _, ok := msg.(tea.MouseMsg); ok {
 			return m, nil
 		}
 	}
@@ -335,9 +364,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.relayout()
 		return m, nil
 
-	// Filter confirmed from prompt.
+	// T28 / V33: click on a pane field line → open the filter prompt
+	// pre-filled with (field, pattern). Pane-search input mode is
+	// upstream-gated in handleMouse (no FieldClickMsg emitted while the
+	// user is typing a query) per V14.
+	case detailpane.FieldClickMsg:
+		m.filterPrompt = m.filterPrompt.Open(msg.Field, msg.Value)
+		return m, nil
+
+	// Filter confirmed from prompt → recompute the filtered index.
 	case uifilter.FilterConfirmedMsg:
 		m = m.refilter()
+		return m, nil
+
+	// Filter prompt cancelled via Esc — no mutation; the prompt already
+	// closed itself. Kept as an explicit case so future observers (e.g. a
+	// "filter cancelled" notice) have a single hook.
+	case uifilter.FilterCancelledMsg:
 		return m, nil
 
 	// Filter panel changed.
@@ -393,6 +436,30 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !listInput && !paneInput {
 			m.themesel = m.themesel.Open(m.cfg.Config.Theme)
 			return m, nil
+		}
+	}
+
+	// V32 / V14: `F` toggles every filter globally via FilterSet.ToggleAll.
+	// 1st press saves per-filter Enabled + disables all; 2nd press restores
+	// saved state. Gated on pane-search input mode per V14 (same policy as
+	// `?` / `T` / `t`). Never silent (V15 pattern): 0 filters emits a notice
+	// and changes no state; non-zero filters emit "disabled"/"restored".
+	if msg.String() == "F" {
+		listInput := m.list.HasActiveSearch() && m.list.Search().InputMode()
+		paneInput := m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeInput
+		if !listInput && !paneInput {
+			if len(m.filterSet.GetAll()) == 0 {
+				m.keyhints = m.keyhints.WithNotice(filterToggleNoFiltersNotice)
+				return m, noticeClearAfter(clipboardNoticeDuration)
+			}
+			m.filterSet.ToggleAll()
+			m = m.refilter()
+			text := filterToggleRestoredNotice
+			if m.filterSet.IsGloballyDisabled() {
+				text = filterToggleDisabledNotice
+			}
+			m.keyhints = m.keyhints.WithNotice(text)
+			return m, noticeClearAfter(clipboardNoticeDuration)
 		}
 	}
 
@@ -701,6 +768,25 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// T28 / V33: ZoneDetailPane left-press on a JSON field line opens
+	// the filter-add prompt. V14 gate: do NOT emit FieldClickMsg while
+	// pane-search is in input mode — a click during query entry would
+	// otherwise preempt the search by popping the prompt on top. Layout
+	// owns the Y→row mapping (V8 single-owner via ClickToPaneRow).
+	if zone == appshell.ZoneDetailPane &&
+		msg.Action == tea.MouseActionPress &&
+		msg.Button == tea.MouseButtonLeft &&
+		m.pane.IsOpen() &&
+		!(m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeInput) {
+		if paneY, ok := m.layout.Layout().ClickToPaneRow(msg.Y); ok {
+			if field, value, hit := m.pane.ClickedField(paneY); hit {
+				return m, func() tea.Msg {
+					return detailpane.FieldClickMsg{Field: field, Value: value}
+				}
+			}
+		}
+	}
+
 	switch zone {
 	case appshell.ZoneEntryList:
 		var cmd tea.Cmd
@@ -732,6 +818,14 @@ func (m Model) View() string {
 	}
 	if m.themesel.IsOpen() {
 		return m.themesel.View()
+	}
+	// T30 / B10 / V33 VIEW-AXIS: when focus is the filter panel, render
+	// it as a full-screen overlay (same pattern as help / themesel).
+	// Previously this branch was absent: `f` flipped focus + routed keys
+	// to `m.filterPanel.Update` but the panel's View was never composed
+	// into the frame, leaving `f` as a silent focus-flip in live TUI.
+	if m.focus == appshell.FocusFilterPanel {
+		return m.renderFilterPanelOverlay()
 	}
 
 	// R14: FOLLOW badge lights when tail mode is active AND cursor is on the
@@ -768,8 +862,34 @@ func (m Model) View() string {
 	if m.loading.IsActive() {
 		status = m.loading.View()
 	}
+	// T28 / V33: the filter-add prompt replaces the status row while
+	// active so the pre-filled field/pattern + "Tab=toggle, Enter=confirm,
+	// Esc=cancel" hints are visible during confirmation.
+	if m.filterPrompt.IsActive() {
+		status = m.filterPrompt.View()
+	}
 
 	return m.layout.Render(header, list, paneView, status)
+}
+
+// renderFilterPanelOverlay wraps the filter-panel's body with a title and
+// keyhints footer for full-screen overlay display (T30 / V33 VIEW-AXIS).
+// V28: space-padded — no `\t` — to avoid bubbletea's diff-renderer bleeding
+// cells from the previous frame through `\t`-skipped columns.
+func (m Model) renderFilterPanelOverlay() string {
+	var sb strings.Builder
+	sb.WriteString("Filters\n")
+	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteString("\n\n")
+	sb.WriteString(m.filterPanel.View())
+	sb.WriteString("\n\n")
+	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteByte('\n')
+	sb.WriteString("  j/k    Navigate filters\n")
+	sb.WriteString("  Space  Toggle filter enabled\n")
+	sb.WriteString("  d      Delete filter\n")
+	sb.WriteString("  Esc    Close panel\n")
+	return sb.String()
 }
 
 // formatListSearchNotice builds the status-bar text shown while list

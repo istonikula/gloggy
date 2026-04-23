@@ -43,6 +43,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "q/Esc", Desc: "Close detail pane"},
 			{Key: "/", Desc: "Search inside this pane (Enter commits to navigate mode)"},
 			{Key: "n/N", Desc: "Next/prev search match"},
+			{Key: "click field", Desc: "Open filter prompt pre-filled with field:value (Tab=toggle mode, Enter=confirm, Esc=cancel)"},
 		},
 		DomainFilterPanel: {
 			{Key: "Enter", Desc: "Commit filter"},
@@ -55,6 +56,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "?", Desc: "Toggle help overlay"},
 			{Key: "Tab", Desc: "Cycle focus between panels"},
 			{Key: "f", Desc: "Open filter panel"},
+			{Key: "F", Desc: "Toggle all filters on/off (preserves per-filter state)"},
 			{Key: "y", Desc: "Copy marked entries to clipboard"},
 			{Key: "T", Desc: "Open theme selector"},
 			{Key: "t", Desc: "Cycle theme (tokyo-night → catppuccin-mocha → material-dark → solarized-dark)"},

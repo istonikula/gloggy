@@ -294,3 +294,84 @@ func TestLayout_ClickToListRow_DegenerateHeight(t *testing.T) {
 		assert.Falsef(t, ok, "degenerate height: y=%d should be ok=false", y)
 	}
 }
+
+// ---------- T28 / V8: single-owner click-to-pane-row resolver ----------
+
+// TestLayout_DetailPaneContentTopY_Below: for 80x30, DetailPaneHeight=9,
+// EntryListHeight = 30 - 1 (header) - 1 (status) - 9 (pane) = 19. The
+// list pane renders rows 1..19 (HeaderHeight..HeaderHeight+EntryListHeight-1),
+// pane top border sits at row 20, pane content starts at row 21.
+// Formula: HeaderHeight(1) + EntryListHeight(19) + pane-top-border(1) = 21.
+//
+// The ground-truth row number (21) is cross-referenced against a live
+// gloggy snapshot in tui-mcp (row 21 renders the `{` glyph of the JSON
+// detail pane) — prevents the T28-origin off-by-one where test + impl
+// shared a wrong formula (both returned 22) and silently agreed.
+func TestLayout_DetailPaneContentTopY_Below(t *testing.T) {
+	l := NewLayout(80, 30, true, 9)
+	assert.Equalf(t, 21, l.DetailPaneContentTopY(), "below DetailPaneContentTopY")
+}
+
+// TestLayout_DetailPaneContentTopY_Right: right-split places the pane
+// directly under the header — only HeaderHeight(1) + pane top border(1).
+func TestLayout_DetailPaneContentTopY_Right(t *testing.T) {
+	l := NewLayout(200, 30, true, 0)
+	l.Orientation = OrientationRight
+	assert.Equalf(t, 2, l.DetailPaneContentTopY(), "right DetailPaneContentTopY")
+}
+
+// TestLayout_DetailPaneContentTopY_ClosedReturnsZero: closed pane has no
+// content row, so the helper returns 0 as a sentinel (callers should
+// never call ClickToPaneRow when the pane is closed).
+func TestLayout_DetailPaneContentTopY_ClosedReturnsZero(t *testing.T) {
+	l := NewLayout(80, 30, false, 0)
+	assert.Equalf(t, 0, l.DetailPaneContentTopY(), "closed DetailPaneContentTopY")
+}
+
+// TestLayout_ClickToPaneRow_FirstContentRow: Y at DetailPaneContentTopY
+// maps to pane-local row 0.
+func TestLayout_ClickToPaneRow_FirstContentRow(t *testing.T) {
+	l := NewLayout(80, 30, true, 9)
+	y, ok := l.ClickToPaneRow(21)
+	require.Truef(t, ok, "y=21 (first pane content row) should be in-content")
+	assert.Equalf(t, 0, y, "first content row → pane-local 0")
+}
+
+// TestLayout_ClickToPaneRow_HeaderOutsideContent: the header row y=0
+// maps to out-of-content.
+func TestLayout_ClickToPaneRow_HeaderOutsideContent(t *testing.T) {
+	l := NewLayout(80, 30, true, 9)
+	_, ok := l.ClickToPaneRow(0)
+	assert.Falsef(t, ok, "y=0 (header) should return ok=false")
+}
+
+// TestLayout_ClickToPaneRow_DividerOutsideContent: the pane's top border
+// (which doubles as the visual divider in below-mode) is not inside
+// content. Row 20 = HeaderHeight + EntryListHeight = 1 + 19.
+func TestLayout_ClickToPaneRow_DividerOutsideContent(t *testing.T) {
+	l := NewLayout(80, 30, true, 9)
+	_, ok := l.ClickToPaneRow(20)
+	assert.Falsef(t, ok, "y=20 (pane top border / divider) should be out")
+}
+
+// TestLayout_ClickToPaneRow_BottomBorderOutsideContent: last content row
+// is at start + viewportRows - 1. Pane height 9 → viewportRows 7 → last
+// content row Y = 21 + 6 = 27. Y=28 (pane bottom border) + y=29 (status
+// bar) are out.
+func TestLayout_ClickToPaneRow_BottomBorderOutsideContent(t *testing.T) {
+	l := NewLayout(80, 30, true, 9)
+	_, ok := l.ClickToPaneRow(28)
+	assert.Falsef(t, ok, "y=28 (pane bottom border) should be out")
+	_, ok = l.ClickToPaneRow(29)
+	assert.Falsef(t, ok, "y=29 (status bar) should be out")
+}
+
+// TestLayout_ClickToPaneRow_ClosedPaneReturnsFalse: calling on a closed
+// pane returns ok=false for any Y rather than a silent 0-row default.
+func TestLayout_ClickToPaneRow_ClosedPaneReturnsFalse(t *testing.T) {
+	l := NewLayout(80, 30, false, 0)
+	for y := 0; y < 30; y++ {
+		_, ok := l.ClickToPaneRow(y)
+		assert.Falsef(t, ok, "closed pane: y=%d should be ok=false", y)
+	}
+}
