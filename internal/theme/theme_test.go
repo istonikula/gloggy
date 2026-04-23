@@ -72,6 +72,7 @@ func TestTheme_CanonicalSourceCitations_Discoverable(t *testing.T) {
 		{"tokyo-night", TokyoNightSource, []string{"night"}},
 		{"catppuccin-mocha", CatppuccinMochaSource, []string{"mocha"}},
 		{"material-dark", MaterialDarkSource, []string{"Astorino", "material"}},
+		{"solarized-dark", SolarizedDarkSource, []string{"solarized", "dark"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.theme, func(t *testing.T) {
@@ -178,7 +179,7 @@ func TestGetTheme_UnknownFallsBackToDefault(t *testing.T) {
 
 func TestBuiltinNames(t *testing.T) {
 	names := BuiltinNames()
-	require.Len(t, names, 3, "want 3 built-in themes")
+	require.Len(t, names, 4, "want 4 built-in themes")
 }
 
 func TestDefaultThemeName(t *testing.T) {
@@ -190,10 +191,11 @@ func TestDefaultThemeName(t *testing.T) {
 // a stale config value cannot strand the cycle.
 func TestNextName_CyclesInDeclarationOrder(t *testing.T) {
 	names := BuiltinNames()
-	require.Len(t, names, 3, "expected 3 bundled themes")
+	require.Len(t, names, 4, "expected 4 bundled themes")
 	assert.Equal(t, names[1], NextName(names[0]))
 	assert.Equal(t, names[2], NextName(names[1]))
-	assert.Equal(t, names[0], NextName(names[2]), "last should wrap to first")
+	assert.Equal(t, names[3], NextName(names[2]))
+	assert.Equal(t, names[0], NextName(names[3]), "last should wrap to first")
 }
 
 func TestNextName_UnknownReturnsFirst(t *testing.T) {

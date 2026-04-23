@@ -66,17 +66,19 @@ const (
 	TokyoNightSource      = "https://github.com/enkia/tokyo-night-vscode-theme (night variant)"
 	CatppuccinMochaSource = "https://github.com/catppuccin/catppuccin (mocha flavor)"
 	MaterialDarkSource    = "https://github.com/myambitions/vsc-community-material-theme (Astorino legacy palette)"
+	SolarizedDarkSource   = "https://ethanschoonover.com/solarized/ (dark variant)"
 )
 
 var builtinThemes = map[string]Theme{
 	"tokyo-night":      tokyoNight(),
 	"catppuccin-mocha": catppuccinMocha(),
 	"material-dark":    materialDark(),
+	"solarized-dark":   solarizedDark(),
 }
 
 // BuiltinNames returns the names of all built-in themes.
 func BuiltinNames() []string {
-	return []string{"tokyo-night", "catppuccin-mocha", "material-dark"}
+	return []string{"tokyo-night", "catppuccin-mocha", "material-dark", "solarized-dark"}
 }
 
 // Source returns the canonical-source citation for a bundled theme name.
@@ -89,6 +91,8 @@ func Source(name string) string {
 		return CatppuccinMochaSource
 	case "material-dark":
 		return MaterialDarkSource
+	case "solarized-dark":
+		return SolarizedDarkSource
 	}
 	return ""
 }
@@ -256,5 +260,53 @@ func materialDark() Theme {
 		UnfocusedBg:     lipgloss.Color(p.bgUnfocused),
 		DragHandle:      lipgloss.Color(p.dragHandleMid),
 		BaseBg:          lipgloss.Color(p.bgEditor),
+	}
+}
+
+// solarizedDarkPalette holds the canonical hex values for Ethan Schoonover's
+// Solarized Dark. Field names follow the upstream vocabulary (base03/02/01,
+// accents). Fields marked `gloggy-specific` were synthesized for this project
+// — upstream does not define a darker-than-base03 bg, a divider neutral, a
+// mid-tone drag-handle, or a row-selection highlight distinct from base02.
+// See SolarizedDarkSource.
+var solarizedDarkPalette = struct {
+	base03, base02, base01               string // primary bg, elevated bg, comment/divider-adjacent fg
+	unfocusedBg, cursorBg                string // gloggy-specific: darker-than-base03, selection row
+	dividerColor, dragHandleMid          string // gloggy-specific: T-171 pattern
+	yellow, orange, red, magenta, violet string
+	blue, cyan, green                    string
+}{
+	base03: "#002b36", base02: "#073642", base01: "#586e75",
+	unfocusedBg: "#001a22", cursorBg: "#0c4958",
+	dividerColor: "#3a4f58", dragHandleMid: "#4a6069",
+	yellow: "#b58900", orange: "#cb4b16", red: "#dc322f",
+	magenta: "#d33682", violet: "#6c71c4",
+	blue: "#268bd2", cyan: "#2aa198", green: "#859900",
+}
+
+// solarizedDark — see SolarizedDarkSource.
+func solarizedDark() Theme {
+	p := solarizedDarkPalette
+	return Theme{
+		Name:            "solarized-dark",
+		LevelError:      lipgloss.Color(p.red),
+		LevelWarn:       lipgloss.Color(p.yellow),
+		LevelInfo:       lipgloss.Color(p.blue),
+		LevelDebug:      lipgloss.Color(p.base01),
+		SyntaxKey:       lipgloss.Color(p.cyan),
+		SyntaxString:    lipgloss.Color(p.green),
+		SyntaxNumber:    lipgloss.Color(p.orange),
+		SyntaxBoolean:   lipgloss.Color(p.violet),
+		SyntaxNull:      lipgloss.Color(p.base01),
+		Mark:            lipgloss.Color(p.yellow),
+		Dim:             lipgloss.Color(p.base01),
+		SearchHighlight: lipgloss.Color(p.orange),
+		CursorHighlight: lipgloss.Color(p.cursorBg),
+		HeaderBg:        lipgloss.Color(p.base02),
+		FocusBorder:     lipgloss.Color(p.blue),
+		DividerColor:    lipgloss.Color(p.dividerColor),
+		UnfocusedBg:     lipgloss.Color(p.unfocusedBg),
+		DragHandle:      lipgloss.Color(p.dragHandleMid),
+		BaseBg:          lipgloss.Color(p.base03),
 	}
 }
