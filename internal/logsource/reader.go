@@ -19,11 +19,6 @@ func ReadFile(path string) ([]Entry, error) {
 	return scanEntries(f)
 }
 
-// ReadStdin reads all log entries from the provided reader (typically os.Stdin).
-func ReadStdin(r io.Reader) ([]Entry, error) {
-	return scanEntries(r)
-}
-
 func scanEntries(r io.Reader) ([]Entry, error) {
 	var entries []Entry
 	scanner := bufio.NewScanner(r)

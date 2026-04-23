@@ -23,16 +23,6 @@ func TestReadFile_NonexistentReturnsError(t *testing.T) {
 	require.Error(t, err, "expected error for nonexistent file")
 }
 
-// T-016: stdin (io.Reader) → entries
-func TestReadStdin_ProducesEntries(t *testing.T) {
-	r := strings.NewReader("hello\nworld\n")
-	entries, err := ReadStdin(r)
-	require.NoError(t, err)
-	require.Len(t, entries, 2, "expected 2 entries")
-	assert.Equal(t, 1, entries[0].LineNumber, "entry 0 LineNumber")
-	assert.Equal(t, "hello", string(entries[0].Raw), "entry 0 Raw")
-}
-
 // T-017: line numbers sequential 1..N
 func TestReadFile_LineNumbersSequential(t *testing.T) {
 	path := writeTempLog(t, "a\nb\nc\nd\ne\n")

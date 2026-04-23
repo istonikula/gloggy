@@ -10,7 +10,6 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/istonikula/gloggy/internal/config"
-	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/ui/app"
 )
 
@@ -62,7 +61,8 @@ func ParseArgs(args []string) (CLIArgs, error) {
 
 	switch {
 	case fs.NArg() == 0 && fromStdin:
-		return CLIArgs{FromStdin: true, FollowMode: false}, nil
+		// V23/V31: stdin auto-follows; `-f` is redundant-accepted.
+		return CLIArgs{FromStdin: true, FollowMode: true}, nil
 	case fs.NArg() == 1:
 		return CLIArgs{FilePath: fs.Arg(0), FollowMode: *follow}, nil
 	case fs.NArg() == 0:
@@ -95,15 +95,8 @@ func run(args []string) error {
 	}
 
 	model := app.New(sourceName, parsed.FollowMode, cfgPath, cfgResult)
-
-	// For stdin: read synchronously before starting the TUI so the full entry
-	// list is available immediately (stdin can't be re-read inside the program).
 	if parsed.FromStdin {
-		entries, err := logsource.ReadStdin(os.Stdin)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: error reading stdin: %v\n", err)
-		}
-		model = model.SetEntries(entries)
+		model = model.WithStdinReader(os.Stdin)
 	}
 
 	p := tea.NewProgram(
