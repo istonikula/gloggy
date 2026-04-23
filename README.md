@@ -60,7 +60,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 ### Filter Engine
 - **Include/exclude filters** — field:pattern rules; choose include or exclude mode per filter.
 - **Filter panel** — `f` opens an overlay listing active filters; `j`/`k` navigate, `Space` toggles enabled, `d` deletes.
-- **Global toggle** — disable all filters at once and restore them.
+- **Global toggle** — `F` disables every filter at once; a second press restores each filter's prior enabled state (filters that were individually off stay off).
 
 ### App Shell
 - **Four themes** — `tokyo-night`, `catppuccin-mocha`, `material-dark`, `solarized-dark`; set in TOML config or switch live via `T` (live-preview on ↑/↓, Enter to persist, Esc to cancel).
@@ -127,6 +127,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 | Key | Action |
 |-----|--------|
 | `f` | Open filter panel |
+| `F` | Toggle all filters on/off (preserves per-filter state) |
 | `y` | Copy marked entries to clipboard |
 | `T` | Open theme selector (↑/↓ or k/j to navigate, Enter to apply+save, Esc to cancel) |
 | `t` | Cycle theme (tokyo-night → catppuccin-mocha → material-dark → solarized-dark → wrap; persists each press) |

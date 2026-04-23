@@ -55,6 +55,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "?", Desc: "Toggle help overlay"},
 			{Key: "Tab", Desc: "Cycle focus between panels"},
 			{Key: "f", Desc: "Open filter panel"},
+			{Key: "F", Desc: "Toggle all filters on/off (preserves per-filter state)"},
 			{Key: "y", Desc: "Copy marked entries to clipboard"},
 			{Key: "T", Desc: "Open theme selector"},
 			{Key: "t", Desc: "Cycle theme (tokyo-night → catppuccin-mocha → material-dark → solarized-dark)"},

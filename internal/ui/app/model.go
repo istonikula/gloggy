@@ -49,6 +49,13 @@ func formatClipboardCopiedNotice(count int) string {
 	return "copied " + strconv.Itoa(count) + " entries"
 }
 
+// V32: global filter-toggle `F` feedback strings (V15-pattern never-silent).
+const (
+	filterToggleDisabledNotice  = "filters disabled"
+	filterToggleRestoredNotice  = "filters restored"
+	filterToggleNoFiltersNotice = "no filters"
+)
+
 // Model is the root Bubble Tea model.
 type Model struct {
 	// config
@@ -393,6 +400,30 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !listInput && !paneInput {
 			m.themesel = m.themesel.Open(m.cfg.Config.Theme)
 			return m, nil
+		}
+	}
+
+	// V32 / V14: `F` toggles every filter globally via FilterSet.ToggleAll.
+	// 1st press saves per-filter Enabled + disables all; 2nd press restores
+	// saved state. Gated on pane-search input mode per V14 (same policy as
+	// `?` / `T` / `t`). Never silent (V15 pattern): 0 filters emits a notice
+	// and changes no state; non-zero filters emit "disabled"/"restored".
+	if msg.String() == "F" {
+		listInput := m.list.HasActiveSearch() && m.list.Search().InputMode()
+		paneInput := m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeInput
+		if !listInput && !paneInput {
+			if len(m.filterSet.GetAll()) == 0 {
+				m.keyhints = m.keyhints.WithNotice(filterToggleNoFiltersNotice)
+				return m, noticeClearAfter(clipboardNoticeDuration)
+			}
+			m.filterSet.ToggleAll()
+			m = m.refilter()
+			text := filterToggleRestoredNotice
+			if m.filterSet.IsGloballyDisabled() {
+				text = filterToggleDisabledNotice
+			}
+			m.keyhints = m.keyhints.WithNotice(text)
+			return m, noticeClearAfter(clipboardNoticeDuration)
 		}
 	}
 

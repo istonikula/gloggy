@@ -120,6 +120,9 @@ func (fs *FilterSet) GetEnabled() []Filter {
 	return out
 }
 
+// IsGloballyDisabled reports whether ToggleAll has muted all filters.
+func (fs *FilterSet) IsGloballyDisabled() bool { return fs.globallyDisabled }
+
 // ToggleAll disables all filters globally on the first call, then re-enables
 // only the ones that were individually enabled before on the second call.
 // Filters that were individually disabled before the first call remain disabled
