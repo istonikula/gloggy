@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -107,20 +108,25 @@ func TestModel_FieldClick_OpensPromptWithPreFill(t *testing.T) {
 
 // ---------- V33: full integration — mouse click → Enter → FilterSet ----------
 
-// findFieldLineY walks the pane's content lines and returns the absolute
-// terminal Y for the first line matching `"<field>":`. The test uses this
-// to emit a MouseMsg whose Y lands on a real field row after the pane
-// has soft-wrapped its content under the active width.
+// findFieldLineY returns the absolute terminal Y of the first line in the
+// rendered frame (`m.View()` split on `\n`) whose ANSI-stripped text
+// contains `"<field>":`. V34(b): the ground-truth Y is read from actual
+// rendered output — NOT computed via `Layout.DetailPaneContentTopY()`.
+// Calling that helper here would cancel formula errors round-trip with
+// app.Update's `ClickToPaneRow(msg.Y) = msg.Y - DetailPaneContentTopY()`,
+// which was exactly the B8/B9 failure mode (test + impl self-agreed on a
+// wrong formula while live TUI clicks missed their row).
 func findFieldLineY(t *testing.T, m Model, field string) int {
 	t.Helper()
-	lines := m.pane.ContentLines()
-	for i, line := range lines {
-		if strings.Contains(line, `"`+field+`":`) {
-			startY := m.layout.Layout().DetailPaneContentTopY()
-			return startY + i - 0 // scroll offset is 0 for a freshly opened pane
+	needle := `"` + field + `":`
+	lines := strings.Split(m.View(), "\n")
+	for y, line := range lines {
+		if strings.Contains(ansi.Strip(line), needle) {
+			return y
 		}
 	}
-	require.Failf(t, "field line not found", "no line with %q in %v", field, lines)
+	require.Failf(t, "field line not found",
+		"no line with %q in rendered View(); lines=%d", needle, len(lines))
 	return -1
 }
 
