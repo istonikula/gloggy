@@ -102,6 +102,20 @@ func GetTheme(name string) Theme {
 	return builtinThemes[DefaultThemeName]
 }
 
+// NextName returns the next theme name after `current` in BuiltinNames order,
+// wrapping at the end. Unknown names return the first bundled theme — same
+// fallback policy as GetTheme, so the cycle is well-defined even from an
+// unrecognised config value. V30 (direct theme-cycle key `t`).
+func NextName(current string) string {
+	names := BuiltinNames()
+	for i, n := range names {
+		if n == current {
+			return names[(i+1)%len(names)]
+		}
+	}
+	return names[0]
+}
+
 // tokyoNightPalette holds the canonical hex values for the tokyo-night
 // night variant. Field names follow the upstream vocabulary where it
 // exists; gloggy-specific picks (T-171 drag-seam) are flagged.

@@ -375,6 +375,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// V30 / V14: `t` cycles through bundled themes, persisting each step
+	// via the existing write-back (V22 preserves unknown keys). Gated on
+	// pane-search input mode per V14 — typing `t` into a search query
+	// extends the query rather than swapping themes. Overlay-open
+	// precedence is already handled earlier in Update: while V29's
+	// selector is open it intercepts every key, so `t` cannot reach
+	// handleKey until the overlay closes (single-source mutation).
+	if msg.String() == "t" {
+		listInput := m.list.HasActiveSearch() && m.list.Search().InputMode()
+		paneInput := m.paneSearch.IsActive() && m.paneSearch.Mode() == detailpane.SearchModeInput
+		if !listInput && !paneInput {
+			next := theme.NextName(m.cfg.Config.Theme)
+			m.cfg.Config.Theme = next
+			m = m.applyTheme(theme.GetTheme(next))
+			m.saveConfig()
+			return m, nil
+		}
+	}
+
 	// T-096: Tab cycles focus between visible panes. Tab never closes a
 	// pane and is inert while any overlay (filter panel or help) is open.
 	// Help is handled earlier in Update (intercept); the filter panel is

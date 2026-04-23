@@ -184,3 +184,20 @@ func TestBuiltinNames(t *testing.T) {
 func TestDefaultThemeName(t *testing.T) {
 	assert.Equal(t, "tokyo-night", DefaultThemeName)
 }
+
+// V30: NextName advances through BuiltinNames in declaration order and
+// wraps at the end. An unknown name returns the first bundled theme, so
+// a stale config value cannot strand the cycle.
+func TestNextName_CyclesInDeclarationOrder(t *testing.T) {
+	names := BuiltinNames()
+	require.Len(t, names, 3, "expected 3 bundled themes")
+	assert.Equal(t, names[1], NextName(names[0]))
+	assert.Equal(t, names[2], NextName(names[1]))
+	assert.Equal(t, names[0], NextName(names[2]), "last should wrap to first")
+}
+
+func TestNextName_UnknownReturnsFirst(t *testing.T) {
+	names := BuiltinNames()
+	assert.Equal(t, names[0], NextName("nonexistent"))
+	assert.Equal(t, names[0], NextName(""))
+}
