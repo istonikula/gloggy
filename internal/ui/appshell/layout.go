@@ -125,8 +125,10 @@ func (l Layout) ClickToListRow(terminalY int) (int, bool) {
 
 // DetailPaneContentTopY returns the terminal Y coordinate of the first
 // detail-pane content row. V8 single-owner of click-to-pane-row math (T28).
-// In below-mode the pane follows the list + divider; in right-split it
-// sits directly under the header. The +1 adds the pane's own top border.
+// In below-mode the pane follows the list outer block (HeaderHeight rows
+// above, EntryListHeight rows in the list including its top + bottom
+// borders) and then its own top border (+1). Right-split places the pane
+// directly under the header, so only HeaderHeight + pane-top-border.
 // Returns 0 when the pane is closed.
 func (l Layout) DetailPaneContentTopY() int {
 	if !l.DetailPaneOpen {
@@ -135,7 +137,7 @@ func (l Layout) DetailPaneContentTopY() int {
 	if l.Orientation == OrientationRight {
 		return l.HeaderHeight + 1
 	}
-	return l.ListContentTopY() + l.EntryListHeight() + 1
+	return l.HeaderHeight + l.EntryListHeight() + 1
 }
 
 // ClickToPaneRow converts a terminal Y coordinate into a detail-pane
