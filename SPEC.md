@@ -53,7 +53,7 @@ TUI for interactive JSONL log analysis. single binary. file or stdin. go + bubbl
 - nav: j/k g/G Ctrl-d/u PgDn/PgUp Space/b (dp) Home/End (dp)
 - el: e/E w/W m/M u/U l/h Tab Enter / n/N  (M = clear all marks, silent no-op on zero)
 - dp: / n/N + - = | Esc
-- global: f y ? q T
+- global: f y ? q T t
 
 ### I.themes (`internal/theme`)
 
@@ -68,6 +68,10 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 - live preview: each highlight change → whole-TUI repaint in highlighted theme
 - commit (Enter): writes `theme=<name>` to config.toml via existing write-back (V22-preserves unknown keys) + closes
 - revert (Esc): restores pre-open theme + closes; no config write
+- direct cycle: global `t` (V14-gated) — see V30
+- cycle order: `tokyo-night → catppuccin-mocha → material-dark → tokyo-night` (bundled declaration order)
+- per press: advance + persist `theme=<name>` via config write-back (V22) + whole-TUI repaint via single `theme.GetTheme` path; no overlay, no preview window
+- overlay-open precedence: `t` is overlay's domain (no parallel cycle) — single-source mutation
 
 ## §V invariants
 
@@ -100,6 +104,7 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 - **V27** (tests) `*_test.go` files MUST use `github.com/stretchr/testify` — `require` for fatal assertions, `assert` for non-fatal. stdlib `t.Errorf`/`t.Fatalf`/`t.Error`/`t.Fatal` forbidden in `*_test.go`. rationale: consistent failure messaging, diff-style equality output, less `if err != nil { t.Fatalf(...) }` boilerplate. at-use: `require.NoError(t, err)`, `require.Equal(t, want, got)`, `assert.Len(t, xs, 3)`. kit violation: bare `if got != want { t.Errorf(...) }` or `if err != nil { t.Fatal(err) }`. exception: `t.Helper`, `t.Skip*`, `t.Log*`, `t.Run`, `t.Cleanup`, `t.TempDir`, etc remain stdlib (not failure reporters).
 - **V28** (rendering) full-screen replacement views (help overlay + any future overlay returning its own `View()`) MUST NOT use `\t` for alignment. bubbletea's line-diff renderer does not clear cells that `\t` skips over — they retain bytes from the previous frame, bleeding prior content into the overlay. lipgloss does not expand tabs either. at-impl: pad with spaces (column width = max key length across all domains + constant gap). tests MUST assert `View()` contains zero `\t` for any full-screen-replacement view. kit violation: `sb.WriteString("\t")` (or any raw `\t` emission) in a view builder.
 - **V29** (I.themesel) theme selector overlay: trigger `T` MUST gate on V14 — active pane-search input mode → `T` becomes query char, NOT overlay-open. open → highlight = current theme. ↑/↓/k/j cycle; Enter commits + persists `theme=` via config write-back (V22 preserves unknown keys); Esc reverts to pre-open theme + no config write. live-preview: each highlight change repaints whole TUI in highlighted theme via single `theme.GetTheme` resolution path (no parallel palette code). closed overlay → zero mutation (no theme swap, no config mtime advance). overlay full-screen-replacement view → V28 applies (no `\t` padding). tests MUST cover: (a) `T` during pane-search input mode → query char (V14); (b) navigate → `View()` ANSI bytes carry highlighted theme tokens; (c) Enter → `config.toml` `theme` key updated + unrelated keys preserved; (d) Esc → pre-open theme restored + no config mtime advance.
+- **V30** (I.themesel direct-cycle) direct theme cycle key `t` MUST gate on V14 — active pane-search input mode → `t` becomes query char, NOT cycle. each press advances through bundled themes in declaration order (`tokyo-night` → `catppuccin-mocha` → `material-dark` → wrap), writes `theme=<name>` to config.toml via existing write-back (V22 preserves unknown keys), and repaints whole TUI via single `theme.GetTheme` resolution path (no parallel palette code). no overlay, no live preview — commit is immediate per press. theme selector overlay (V29) open → `t` consumed by overlay (no cycle, no config write); single-source mutation invariant. closed overlay + no pane-search → `t` cycles. tests MUST cover: (a) `t` during pane-search input mode → query char (V14); (b) sequential `t` presses from `theme=tokyo-night` advance `catppuccin-mocha` → `material-dark` → wrap to `tokyo-night`; (c) each press updates `config.toml` `theme` key + preserves unrelated keys; (d) overlay (V29) open → `t` is overlay-domain no-op (no theme swap, no config mtime advance).
 
 ## §T tasks
 
@@ -123,6 +128,8 @@ tokens: LevelError/Warn/Info/Debug, Key/String/Number/Boolean/Null, Mark, Dim, S
 | T16 | x | fix B6: replace `\t` in `HelpOverlayModel.View()` with fixed-column space padding. impl: compute max key-string width across all domains (use `lipgloss.Width` for correct East-Asian / arrow-glyph widths) + a 2-space gap, then pad each key row to that column before writing the description. add unit test asserting `View()` contains no `\t` when open. optional tui-mcp regression: launch gloggy on `logs/tiny.log`, press `?`, `snapshot`, assert no background digits/words leak between key and desc. `go test ./internal/ui/appshell/...` green. | V28 |
 | T17 | x | impl theme selector overlay per I.themesel: new `internal/ui/appshell/themeselector.go` (model + Update + View per `HelpOverlayModel` pattern); wire global `T` AFTER pane-search routing in `Model.Update` (V14-safe — same ordering lesson as T15/B5); threading: overlay holds pre-open theme + active highlight; highlight change → swap-theme msg to app model for whole-TUI repaint; Enter → existing config write-back + close; Esc → restore pre-open theme + close. update help overlay (as:R5) + README keymap. tests per V29 (a)-(d). | V14,V22,V28,V29 |
 | T18 | x | [HUMAN via tui-mcp] verify theme selector live-preview + persist + revert across all 3 themes × {below, right} orientations on `logs/small.log`: launch gloggy, press `T`, navigate ↑/↓ asserting visual repaint, Enter to commit, kill+relaunch to verify persistence, then press `T` + Esc to verify revert + no config mtime advance. | V29 |
+| T19 | . | impl direct theme-cycle key `t` per V30: extend `Model.Update` global key handling AFTER pane-search routing (V14-safe — same ordering lesson as T15/T17); add cycle helper (next-in-bundled-order) in `internal/theme` or `internal/ui/appshell`; on press → advance + config write-back (V22) + theme swap msg → whole-TUI repaint via single `theme.GetTheme` path; gate when theme selector overlay (V29) is open (overlay's domain). update help overlay (as:R5) + README keymap. tests per V30 (a)-(d). | V14,V22,V30 |
+| T20 | . | [HUMAN via tui-mcp] verify direct theme cycle `t` across all 3 themes × {below, right} on `logs/small.log`: launch gloggy, press `t` repeatedly asserting visual repaint advances tokyo-night → catppuccin-mocha → material-dark → wrap; kill+relaunch to verify last-pressed theme persists; press `T` (overlay) then `t` to confirm overlay consumes `t` (no parallel cycle). | V30 |
 
 ## §B bugs
 
