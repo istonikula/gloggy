@@ -129,6 +129,7 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 | `f` | Open filter panel |
 | `y` | Copy marked entries to clipboard |
 | `T` | Open theme selector (↑/↓ or k/j to navigate, Enter to apply+save, Esc to cancel) |
+| `t` | Cycle theme (tokyo-night → catppuccin-mocha → material-dark → wrap; persists each press) |
 | `?` | Help overlay |
 | `q` | Quit |
 
