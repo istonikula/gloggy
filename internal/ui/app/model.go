@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"strconv"
 	"time"
 
@@ -56,11 +57,12 @@ type Model struct {
 	configPath string
 
 	// source
-	sourceName string
-	followMode bool
-	tailCtx    context.Context
-	tailCancel context.CancelFunc
-	entries    []logsource.Entry
+	sourceName  string
+	followMode  bool
+	stdinReader io.Reader
+	tailCtx     context.Context
+	tailCancel  context.CancelFunc
+	entries     []logsource.Entry
 
 	// subsystems
 	list        entrylist.ListModel
@@ -138,10 +140,23 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 	return m
 }
 
+// WithStdinReader wires a stdin follower source (V23/V31). main.go
+// calls this when the CLI detected a piped stdin; tests leave it unset.
+// When set, Init() streams via logsource.TailStdin regardless of the
+// sourceName/followMode fields.
+func (m Model) WithStdinReader(r io.Reader) Model {
+	m.stdinReader = r
+	m.followMode = true
+	return m
+}
+
 // Init kicks off initial loading.
 func (m Model) Init() tea.Cmd {
+	if m.stdinReader != nil {
+		// V23/V31: stdin auto-follows via 50ms timer-flush batcher.
+		return logsource.TailStdin(m.tailCtx, m.stdinReader)
+	}
 	if m.sourceName == "" {
-		// stdin — read synchronously before TUI starts (handled in main).
 		return nil
 	}
 	if m.followMode {
@@ -281,7 +296,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.header = m.header.WithCounts(len(m.entries), m.visibleCount())
 			cmd = msg.Next()
 		case logsource.TailStopMsg:
-			// Watcher stopped; nothing to do.
+			// V31: stdin EOF (pipe closed) → drop [FOLLOW] badge but keep
+			// TUI interactive. Leave file-follow TailStop behavior unchanged
+			// (file path currently retains badge on watcher error; out of
+			// scope for T23).
+			if m.stdinReader != nil {
+				m.followMode = false
+			}
 		}
 		return m, cmd
 

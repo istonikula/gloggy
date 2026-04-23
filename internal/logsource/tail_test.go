@@ -12,11 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// T-028: R8.3 — stdin not tailablefunction
-func TestIsTailableFromStdin(t *testing.T) {
-	assert.False(t, IsTailableFromStdin(), "IsTailableFromStdin() must return false")
-}
-
 // T-028: R8.1 + R8.2 — new lines detected with correct line numbers
 func TestTailFile_DetectsNewLines(t *testing.T) {
 	dir := t.TempDir()

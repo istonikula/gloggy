@@ -26,9 +26,6 @@ type TailMsg struct{ Entries []Entry }
 // TailStopMsg signals that the tail watcher stopped.
 type TailStopMsg struct{ Err error }
 
-// IsTailableFromStdin returns false — stdin cannot be tailed.
-func IsTailableFromStdin() bool { return false }
-
 // TailFile returns a tea.Cmd that watches path and emits TailMsg for every
 // newline-terminated line, across an unbounded number of filesystem Write
 // events. startLineNum controls initial emission: pass 0 to emit every line
