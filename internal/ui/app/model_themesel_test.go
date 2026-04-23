@@ -325,9 +325,9 @@ experimental_feature = true
 	require.Equalf(t, "tokyo-night", m.th.Name, "precondition: tokyo-night active")
 
 	names := theme.BuiltinNames()
-	// Press t three times; after N presses we should be at names[N % len].
-	// Starting from names[0], the sequence is: names[1], names[2], names[0].
-	want := []string{names[1], names[2], names[0]}
+	// Press t four times; after N presses we should be at names[N % len].
+	// Starting from names[0], the sequence is: names[1], names[2], names[3], names[0].
+	want := []string{names[1], names[2], names[3], names[0]}
 	for i, w := range want {
 		m = key(m, "t")
 		assert.Equalf(t, w, m.th.Name,

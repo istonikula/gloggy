@@ -37,10 +37,9 @@ func sgrParams(s string) map[string]struct{} {
 // because both branches shared `Foreground(m.th.Dim)` and the notice
 // text, while present, blended into the keyhints row.
 func TestKeyHintBar_NoticeSgrDiffersFromHints_AllThemes(t *testing.T) {
-	themes := []string{"tokyo-night", "catppuccin-mocha", "material-dark"}
 	const width = 80
 
-	for _, name := range themes {
+	for _, name := range theme.BuiltinNames() {
 		t.Run(name, func(t *testing.T) {
 			th := theme.GetTheme(name)
 			base := NewKeyHintBarModel(th, width)

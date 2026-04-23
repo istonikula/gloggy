@@ -57,7 +57,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "f", Desc: "Open filter panel"},
 			{Key: "y", Desc: "Copy marked entries to clipboard"},
 			{Key: "T", Desc: "Open theme selector"},
-			{Key: "t", Desc: "Cycle theme (tokyo-night → catppuccin-mocha → material-dark)"},
+			{Key: "t", Desc: "Cycle theme (tokyo-night → catppuccin-mocha → material-dark → solarized-dark)"},
 			{Key: "q", Desc: "Quit"},
 		},
 	}
