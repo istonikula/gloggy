@@ -43,6 +43,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "q/Esc", Desc: "Close detail pane"},
 			{Key: "/", Desc: "Search inside this pane (Enter commits to navigate mode)"},
 			{Key: "n/N", Desc: "Next/prev search match"},
+			{Key: "click field", Desc: "Open filter prompt pre-filled with field:value (Tab=toggle mode, Enter=confirm, Esc=cancel)"},
 		},
 		DomainFilterPanel: {
 			{Key: "Enter", Desc: "Commit filter"},

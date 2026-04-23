@@ -123,6 +123,43 @@ func (l Layout) ClickToListRow(terminalY int) (int, bool) {
 	return terminalY - start, true
 }
 
+// DetailPaneContentTopY returns the terminal Y coordinate of the first
+// detail-pane content row. V8 single-owner of click-to-pane-row math (T28).
+// In below-mode the pane follows the list + divider; in right-split it
+// sits directly under the header. The +1 adds the pane's own top border.
+// Returns 0 when the pane is closed.
+func (l Layout) DetailPaneContentTopY() int {
+	if !l.DetailPaneOpen {
+		return 0
+	}
+	if l.Orientation == OrientationRight {
+		return l.HeaderHeight + 1
+	}
+	return l.ListContentTopY() + l.EntryListHeight() + 1
+}
+
+// ClickToPaneRow converts a terminal Y coordinate into a detail-pane
+// content-local row (0-indexed from the first content row). Returns
+// ok=false when the coordinate lies outside the pane's content rows
+// (on borders, divider, other panes, header, or status bar). Partitioning
+// between panes is owned by cavekit-app-shell R6 (MouseRouter zone
+// resolver); this helper only resolves Y within the detail pane's content
+// rows. Single owner per V8 — callers must NOT re-derive borders.
+func (l Layout) ClickToPaneRow(terminalY int) (int, bool) {
+	if !l.DetailPaneOpen {
+		return 0, false
+	}
+	start := l.DetailPaneContentTopY()
+	viewportRows := DetailPaneVerticalRows(l) - 2 // subtract top + bottom borders
+	if viewportRows < 1 {
+		return 0, false
+	}
+	if terminalY < start || terminalY >= start+viewportRows {
+		return 0, false
+	}
+	return terminalY - start, true
+}
+
 // DetailPaneVerticalRows returns the outer vertical allocation (rows,
 // border-inclusive) for the detail pane. In below-mode this is
 // DetailPaneHeight (height_ratio * terminalHeight). In right-mode the pane

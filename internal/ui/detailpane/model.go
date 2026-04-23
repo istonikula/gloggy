@@ -215,6 +215,29 @@ func (m PaneModel) Update(msg tea.Msg) (PaneModel, tea.Cmd) {
 	}
 }
 
+// ClickedField resolves a pane-local content row (0-indexed from the
+// first content row) to a (field, value) pair when the line at that
+// row parses as a JSON field. Returns ok=false when the pane is closed,
+// the row is out of range, or the line is not a field (e.g. `{`, `}`,
+// or a continuation row of a soft-wrapped value). Caller must translate
+// terminal-Y to pane-local-Y via Layout.ClickToPaneRow (V8 owner) first.
+// Wires FieldClickMsg emission end-to-end (T28 / V33).
+func (m PaneModel) ClickedField(paneLocalY int) (field, value string, ok bool) {
+	if !m.open {
+		return "", "", false
+	}
+	lines := m.ContentLines()
+	absLine := m.scroll.offset + paneLocalY
+	if absLine < 0 || absLine >= len(lines) {
+		return "", "", false
+	}
+	field, value = fieldAtLine(lines[absLine])
+	if field == "" {
+		return "", "", false
+	}
+	return field, value, true
+}
+
 // borderRows returns how many rows the pane border consumes. T-100 added a
 // full lipgloss border in PaneStyle, so both the top and bottom borders eat
 // one row each.
