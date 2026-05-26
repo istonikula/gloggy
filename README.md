@@ -55,11 +55,12 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 - **In-pane search** — `/` opens a search scoped to the pane; `n`/`N` move the cursor to the next/prev match with scrolloff context; wrap indicator and `(current/total)` counter shown; `Esc` clears.
 - **Field visibility** — hide/show individual fields; persisted to config and survives restart.
 - **Right-split or below layouts** — auto-flips based on terminal width; `|` cycles the focused pane's share between 30% / 50%, `+`/`-` adjust the pane ratio, `=` resets; independent height/width ratios are preserved across flips. Pane is resizable by dragging the divider too.
-- **Filter from field** — click a field value to pre-fill a filter prompt.
-
 ### Filter Engine
-- **Include/exclude filters** — field:pattern rules; choose include or exclude mode per filter.
-- **Filter panel** — `f` opens an overlay listing active filters; `j`/`k` navigate, `Space` toggles enabled, `d` deletes.
+- **Whole-line and field-scoped filters** — filter against the full raw JSON line (`«line»`) or a specific field; include or exclude mode per filter.
+- **Three match syntaxes** — Literal (substring), Glob (`*`/`?` wildcards), Regex (RE2); select per filter.
+- **Add and edit** — `a` opens a blank prompt; `e` opens the highlighted filter for editing; clear the Field row to convert a field-scoped filter to whole-line (and vice versa).
+- **Filter from field** — click a field value in the detail pane to pre-fill a filter prompt.
+- **Filter panel** — `f` opens an overlay listing active filters; `j`/`k` navigate, `a` add, `e` edit, `Space` toggle, `d` delete, `Esc` close.
 - **Global toggle** — `F` disables every filter at once; a second press restores each filter's prior enabled state (filters that were individually off stay off).
 
 ### App Shell
@@ -121,6 +122,17 @@ A terminal UI for interactively analyzing JSONL log files during local developme
 | `\|` | Cycle focused pane's share between 30% / 50% |
 | `+` / `-` | Grow/shrink the focused pane by 5% |
 | `=` | Reset detail-pane ratio to 30% |
+
+### Filter Panel (when `f` overlay is open)
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate filters |
+| `a` | Add filter (blank prompt) |
+| `e` | Edit highlighted filter |
+| `Space` | Toggle filter enabled/disabled |
+| `d` | Delete highlighted filter |
+| `Esc` | Close filter panel |
 
 ### Global
 
