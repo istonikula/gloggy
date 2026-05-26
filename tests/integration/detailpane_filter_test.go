@@ -41,7 +41,7 @@ func TestDetailPane_FieldClick_TriggersFilterPrompt(t *testing.T) {
 
 	// Wire to filter prompt.
 	fs := filter.NewFilterSet()
-	prompt := uifilter.NewPromptModel(fs).Open(fieldClick.Field, fieldClick.Value)
+	prompt := uifilter.NewPromptModel(fs).OpenFromPaneClick(fieldClick.Field, fieldClick.Value)
 	assert.Equal(t, "level", prompt.Field(), "prompt field")
 	assert.Equal(t, "ERROR", prompt.Pattern(), "prompt pattern")
 

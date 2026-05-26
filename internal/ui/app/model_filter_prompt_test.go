@@ -274,8 +274,8 @@ func TestModel_FieldClick_GatedByPaneSearchInput(t *testing.T) {
 // ---------- View: prompt replaces keyhints row ----------
 
 // TestModel_FilterPrompt_View_ReplacesStatusRow (T28/V15) — while active
-// the prompt's single-line View replaces the keyhints bar at the bottom
-// so the user sees the pre-filled field/value + Tab/Enter/Esc hints.
+// the prompt's View replaces the keyhints bar so the user sees the pre-filled
+// field/value + confirm hints. Updated for V35 multi-row prompt format.
 func TestModel_FilterPrompt_View_ReplacesStatusRow(t *testing.T) {
 	m := seedModelWithPaneOpen(t, []logsource.Entry{jsonEntryLvl(1, "INFO", "hi")})
 	m = send(m, detailpane.FieldClickMsg{Field: "level", Value: "INFO"})
@@ -283,8 +283,12 @@ func TestModel_FilterPrompt_View_ReplacesStatusRow(t *testing.T) {
 
 	out := m.View()
 
-	assert.Containsf(t, out, "Add filter: level:INFO",
-		"View must render the prompt while active")
-	assert.Containsf(t, out, "Enter=confirm",
-		"View must surface the prompt hints")
+	assert.Containsf(t, out, "Add filter",
+		"View must contain prompt title")
+	assert.Containsf(t, out, "level",
+		"View must surface the pre-filled field name")
+	assert.Containsf(t, out, "INFO",
+		"View must surface the pre-filled pattern value")
+	assert.Containsf(t, out, "Enter confirm",
+		"View must surface Enter confirm hint")
 }

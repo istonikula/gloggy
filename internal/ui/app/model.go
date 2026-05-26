@@ -369,7 +369,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// upstream-gated in handleMouse (no FieldClickMsg emitted while the
 	// user is typing a query) per V14.
 	case detailpane.FieldClickMsg:
-		m.filterPrompt = m.filterPrompt.Open(msg.Field, msg.Value)
+		m.filterPrompt = m.filterPrompt.OpenFromPaneClick(msg.Field, msg.Value)
 		return m, nil
 
 	// Filter confirmed from prompt → recompute the filtered index.
