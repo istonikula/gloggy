@@ -49,15 +49,16 @@ const (
 //	Enter             validate + commit (emits FilterConfirmedMsg or FilterRejectedMsg)
 //	Esc               cancel (emits FilterCancelledMsg)
 type PromptModel struct {
-	active   bool
-	focusRow int
-	field    string
-	pattern  string
-	syntax   filter.Syntax
-	mode     filter.Mode
-	fs       *filter.FilterSet
-	editID   *int // nil = Add; non-nil = Edit (id of filter to Update)
-	th       theme.Theme
+	active         bool
+	focusRow       int
+	field          string
+	pattern        string
+	syntax         filter.Syntax
+	mode           filter.Mode
+	fs             *filter.FilterSet
+	editID         *int // nil = Add; non-nil = Edit (id of filter to Update)
+	th             theme.Theme
+	rejectedReason string // non-empty after validation failure; shown in View
 }
 
 // NewPromptModel creates a PromptModel that operates on the given FilterSet.
@@ -155,8 +156,10 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 			}
 			if err := m.fs.Validate(f); err != nil {
 				reason := err.Error()
+				m.rejectedReason = reason
 				return m, func() tea.Msg { return FilterRejectedMsg{Reason: reason} }
 			}
+			m.rejectedReason = ""
 			if m.editID == nil {
 				id := m.fs.Add(f)
 				m = m.Close()
@@ -174,11 +177,14 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 			}
 
 		case "tab":
+			m.rejectedReason = ""
 			m.focusRow = (m.focusRow + 1) % numRows
 		case "shift+tab":
+			m.rejectedReason = ""
 			m.focusRow = (m.focusRow + numRows - 1) % numRows
 
 		case "left":
+			m.rejectedReason = ""
 			switch m.focusRow {
 			case rowSyntax:
 				m.syntax = cycleSyntaxPrev(m.syntax)
@@ -186,6 +192,7 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 				m.mode = cycleModeToggle(m.mode)
 			}
 		case "right":
+			m.rejectedReason = ""
 			switch m.focusRow {
 			case rowSyntax:
 				m.syntax = cycleSyntaxNext(m.syntax)
@@ -194,6 +201,7 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 			}
 
 		case "backspace", "ctrl+h":
+			m.rejectedReason = ""
 			switch m.focusRow {
 			case rowField:
 				if len(m.field) > 0 {
@@ -210,6 +218,7 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 			// V14: reserved globals (q ? T F) become literal chars here.
 			runes := msg.Runes
 			if len(runes) == 1 {
+				m.rejectedReason = ""
 				switch m.focusRow {
 				case rowField:
 					m.field += string(runes)
@@ -245,6 +254,9 @@ func (m PromptModel) View() string {
 	sb.WriteByte('\n')
 	sb.WriteString(m.renderModeRow())
 	sb.WriteString("\n\n")
+	if m.rejectedReason != "" {
+		sb.WriteString("  ! " + m.rejectedReason + "\n")
+	}
 	sb.WriteString(ruler + "\n")
 	sb.WriteString(m.footerHints())
 	return sb.String()
