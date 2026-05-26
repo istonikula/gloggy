@@ -140,6 +140,110 @@ func TestFilterSet_EnableDisable_OutsideGloballyDisabled_NoStateChange(t *testin
 	assert.Nil(t, fs.savedEnabled, "Enable outside must not create savedEnabled")
 }
 
+// ---------- V35 Validate ----------
+
+func TestFilterSet_Validate_EmptyPattern_Error(t *testing.T) {
+	fs := NewFilterSet()
+	err := fs.Validate(Filter{Field: "level", Pattern: "", Syntax: Literal})
+	assert.Error(t, err, "empty pattern must be rejected")
+	assert.Contains(t, err.Error(), "pattern required")
+}
+
+func TestFilterSet_Validate_BadRegex_Error(t *testing.T) {
+	fs := NewFilterSet()
+	err := fs.Validate(Filter{Field: "msg", Pattern: `[invalid`, Syntax: Regex})
+	assert.Error(t, err, "bad regex must be rejected")
+	assert.Contains(t, err.Error(), "bad regex")
+}
+
+func TestFilterSet_Validate_GoodRegex_NoError(t *testing.T) {
+	fs := NewFilterSet()
+	err := fs.Validate(Filter{Field: "msg", Pattern: `timeout.*occurred`, Syntax: Regex})
+	assert.NoError(t, err)
+}
+
+func TestFilterSet_Validate_Glob_AlwaysValid(t *testing.T) {
+	fs := NewFilterSet()
+	// Glob translation is deterministic — even patterns that look odd are valid.
+	err := fs.Validate(Filter{Field: "msg", Pattern: `foo*bar?`, Syntax: Glob})
+	assert.NoError(t, err)
+}
+
+func TestFilterSet_Validate_Literal_AnyNonEmpty(t *testing.T) {
+	fs := NewFilterSet()
+	// Literal accepts any non-empty pattern including RE2 metacharacters.
+	err := fs.Validate(Filter{Field: "msg", Pattern: `[not-a-regex`, Syntax: Literal})
+	assert.NoError(t, err)
+}
+
+func TestFilterSet_Validate_WholeLine_EmptyField_Accepted(t *testing.T) {
+	fs := NewFilterSet()
+	err := fs.Validate(Filter{Field: "", Pattern: "DrawState", Syntax: Literal})
+	assert.NoError(t, err, "empty Field (whole-line) with non-empty pattern is valid")
+}
+
+// ---------- V35 Update ----------
+
+func TestFilterSet_Update_PreservesPosition(t *testing.T) {
+	fs := NewFilterSet()
+	id0 := fs.Add(Filter{Field: "level", Pattern: "ERROR", Mode: Include, Enabled: true})
+	id1 := fs.Add(Filter{Field: "msg", Pattern: "old", Mode: Include, Enabled: true})
+	id2 := fs.Add(Filter{Field: "logger", Pattern: "auth", Mode: Exclude, Enabled: false})
+
+	ok := fs.Update(id1, Filter{Field: "msg", Pattern: "new", Mode: Exclude})
+	require.True(t, ok, "Update must return true for existing id")
+
+	all := fs.GetAll()
+	require.Len(t, all, 3, "Update must not change length")
+	assert.Equal(t, "level", all[0].Field, "position 0 unchanged")
+	assert.Equal(t, "msg", all[1].Field, "position 1 still msg")
+	assert.Equal(t, "new", all[1].Pattern, "pattern updated")
+	assert.Equal(t, Exclude, all[1].Mode, "mode updated")
+	assert.Equal(t, "logger", all[2].Field, "position 2 unchanged")
+	_ = id0
+	_ = id2
+}
+
+func TestFilterSet_Update_PreservesEnabled(t *testing.T) {
+	fs := NewFilterSet()
+	id := fs.Add(Filter{Field: "level", Pattern: "ERROR", Mode: Include, Enabled: true})
+	fs.Disable(id)
+	require.False(t, fs.GetAll()[0].Enabled, "precondition: disabled")
+
+	fs.Update(id, Filter{Field: "level", Pattern: "WARN", Mode: Include, Enabled: true})
+	// Enabled in the passed Filter is ignored — preserved from before.
+	assert.False(t, fs.GetAll()[0].Enabled, "Update must NOT flip Enabled")
+}
+
+func TestFilterSet_Update_NotFound_ReturnsFalse(t *testing.T) {
+	fs := NewFilterSet()
+	ok := fs.Update(99, Filter{Field: "msg", Pattern: "x"})
+	assert.False(t, ok, "Update with unknown id must return false")
+}
+
+func TestFilterSet_Update_PreservesSyntax(t *testing.T) {
+	fs := NewFilterSet()
+	id := fs.Add(Filter{Field: "msg", Pattern: "old", Syntax: Glob, Mode: Include, Enabled: true})
+	fs.Update(id, Filter{Field: "msg", Pattern: "new*pattern", Syntax: Regex, Mode: Include})
+	assert.Equal(t, Regex, fs.GetAll()[0].Syntax, "Update must apply new Syntax")
+}
+
+// ---------- V35 Syntax String ----------
+
+func TestSyntaxString(t *testing.T) {
+	assert.Equal(t, "literal", Literal.String())
+	assert.Equal(t, "glob", Glob.String())
+	assert.Equal(t, "regex", Regex.String())
+}
+
+// ---------- V35 existing tests — guard Syntax zero-value = Literal ----------
+
+func TestFilterSet_Add_ZeroSyntax_IsLiteral(t *testing.T) {
+	fs := NewFilterSet()
+	fs.Add(Filter{Field: "level", Pattern: "ERROR", Mode: Include, Enabled: true})
+	assert.Equal(t, Literal, fs.GetAll()[0].Syntax, "zero-value Syntax must be Literal")
+}
+
 // TestFilterSet_Add_DuringGloballyDisabled_UnchangedByT31 — V32's
 // "add-while-disabled" behavior (new filter saves its Add-time
 // Enabled to savedEnabled + disables it) MUST NOT be affected by

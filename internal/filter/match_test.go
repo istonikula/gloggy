@@ -37,26 +37,123 @@ func TestMatch_LiteralMsg_NoMatch(t *testing.T) {
 	assert.False(t, ok, "expected no match")
 }
 
-// T-018: regex match
+// T-018: regex match — Syntax must be explicit (V35: no auto-classify)
 func TestMatch_Regex(t *testing.T) {
-	f := Filter{Field: "msg", Pattern: `timeout.*occurred`}
+	f := Filter{Field: "msg", Pattern: `timeout.*occurred`, Syntax: Regex}
 	ok, err := Match(f, baseEntry())
 	require.NoError(t, err)
 	assert.True(t, ok, "expected regex match")
 }
 
 func TestMatch_Regex_NoMatch(t *testing.T) {
-	f := Filter{Field: "msg", Pattern: `^timeout$`}
+	f := Filter{Field: "msg", Pattern: `^timeout$`, Syntax: Regex}
 	ok, err := Match(f, baseEntry())
 	require.NoError(t, err)
 	assert.False(t, ok, "expected no regex match")
 }
 
-// T-018: invalid regex returns error, not applied
+// T-018: invalid regex returns error (safety net; Validate catches this at Add/Edit time)
 func TestMatch_InvalidRegex_Error(t *testing.T) {
-	f := Filter{Field: "msg", Pattern: `[invalid`}
+	f := Filter{Field: "msg", Pattern: `[invalid`, Syntax: Regex}
 	_, err := Match(f, baseEntry())
 	assert.Error(t, err, "expected error for invalid regex")
+}
+
+// V35: Literal (default) uses substring match, never regex even with metacharacters.
+func TestMatch_LiteralWithMetaChars_SubstringOnly(t *testing.T) {
+	entry := logsource.Entry{Msg: "timeout.*occurred"}
+	f := Filter{Field: "msg", Pattern: `timeout.*occurred`, Syntax: Literal}
+	ok, err := Match(f, entry)
+	require.NoError(t, err)
+	assert.True(t, ok, "literal match must use substring, not regex")
+
+	// Would match as regex on "connection timeout occurred" — must NOT with Literal.
+	f2 := Filter{Field: "msg", Pattern: `timeout.*occurred`, Syntax: Literal}
+	ok2, err2 := Match(f2, baseEntry())
+	require.NoError(t, err2)
+	assert.False(t, ok2, "literal pattern 'timeout.*occurred' is not a substring of the base entry msg")
+}
+
+// V35: Glob syntax — * and ? wildcards.
+func TestMatch_Glob_Star(t *testing.T) {
+	f := Filter{Field: "msg", Pattern: `timeout*occurred`, Syntax: Glob}
+	ok, err := Match(f, baseEntry())
+	require.NoError(t, err)
+	assert.True(t, ok, "glob * should match any chars between timeout and occurred")
+}
+
+func TestMatch_Glob_Question(t *testing.T) {
+	f := Filter{Field: "level", Pattern: "ERR?R", Syntax: Glob}
+	ok, err := Match(f, baseEntry())
+	require.NoError(t, err)
+	assert.True(t, ok, "glob ? should match single char")
+}
+
+func TestMatch_Glob_NoMatch(t *testing.T) {
+	f := Filter{Field: "level", Pattern: "WAR?", Syntax: Glob}
+	ok, err := Match(f, baseEntry())
+	require.NoError(t, err)
+	assert.False(t, ok, "glob should not match ERROR with WAR?")
+}
+
+func TestMatch_Glob_LiteralDot_NotWildcard(t *testing.T) {
+	// A dot in glob is escaped to \. in RE2 — matches literal dot, not any char.
+	entry := logsource.Entry{Logger: "com.example.service"}
+	f := Filter{Field: "logger", Pattern: "com.example", Syntax: Glob}
+	ok, err := Match(f, entry)
+	require.NoError(t, err)
+	assert.True(t, ok, "dot in glob pattern should match literal dot")
+
+	entryNoDot := logsource.Entry{Logger: "comXexample"}
+	ok2, err2 := Match(f, entryNoDot)
+	require.NoError(t, err2)
+	assert.False(t, ok2, "dot in glob must not match non-dot char (RE2 . wildcard escaped)")
+}
+
+// V35: whole-line filter (Field == "") matches against entry.Raw.
+func TestMatch_WholeLine_MatchesRaw(t *testing.T) {
+	entry := logsource.Entry{
+		Raw: []byte(`{"level":"ERROR","msg":"connection timeout occurred"}`),
+	}
+	f := Filter{Field: "", Pattern: "timeout", Syntax: Literal}
+	ok, err := Match(f, entry)
+	require.NoError(t, err)
+	assert.True(t, ok, "whole-line filter should match substring in Raw")
+}
+
+func TestMatch_WholeLine_MatchesKey(t *testing.T) {
+	entry := logsource.Entry{
+		Raw: []byte(`{"requestId":"abc-123","level":"INFO"}`),
+	}
+	// Match on a key name — not possible via field-scoped filter.
+	f := Filter{Field: "", Pattern: "requestId", Syntax: Literal}
+	ok, err := Match(f, entry)
+	require.NoError(t, err)
+	assert.True(t, ok, "whole-line filter should match on key names too")
+}
+
+func TestMatch_WholeLine_NoMatch(t *testing.T) {
+	entry := logsource.Entry{Raw: []byte(`{"level":"INFO","msg":"hello"}`)}
+	f := Filter{Field: "", Pattern: "ERROR", Syntax: Literal}
+	ok, err := Match(f, entry)
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestMatch_WholeLine_Glob(t *testing.T) {
+	entry := logsource.Entry{Raw: []byte(`{"level":"ERROR","msg":"DrawStateChanged"}`)}
+	f := Filter{Field: "", Pattern: "Draw*Changed", Syntax: Glob}
+	ok, err := Match(f, entry)
+	require.NoError(t, err)
+	assert.True(t, ok, "whole-line glob should match")
+}
+
+func TestMatch_WholeLine_EmptyRaw_NoMatch(t *testing.T) {
+	entry := logsource.Entry{Raw: nil}
+	f := Filter{Field: "", Pattern: "anything", Syntax: Literal}
+	ok, err := Match(f, entry)
+	require.NoError(t, err)
+	assert.False(t, ok, "nil Raw is empty string — no match for non-empty pattern")
 }
 
 // T-018: match against level, logger, thread
@@ -198,7 +295,7 @@ func TestMatch_JSONEscapedStrings(t *testing.T) {
 // T-071: Benchmark regex matching to verify caching helps.
 func BenchmarkMatch_Regex(b *testing.B) {
 	entry := logsource.Entry{Msg: "connection refused from 192.168.1.1"}
-	f := Filter{Field: "msg", Pattern: `\d+\.\d+\.\d+\.\d+`}
+	f := Filter{Field: "msg", Pattern: `\d+\.\d+\.\d+\.\d+`, Syntax: Regex}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Match(f, entry)

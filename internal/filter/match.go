@@ -24,15 +24,47 @@ func cachedRegexp(pattern string) (*regexp.Regexp, error) {
 	return re, nil
 }
 
-// Match reports whether the filter's pattern matches the entry's field value.
-// Literal patterns use substring matching; patterns containing regex metacharacters
-// use RE2 matching. Returns an error if the pattern is invalid regex.
+// Match reports whether the filter matches the entry.
+//
+// When Field is empty (""), the match target is the raw JSON bytes of the
+// entry (whole-line filter). When Field is non-empty, the named field value
+// is resolved via entryFieldValue; a missing field returns (false, nil).
+//
+// The Pattern is evaluated according to f.Syntax:
+//   - Literal (default): strings.Contains substring match.
+//   - Glob: * = any chars, ? = one char; remaining chars literal (RE2 internally).
+//   - Regex: RE2 pattern (pre-validated at Add/Edit time via FilterSet.Validate).
 func Match(f Filter, entry logsource.Entry) (bool, error) {
-	val, found := entryFieldValue(f.Field, entry)
-	if !found {
-		return false, nil
+	var val string
+	if f.Field == "" {
+		val = string(entry.Raw)
+	} else {
+		var found bool
+		val, found = entryFieldValue(f.Field, entry)
+		if !found {
+			return false, nil
+		}
 	}
-	return matchPattern(f.Pattern, val)
+	return matchBySyntax(f.Syntax, f.Pattern, val)
+}
+
+func matchBySyntax(syntax Syntax, pattern, value string) (bool, error) {
+	switch syntax {
+	case Glob:
+		re, err := globToRegexp(pattern)
+		if err != nil {
+			return false, err
+		}
+		return re.MatchString(value), nil
+	case Regex:
+		re, err := cachedRegexp(pattern)
+		if err != nil {
+			return false, err
+		}
+		return re.MatchString(value), nil
+	default: // Literal
+		return strings.Contains(value, pattern), nil
+	}
 }
 
 // entryFieldValue returns the string value of the named field from an Entry.
@@ -68,21 +100,4 @@ func entryFieldValue(field string, entry logsource.Entry) (string, bool) {
 		}
 		return s, true
 	}
-}
-
-// matchPattern tests the pattern against value. Uses regex if the pattern
-// contains metacharacters, otherwise uses substring match.
-func matchPattern(pattern, value string) (bool, error) {
-	if containsMetaChar(pattern) {
-		re, err := cachedRegexp(pattern)
-		if err != nil {
-			return false, err
-		}
-		return re.MatchString(value), nil
-	}
-	return strings.Contains(value, pattern), nil
-}
-
-func containsMetaChar(s string) bool {
-	return strings.ContainsAny(s, `.*+?^$|[](){}\ `)
 }
