@@ -121,8 +121,8 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 		tailCtx:     ctx,
 		tailCancel:  cancel,
 		filterSet:    fs,
-		filterPanel:  uifilter.New(fs),
-		filterPrompt: uifilter.NewPromptModel(fs),
+		filterPanel:  uifilter.New(fs).WithTheme(th),
+		filterPrompt: uifilter.NewPromptModel(fs).WithTheme(th),
 		help:        appshell.NewHelpOverlayModel(),
 		themesel:    appshell.NewThemeSelectorModel(),
 		resize:      appshell.NewResizeModel(80, 24).WithConfig(cfgResult.Config),
@@ -369,18 +369,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// upstream-gated in handleMouse (no FieldClickMsg emitted while the
 	// user is typing a query) per V14.
 	case detailpane.FieldClickMsg:
-		m.filterPrompt = m.filterPrompt.Open(msg.Field, msg.Value)
+		m.filterPrompt = m.filterPrompt.OpenFromPaneClick(msg.Field, msg.Value)
 		return m, nil
 
 	// Filter confirmed from prompt → recompute the filtered index.
+	// IsNew=false means Edit path: FilterSet.Update already applied inside
+	// the prompt's Update; parent just needs to refilter.
 	case uifilter.FilterConfirmedMsg:
 		m = m.refilter()
 		return m, nil
+
+	// Filter validation failed — surface reason via keyhints notice (V15-pattern).
+	case uifilter.FilterRejectedMsg:
+		m.keyhints = m.keyhints.WithNotice(msg.Reason)
+		return m, noticeClearAfter(clipboardNoticeDuration)
 
 	// Filter prompt cancelled via Esc — no mutation; the prompt already
 	// closed itself. Kept as an explicit case so future observers (e.g. a
 	// "filter cancelled" notice) have a single hook.
 	case uifilter.FilterCancelledMsg:
+		return m, nil
+
+	// Panel `a`/`e` request the shared filter prompt to open.
+	case uifilter.OpenPromptMsg:
+		if msg.IsEdit {
+			m.filterPrompt = m.filterPrompt.OpenEdit(msg.Filter, msg.FilterID)
+		} else {
+			m.filterPrompt = m.filterPrompt.OpenBlank()
+		}
 		return m, nil
 
 	// Filter panel changed.
@@ -564,7 +580,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focus = appshell.FocusEntryList
 			m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
 		}
-		return m, cmd
+		// Eagerly resolve OpenPromptMsg so tests (which discard cmds) work.
+		// Re-wrap any other cmd result for normal BubbleTea delivery.
+		if cmd != nil {
+			panelMsg := cmd()
+			if pm, ok := panelMsg.(uifilter.OpenPromptMsg); ok {
+				if pm.IsEdit {
+					m.filterPrompt = m.filterPrompt.OpenEdit(pm.Filter, pm.FilterID)
+				} else {
+					m.filterPrompt = m.filterPrompt.OpenBlank()
+				}
+				return m, nil
+			}
+			captured := panelMsg
+			return m, func() tea.Msg { return captured }
+		}
+		return m, nil
 
 	default: // FocusEntryList
 		// T-143/T-144 (cavekit-entry-list R13): when list search is
@@ -819,12 +850,11 @@ func (m Model) View() string {
 	if m.themesel.IsOpen() {
 		return m.themesel.View()
 	}
-	// T30 / B10 / V33 VIEW-AXIS: when focus is the filter panel, render
-	// it as a full-screen overlay (same pattern as help / themesel).
-	// Previously this branch was absent: `f` flipped focus + routed keys
-	// to `m.filterPanel.Update` but the panel's View was never composed
-	// into the frame, leaving `f` as a silent focus-flip in live TUI.
-	if m.focus == appshell.FocusFilterPanel {
+	// T30 / B10 / V33 VIEW-AXIS: when focus is the filter panel, or when
+	// the filter prompt is active (pane-click or panel a/e), render as a
+	// full-screen overlay. renderFilterPanelOverlay checks prompt first so
+	// when the prompt is open it replaces the panel body — no dual-cursor.
+	if m.focus == appshell.FocusFilterPanel || m.filterPrompt.IsActive() {
 		return m.renderFilterPanelOverlay()
 	}
 
@@ -862,21 +892,17 @@ func (m Model) View() string {
 	if m.loading.IsActive() {
 		status = m.loading.View()
 	}
-	// T28 / V33: the filter-add prompt replaces the status row while
-	// active so the pre-filled field/pattern + "Tab=toggle, Enter=confirm,
-	// Esc=cancel" hints are visible during confirmation.
-	if m.filterPrompt.IsActive() {
-		status = m.filterPrompt.View()
-	}
-
 	return m.layout.Render(header, list, paneView, status)
 }
 
-// renderFilterPanelOverlay wraps the filter-panel's body with a title and
-// keyhints footer for full-screen overlay display (T30 / V33 VIEW-AXIS).
-// V28: space-padded — no `\t` — to avoid bubbletea's diff-renderer bleeding
-// cells from the previous frame through `\t`-skipped columns.
+// renderFilterPanelOverlay renders the filter panel as a full-screen overlay.
+// When the shared filterPrompt is active (opened via panel `a`/`e` or pane
+// click), the prompt's full View replaces the panel body — no dual-cursor.
+// V28: space-padded, no `\t`.
 func (m Model) renderFilterPanelOverlay() string {
+	if m.filterPrompt.IsActive() {
+		return m.filterPrompt.View()
+	}
 	var sb strings.Builder
 	sb.WriteString("Filters\n")
 	sb.WriteString(strings.Repeat("─", 40))
@@ -887,6 +913,8 @@ func (m Model) renderFilterPanelOverlay() string {
 	sb.WriteByte('\n')
 	sb.WriteString("  j/k    Navigate filters\n")
 	sb.WriteString("  Space  Toggle filter enabled\n")
+	sb.WriteString("  a      Add filter\n")
+	sb.WriteString("  e      Edit highlighted filter\n")
 	sb.WriteString("  d      Delete filter\n")
 	sb.WriteString("  Esc    Close panel\n")
 	return sb.String()
@@ -1004,6 +1032,8 @@ func (m Model) applyTheme(th theme.Theme) Model {
 	m.header = m.header.WithTheme(th)
 	m.keyhints = m.keyhints.WithTheme(th)
 	m.layout = m.layout.WithTheme(th)
+	m.filterPanel = m.filterPanel.WithTheme(th)
+	m.filterPrompt = m.filterPrompt.WithTheme(th)
 	return m
 }
 

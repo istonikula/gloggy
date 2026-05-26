@@ -46,11 +46,12 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "click field", Desc: "Open filter prompt pre-filled with field:value (Tab=toggle mode, Enter=confirm, Esc=cancel)"},
 		},
 		DomainFilterPanel: {
-			{Key: "Enter", Desc: "Commit filter"},
-			{Key: "Esc", Desc: "Cancel filter input"},
-			{Key: "Tab", Desc: "Cycle between field selector and pattern"},
-			{Key: "Space", Desc: "Toggle filter enabled"},
-			{Key: "d", Desc: "Delete filter"},
+			{Key: "j/k", Desc: "Navigate filters"},
+			{Key: "a", Desc: "Add filter (blank prompt)"},
+			{Key: "e", Desc: "Edit highlighted filter"},
+			{Key: "Space", Desc: "Toggle filter enabled/disabled"},
+			{Key: "d", Desc: "Delete highlighted filter"},
+			{Key: "Esc", Desc: "Close filter panel"},
 		},
 		DomainGlobal: {
 			{Key: "?", Desc: "Toggle help overlay"},

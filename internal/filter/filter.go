@@ -1,7 +1,33 @@
 // Package filter provides log entry filtering with include/exclude rules.
 package filter
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"regexp"
+)
+
+// Syntax controls how a filter's Pattern is interpreted.
+type Syntax int
+
+const (
+	Literal Syntax = iota // substring match (strings.Contains)
+	Glob                  // * = any chars, ? = one char; translated to RE2 internally
+	Regex                 // raw RE2 pattern
+)
+
+func (s Syntax) String() string {
+	switch s {
+	case Literal:
+		return "literal"
+	case Glob:
+		return "glob"
+	case Regex:
+		return "regex"
+	default:
+		return fmt.Sprintf("Syntax(%d)", int(s))
+	}
+}
 
 // Mode represents whether a filter includes or excludes matching entries.
 type Mode int
@@ -26,6 +52,7 @@ func (m Mode) String() string {
 type Filter struct {
 	Field   string
 	Pattern string
+	Syntax  Syntax // zero-value = Literal (substring match)
 	Mode    Mode
 	Enabled bool
 }
@@ -112,6 +139,37 @@ func (fs *FilterSet) exitGloballyDisabled() {
 		fs.globallyDisabled = false
 		fs.savedEnabled = nil
 	}
+}
+
+// Validate checks that f is a valid filter before Add/Edit commit:
+// empty Pattern is rejected; Regex syntax with a bad pattern is rejected.
+// Glob translation is deterministic and never fails (no validation needed).
+// Returns a descriptive error to surface to the user via V15-pattern notice.
+func (fs *FilterSet) Validate(f Filter) error {
+	if f.Pattern == "" {
+		return errors.New("pattern required")
+	}
+	if f.Syntax == Regex {
+		if _, err := regexp.Compile(f.Pattern); err != nil {
+			return fmt.Errorf("bad regex: %w", err)
+		}
+	}
+	return nil
+}
+
+// Update replaces the filter with the given id in-place, preserving slice
+// position and Enabled state (edit never flips enable/disable — Space does).
+// Returns false if id is not found.
+func (fs *FilterSet) Update(id int, f Filter) bool {
+	for i, fid := range fs.ids {
+		if fid == id {
+			enabled := fs.filters[i].Enabled
+			fs.filters[i] = f
+			fs.filters[i].Enabled = enabled
+			return true
+		}
+	}
+	return false
 }
 
 // GetAll returns a copy of all filters including disabled ones.

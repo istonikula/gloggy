@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,8 +57,9 @@ func TestModel_F_RendersFilterRows_V33(t *testing.T) {
 	assert.Containsf(t, view, "msg:boom", "second filter row")
 	assert.Containsf(t, view, "[x]", "enabled-indicator glyph")
 	assert.Containsf(t, view, "[ ]", "disabled-indicator glyph")
-	assert.Containsf(t, view, "include", "include mode label")
-	assert.Containsf(t, view, "exclude", "exclude mode label")
+	// V35 Direction A: mode shown as +/− glyphs, not "include"/"exclude" text.
+	assert.Containsf(t, view, "+", "include mode glyph")
+	assert.Containsf(t, view, "-", "exclude mode glyph")
 }
 
 // Esc closes the overlay: after open+Esc, m.View() should not contain
@@ -127,4 +129,99 @@ func firstLines(s string, n int) string {
 		lines = lines[:n]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ---------- T34 / V35: `a` add + `e` edit + convert + validation ----------
+
+// V35: panel `a` opens blank prompt → user types pattern + Enter → whole-line
+// filter appears in panel View (Field="" → «line» placeholder).
+func TestModel_Panel_A_AddsWholeLineFilter_V35(t *testing.T) {
+	m := resize(newModel(), 90, 30)
+	m = m.SetEntries([]logsource.Entry{jsonEntryLvl(1, "INFO", "hi")})
+	m = key(m, "f") // open panel
+	require.Equal(t, appshell.FocusFilterPanel, m.focus)
+
+	m = key(m, "a") // open blank prompt
+	require.True(t, m.filterPrompt.IsActive(), "prompt must be active after `a`")
+
+	// Type "DrawState" into Pattern row (default focusRow=Pattern).
+	for _, ch := range "DrawState" {
+		m = keyRune(m, ch)
+	}
+	m = key(m, "enter")
+
+	require.False(t, m.filterPrompt.IsActive(), "prompt must close after Enter")
+	view := ansi.Strip(m.View())
+	assert.Contains(t, view, "«line»", "whole-line filter must show «line» placeholder")
+	assert.Contains(t, view, "DrawState", "pattern must appear in panel view")
+}
+
+// V35: panel `e` opens pre-filled prompt → user blanks Field → converts
+// field-scoped filter to whole-line.
+func TestModel_Panel_E_ConvertsFieldScopedToWholeLine_V35(t *testing.T) {
+	m := resize(newModel(), 90, 30)
+	m = m.SetEntries([]logsource.Entry{jsonEntryLvl(1, "INFO", "hi")})
+	m.filterSet.Add(filter.Filter{Field: "level", Pattern: "INFO", Mode: filter.Include, Enabled: true})
+
+	m = key(m, "f") // open panel
+	m = key(m, "e") // open edit prompt
+	require.True(t, m.filterPrompt.IsActive(), "prompt must be active after `e`")
+
+	// Tab to Field row, delete "level" chars.
+	m = key(m, "tab") // Pattern → Syntax
+	m = key(m, "tab") // Syntax → Mode
+	m = key(m, "tab") // Mode → Field
+	for i := 0; i < len("level"); i++ {
+		m = key(m, "backspace")
+	}
+	m = key(m, "tab") // Field → Pattern
+	m = key(m, "enter")
+
+	require.False(t, m.filterPrompt.IsActive())
+	view := ansi.Strip(m.View())
+	assert.Contains(t, view, "«line»", "converted filter must show «line» placeholder")
+}
+
+// V35: empty Pattern → FilterRejectedMsg → notice appears + prompt stays open.
+func TestModel_Panel_A_EmptyPattern_ShowsNotice_V35(t *testing.T) {
+	m := resize(newModel(), 90, 30)
+	m = m.SetEntries([]logsource.Entry{jsonEntryLvl(1, "INFO", "hi")})
+	m = key(m, "f")
+	m = key(m, "a")
+	require.True(t, m.filterPrompt.IsActive())
+
+	m = key(m, "enter") // commit with empty pattern
+
+	assert.True(t, m.filterPrompt.IsActive(), "prompt must stay open after rejection")
+	view := ansi.Strip(m.View())
+	assert.Contains(t, view, "pattern required", "rejection notice must appear in view")
+}
+
+// V35: bad regex → FilterRejectedMsg → notice appears + prompt stays open.
+func TestModel_Panel_A_BadRegex_ShowsNotice_V35(t *testing.T) {
+	m := resize(newModel(), 90, 30)
+	m = m.SetEntries([]logsource.Entry{jsonEntryLvl(1, "INFO", "hi")})
+	m = key(m, "f")
+	m = key(m, "a")
+	require.True(t, m.filterPrompt.IsActive())
+
+	// Type "[invalid" as pattern.
+	for _, ch := range "[invalid" {
+		m = keyRune(m, ch)
+	}
+	// Switch to Regex syntax: Tab → Syntax row, → twice.
+	m = key(m, "tab") // Pattern → Syntax
+	m = key(m, "right")
+	m = key(m, "right") // Literal → Glob → Regex
+
+	m = key(m, "enter")
+
+	assert.True(t, m.filterPrompt.IsActive(), "prompt must stay open after bad-regex rejection")
+	view := ansi.Strip(m.View())
+	assert.Contains(t, view, "bad regex", "bad-regex rejection notice must appear in view")
+}
+
+func keyRune(m Model, r rune) Model {
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	return m2.(Model)
 }
