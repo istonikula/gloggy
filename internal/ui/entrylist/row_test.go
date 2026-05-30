@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -73,6 +74,45 @@ func TestRenderCompactRow_MsgTruncated(t *testing.T) {
 	e := jsonEntry("INFO", "app", "this is a very long message that should be truncated at some point", time.Now())
 	result := RenderCompactRow(e, 30, tokyoNight(), defaultCfg())
 	assert.NotContains(t, result, "truncated", "message should have been cut before 'truncated'")
+}
+
+// V36 (B12-B14): multibyte logger + emoji message must use cell-width math.
+// Row must stay within width (V4: exactly 1 terminal line) and remain valid
+// UTF-8 (no mid-byte cut), for both RenderCompactRow and RenderCompactRowWithBg.
+func TestRenderCompactRow_MultibyteCellWidth_V36(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.LoggerDepth = 2
+	// CJK logger (each ideograph 2 cells) + emoji-laden message.
+	e := jsonEntry("INFO", "サービス.ハンドラ", "起動しました 🎉🎉🎉 done", time.Now())
+
+	// Widths above the fixed prefix (time+level+logger ≈ 33 cells); the prefix
+	// columns are not truncated by design, only the message region is.
+	for _, width := range []int{40, 60, 80} {
+		plain := RenderCompactRow(e, width, tokyoNight(), cfg)
+		require.True(t, utf8.ValidString(plain), "plain row must be valid UTF-8 at width %d", width)
+		assert.LessOrEqual(t, lipgloss.Width(plain), width,
+			"plain row cell width must not exceed %d (V4)", width)
+
+		bg := RenderCompactRowWithBg(e, width, tokyoNight(), cfg, tokyoNight().CursorHighlight)
+		require.True(t, utf8.ValidString(bg), "bg row must be valid UTF-8 at width %d", width)
+		assert.Equal(t, width, lipgloss.Width(bg),
+			"bg row is padded to exactly %d cells (V10 contiguous bg)", width)
+	}
+}
+
+// V36: emoji/CJK message must not be over-truncated when width is generous.
+func TestRenderCompactRow_MultibyteNotOverTruncated_V36(t *testing.T) {
+	e := jsonEntry("INFO", "app", "ご注文 🎉", time.Now())
+	result := RenderCompactRow(e, 80, tokyoNight(), defaultCfg())
+	assert.Contains(t, result, "ご注文 🎉", "full multibyte message preserved at ample width")
+}
+
+// V36 (B14): non-JSON raw with multibyte must truncate on rune boundary.
+func TestRenderCompactRow_NonJSONMultibyte_V36(t *testing.T) {
+	e := logsource.Entry{IsJSON: false, Raw: []byte("日本語のログ行 🎉🎉")}
+	result := RenderCompactRow(e, 8, tokyoNight(), defaultCfg())
+	require.True(t, utf8.ValidString(result), "truncated raw must be valid UTF-8")
+	assert.LessOrEqual(t, lipgloss.Width(result), 8, "raw row within width")
 }
 
 // T-022: R1.5 — non-JSON shows raw text

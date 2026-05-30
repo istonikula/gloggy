@@ -204,13 +204,9 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 			m.rejectedReason = ""
 			switch m.focusRow {
 			case rowField:
-				if len(m.field) > 0 {
-					m.field = m.field[:len([]rune(m.field))-1]
-				}
+				m.field = dropLastRune(m.field)
 			case rowPattern:
-				if len(m.pattern) > 0 {
-					m.pattern = m.pattern[:len([]rune(m.pattern))-1]
-				}
+				m.pattern = dropLastRune(m.pattern)
 			}
 
 		default:
@@ -359,6 +355,16 @@ func cycleSyntaxNext(s filter.Syntax) filter.Syntax {
 
 func cycleSyntaxPrev(s filter.Syntax) filter.Syntax {
 	return filter.Syntax((int(s) + 2) % 3)
+}
+
+// dropLastRune removes the final rune from s via a []rune round-trip so that
+// multibyte (CJK/emoji) input is not corrupted by byte-position slicing (V36).
+func dropLastRune(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
+	}
+	return string(r[:len(r)-1])
 }
 
 func cycleModeToggle(m filter.Mode) filter.Mode {

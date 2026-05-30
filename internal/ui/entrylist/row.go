@@ -8,6 +8,7 @@ import (
 	"github.com/istonikula/gloggy/internal/config"
 	"github.com/istonikula/gloggy/internal/logsource"
 	"github.com/istonikula/gloggy/internal/theme"
+	"github.com/istonikula/gloggy/internal/ui"
 )
 
 const (
@@ -43,8 +44,8 @@ func RenderCompactRow(entry logsource.Entry, width int, th theme.Theme, cfg conf
 	if !entry.IsJSON {
 		style := lipgloss.NewStyle().Foreground(th.Dim)
 		raw := flattenNewlines(string(entry.Raw))
-		if width > 0 && len(raw) > width {
-			raw = raw[:width]
+		if width > 0 {
+			raw = ui.SafeTruncate(raw, width)
 		}
 		return style.Render(raw)
 	}
@@ -63,9 +64,9 @@ func RenderCompactRow(entry logsource.Entry, width int, th theme.Theme, cfg conf
 	// Logger column
 	loggerStr := AbbreviateLogger(entry.Logger, cfg.LoggerDepth)
 
-	// Compute remaining width for message.
-	// Visible prefix: timeWidth + 1(space) + levelWidth + 1(space) + len(loggerStr) + 1(space)
-	visiblePrefixLen := timeWidth + 1 + levelWidth + 1 + len(loggerStr) + 1
+	// Compute remaining width for message (cell widths, not bytes — V36).
+	// Visible prefix: timeWidth + 1(space) + levelWidth + 1(space) + logger + 1(space)
+	visiblePrefixLen := timeWidth + 1 + levelWidth + 1 + lipgloss.Width(loggerStr) + 1
 
 	msg := flattenNewlines(entry.Msg)
 	if width > 0 {
@@ -73,9 +74,7 @@ func RenderCompactRow(entry logsource.Entry, width int, th theme.Theme, cfg conf
 		if remaining < 0 {
 			remaining = 0
 		}
-		if len(msg) > remaining {
-			msg = msg[:remaining]
-		}
+		msg = ui.SafeTruncate(msg, remaining)
 	}
 
 	var b strings.Builder
@@ -97,8 +96,8 @@ func RenderCompactRowWithBg(entry logsource.Entry, width int, th theme.Theme, cf
 	if !entry.IsJSON {
 		style := lipgloss.NewStyle().Foreground(th.Dim).Background(bg).Width(width)
 		raw := flattenNewlines(string(entry.Raw))
-		if width > 0 && len(raw) > width {
-			raw = raw[:width]
+		if width > 0 {
+			raw = ui.SafeTruncate(raw, width)
 		}
 		return style.Render(raw)
 	}
@@ -118,8 +117,8 @@ func RenderCompactRowWithBg(entry logsource.Entry, width int, th theme.Theme, cf
 	// Logger column
 	loggerStr := bgStyle.Render(AbbreviateLogger(entry.Logger, cfg.LoggerDepth))
 
-	// Compute remaining width for message.
-	visiblePrefixLen := timeWidth + 1 + levelWidth + 1 + len(AbbreviateLogger(entry.Logger, cfg.LoggerDepth)) + 1
+	// Compute remaining width for message (cell widths, not bytes — V36).
+	visiblePrefixLen := timeWidth + 1 + levelWidth + 1 + lipgloss.Width(AbbreviateLogger(entry.Logger, cfg.LoggerDepth)) + 1
 
 	msg := flattenNewlines(entry.Msg)
 	if width > 0 {
@@ -127,13 +126,11 @@ func RenderCompactRowWithBg(entry logsource.Entry, width int, th theme.Theme, cf
 		if remaining < 0 {
 			remaining = 0
 		}
-		if len(msg) > remaining {
-			msg = msg[:remaining]
-		}
+		msg = ui.SafeTruncate(msg, remaining)
 	}
 
 	// Pad to fill full width.
-	totalVisible := visiblePrefixLen + len(msg)
+	totalVisible := visiblePrefixLen + lipgloss.Width(msg)
 	padding := ""
 	if width > totalVisible {
 		padding = strings.Repeat(" ", width-totalVisible)
