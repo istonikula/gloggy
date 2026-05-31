@@ -66,9 +66,11 @@ type FilterSet struct {
 	savedEnabled     map[int]bool // saved Enabled per filter ID at time of global disable
 }
 
-// NewFilterSet creates an empty FilterSet.
+// NewFilterSet creates an empty FilterSet with all internal maps initialized,
+// so every public mutation is safe from a fresh ctor regardless of call order
+// (V40 — no implicit "ToggleAll-ran-first" precondition).
 func NewFilterSet() *FilterSet {
-	return &FilterSet{}
+	return &FilterSet{savedEnabled: make(map[int]bool)}
 }
 
 // Add appends a filter and returns its ID.
@@ -77,6 +79,9 @@ func (fs *FilterSet) Add(f Filter) int {
 	fs.nextID++
 	// If globally disabled, save the new filter's state and disable it.
 	if fs.globallyDisabled {
+		if fs.savedEnabled == nil { // V40 defense: never write a nil map
+			fs.savedEnabled = make(map[int]bool)
+		}
 		fs.savedEnabled[id] = f.Enabled
 		f.Enabled = false
 	}

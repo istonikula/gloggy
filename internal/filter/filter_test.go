@@ -129,15 +129,17 @@ func TestFilterSet_EnableDisable_OutsideGloballyDisabled_NoStateChange(t *testin
 	id := fs.Add(Filter{Field: "level", Pattern: "INFO", Mode: Include, Enabled: true})
 
 	require.False(t, fs.IsGloballyDisabled(), "precondition: not globally-disabled")
-	require.Nil(t, fs.savedEnabled, "precondition: no snapshot")
+	// V40: savedEnabled is initialized empty by NewFilterSet (no implicit
+	// ToggleAll-ran-first precondition); "no snapshot" now means len 0.
+	require.Empty(t, fs.savedEnabled, "precondition: no snapshot populated")
 
 	fs.Disable(id)
 	assert.False(t, fs.IsGloballyDisabled(), "Disable outside must not set globallyDisabled")
-	assert.Nil(t, fs.savedEnabled, "Disable outside must not create savedEnabled")
+	assert.Empty(t, fs.savedEnabled, "Disable outside must not populate savedEnabled")
 
 	fs.Enable(id)
 	assert.False(t, fs.IsGloballyDisabled(), "Enable outside must not set globallyDisabled")
-	assert.Nil(t, fs.savedEnabled, "Enable outside must not create savedEnabled")
+	assert.Empty(t, fs.savedEnabled, "Enable outside must not populate savedEnabled")
 }
 
 // ---------- V35 Validate ----------
