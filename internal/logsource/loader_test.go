@@ -45,6 +45,21 @@ func drainLoader(t *testing.T, cmd func() interface{}) (entries []Entry, progres
 	}
 }
 
+// V37d/V43: a missing/unreadable file surfaces LoadErrMsg, not a silent
+// LoadDoneMsg(0) that would read as "loaded empty".
+func TestLoadFile_MissingFile_EmitsLoadErr_V37(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "does-not-exist.jsonl")
+	rawCmd := LoadFile(path)
+
+	first := rawCmd()
+	stream, ok := first.(LoadFileStreamMsg)
+	require.True(t, ok, "expected LoadFileStreamMsg, got %T", first)
+	errMsg, ok := stream.Unwrap().(LoadErrMsg)
+	require.True(t, ok, "expected LoadErrMsg, got %T", stream.Unwrap())
+	require.Error(t, errMsg.Err)
+	assert.ErrorIs(t, errMsg.Err, os.ErrNotExist)
+}
+
 // T-027: R7.1 — progress signal emitted; R7.3 — done signal emitted
 func TestLoadFile_ProgressAndDone(t *testing.T) {
 	dir := t.TempDir()

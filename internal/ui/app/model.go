@@ -50,6 +50,17 @@ func formatClipboardCopiedNotice(count int) string {
 	return "copied " + strconv.Itoa(count) + " entries"
 }
 
+// V37/V43: load + tail IO-error feedback strings (never-silent).
+const errNoticeDuration = 4 * time.Second
+
+func formatLoadErrNotice(err error) string { return "load error: " + err.Error() }
+func formatTailErrNotice(err error, retryable bool) string {
+	if retryable {
+		return "tail error (retrying): " + err.Error()
+	}
+	return "tail stopped: " + err.Error()
+}
+
 // V32: global filter-toggle `F` feedback strings (V15-pattern never-silent).
 const (
 	filterToggleDisabledNotice  = "filters disabled"
@@ -307,12 +318,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = msg.Next()
 		case logsource.LoadDoneMsg:
 			m.loading = m.loading.Done()
+		case logsource.LoadErrMsg:
+			// V37d/V43: surface a failed/partial load instead of silently
+			// finishing as an empty "done".
+			m.loading = m.loading.Done()
+			m.keyhints = m.keyhints.WithNotice(formatLoadErrNotice(inner.Err))
+			cmd = noticeClearAfter(errNoticeDuration)
 		}
 		return m, cmd
 
 	case logsource.LoadDoneMsg:
 		m.loading = m.loading.Done()
 		return m, nil
+
+	case logsource.LoadErrMsg:
+		m.loading = m.loading.Done()
+		m.keyhints = m.keyhints.WithNotice(formatLoadErrNotice(msg.Err))
+		return m, noticeClearAfter(errNoticeDuration)
 
 	// Tail stream.
 	case logsource.TailStreamMsg:
@@ -324,6 +346,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.appendToList(inner.Entries)
 			m.header = m.header.WithCounts(len(m.entries), m.visibleCount())
 			cmd = msg.Next()
+		case logsource.TailErrMsg:
+			// V37c/V43: a drain IO error is surfaced as a notice; the watcher
+			// is backing off + reopening by path, so keep draining the stream
+			// (the goroutine continues, and a non-recoverable failure will
+			// arrive as a following TailStopMsg). [FOLLOW] stays live on
+			// retryable errors (V3 unaffected).
+			m.keyhints = m.keyhints.WithNotice(formatTailErrNotice(inner.Err, inner.Retryable))
+			cmd = tea.Batch(msg.Next(), noticeClearAfter(errNoticeDuration))
 		case logsource.TailStopMsg:
 			// V31: stdin EOF (pipe closed) → drop [FOLLOW] badge but keep
 			// TUI interactive. Leave file-follow TailStop behavior unchanged
