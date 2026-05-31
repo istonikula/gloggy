@@ -169,7 +169,15 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 				}
 			}
 			id := *m.editID
-			m.fs.Update(id, f)
+			// V35 AMEND / B37: the edited filter may have been removed between
+			// OpenEdit and this Submit (e.g. panel `d` in another frame). A
+			// discarded Update return would close the prompt clean with no
+			// mutation and no signal — surface it + keep the prompt open.
+			if !m.fs.Update(id, f) {
+				reason := "filter not found"
+				m.rejectedReason = reason
+				return m, func() tea.Msg { return FilterRejectedMsg{Reason: reason} }
+			}
 			m = m.Close()
 			fs := m.fs
 			return m, func() tea.Msg {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Syntax controls how a filter's Pattern is interpreted.
@@ -147,11 +148,17 @@ func (fs *FilterSet) exitGloballyDisabled() {
 }
 
 // Validate checks that f is a valid filter before Add/Edit commit:
-// empty Pattern is rejected; Regex syntax with a bad pattern is rejected.
+// blank Pattern is rejected; Regex syntax with a bad pattern is rejected.
 // Glob translation is deterministic and never fails (no validation needed).
 // Returns a descriptive error to surface to the user via V15-pattern notice.
+//
+// V35 AMEND / B36: reject whitespace-only Pattern (TrimSpace), not just the
+// empty string — a Pattern of spaces builds a filter that matches/excludes
+// ~everything, indistinguishable from a working filter. The stored Pattern is
+// NOT trimmed (leading/trailing spaces can be a deliberate literal); only the
+// all-whitespace case is rejected.
 func (fs *FilterSet) Validate(f Filter) error {
-	if f.Pattern == "" {
+	if strings.TrimSpace(f.Pattern) == "" {
 		return errors.New("pattern required")
 	}
 	if f.Syntax == Regex {
