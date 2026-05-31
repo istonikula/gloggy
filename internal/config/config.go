@@ -296,17 +296,17 @@ func atomicWrite(path string, data []byte) error {
 		return fmt.Errorf("create temp config: %w", err)
 	}
 	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		_ = f.Close()      //nolint:errcheck // cleanup on error path; the write/sync err below is what's returned
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; primary err already wraps the cause
 		return fmt.Errorf("write temp config: %w", err)
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		_ = f.Close()      //nolint:errcheck // cleanup on error path; the write/sync err below is what's returned
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; primary err already wraps the cause
 		return fmt.Errorf("sync temp config: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; close err is returned
 		return fmt.Errorf("close temp config: %w", err)
 	}
 
@@ -316,7 +316,7 @@ func atomicWrite(path string, data []byte) error {
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; rename err is returned
 		return fmt.Errorf("rename temp config: %w", err)
 	}
 	return nil
@@ -330,6 +330,6 @@ func cleanupOrphanTemps(dir string) {
 		return
 	}
 	for _, m := range matches {
-		_ = os.Remove(m)
+		_ = os.Remove(m) //nolint:errcheck // best-effort orphan cleanup; removal races are expected
 	}
 }

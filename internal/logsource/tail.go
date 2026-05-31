@@ -67,7 +67,7 @@ func newTailReader(path string, startLineNum int) (*tailReader, error) {
 
 func (tr *tailReader) close() {
 	if tr.f != nil {
-		_ = tr.f.Close()
+		_ = tr.f.Close() //nolint:errcheck // read-only handle teardown; nothing to recover on close err
 	}
 }
 
@@ -76,7 +76,7 @@ func (tr *tailReader) close() {
 // rotation) is detected, or as a recovery step after a transient IO error.
 func (tr *tailReader) reopen() error {
 	if tr.f != nil {
-		_ = tr.f.Close()
+		_ = tr.f.Close() //nolint:errcheck // read-only handle; reopen err below is the one that matters
 		tr.f = nil
 	}
 	f, err := os.Open(tr.path)
@@ -217,7 +217,7 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 				if backoff *= 2; backoff > tailBackoffCap {
 					backoff = tailBackoffCap
 				}
-				_ = tr.reopen() // best-effort; persistent failure surfaces on next drain
+				_ = tr.reopen() //nolint:errcheck // best-effort; persistent failure surfaces on next drain
 			}
 		}
 
@@ -250,8 +250,8 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 				// to the replacement file are seen. drain's size-shrink check
 				// reopens the handle (V37a/b).
 				if event.Op&(fsnotify.Rename|fsnotify.Remove) != 0 {
-					_ = watcher.Remove(path)
-					_ = watcher.Add(path)
+					_ = watcher.Remove(path) //nolint:errcheck // re-arm: old path may already be gone
+					_ = watcher.Add(path)    //nolint:errcheck // re-arm best-effort; size-shrink reopen covers misses
 				} else if event.Op&fsnotify.Write == 0 {
 					continue
 				}

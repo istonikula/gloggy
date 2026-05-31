@@ -54,6 +54,14 @@ func formatClipboardCopiedNotice(count int) string {
 const errNoticeDuration = 4 * time.Second
 
 func formatLoadErrNotice(err error) string { return "load error: " + err.Error() }
+
+// V43/B32: config-save failure feedback (never-silent). B35: ratio key pressed
+// with no detail pane open — there is no divider to move, so signal rather than
+// swallow the keypress.
+const (
+	configSaveErrPrefix = "config save failed: "
+	ratioNoPaneNotice   = "no detail pane to resize — open an entry first"
+)
 func formatTailErrNotice(err error, retryable bool) string {
 	if retryable {
 		return "tail error (retrying): " + err.Error()
@@ -256,6 +264,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// config write). Opening `T` is handled in handleKey so V14 can
 	// suppress it while a pane-search is in input mode.
 	if m.themesel.IsOpen() {
+		var saveCmd tea.Cmd
 		if _, ok := msg.(tea.KeyMsg); ok {
 			var action appshell.ThemeSelectorAction
 			m.themesel, action = m.themesel.Update(msg)
@@ -265,12 +274,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case appshell.ThemeSelCommit:
 				m.cfg.Config.Theme = m.themesel.Highlighted()
 				m = m.applyTheme(theme.GetTheme(m.cfg.Config.Theme))
-				m.saveConfig()
+				m, saveCmd = m.saveConfig()
 			case appshell.ThemeSelRevert:
 				m = m.applyTheme(theme.GetTheme(m.themesel.PreOpen()))
 			}
 		}
-		return m, nil
+		return m, saveCmd
 	}
 
 	switch msg := msg.(type) {
@@ -552,8 +561,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			next := theme.NextName(m.cfg.Config.Theme)
 			m.cfg.Config.Theme = next
 			m = m.applyTheme(theme.GetTheme(next))
-			m.saveConfig()
-			return m, nil
+			var saveCmd tea.Cmd
+			m, saveCmd = m.saveConfig()
+			return m, saveCmd
 		}
 	}
 
@@ -595,6 +605,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// extend the query rather than resizing.
 		} else if m.pane.IsOpen() {
 			return m.handleRatioKey(msg.String())
+		} else {
+			// V43/B35: no detail pane ⇒ no divider to move. The key was a
+			// deliberate resize attempt — signal it instead of swallowing.
+			m.keyhints = m.keyhints.WithNotice(ratioNoPaneNotice)
+			return m, noticeClearAfter(clipboardNoticeDuration)
 		}
 	}
 
@@ -789,12 +804,13 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				wasDirty := m.dragDirty
 				m.draggingDivider = false
 				m.dragDirty = false
+				var saveCmd tea.Cmd
 				if wasDirty {
-					m.saveConfig() // T-099: persist final ratio on drag release.
+					m, saveCmd = m.saveConfig() // T-099: persist final ratio on drag release.
 				}
 				// T-164 (F-129): a bare Press+Release with no Motion
 				// leaves the config file untouched.
-				return m, nil
+				return m, saveCmd
 			}
 			// Only Motion events move the divider. Ignore repeated
 			// Press or other mouse actions that arrive during an
@@ -890,15 +906,21 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// saveConfig writes the current config to disk (T-099). Errors are
-// intentionally swallowed — a failed write should not interrupt the UI.
-// The user will see their edits take effect live regardless; the next
-// launch picks up whatever the last successful write left on disk.
-func (m Model) saveConfig() {
+// saveConfig writes the current config to disk (T-099) and surfaces a write
+// failure as a keyhints notice (V43/B32). A failed write must not vanish —
+// the user keeps their live edits, but a silent drop would leave them
+// believing a theme/ratio change persisted when it did not. Returns the model
+// (notice attached on error) and a clear-after cmd; callers MUST thread the
+// returned cmd so the notice auto-clears like every other status message.
+func (m Model) saveConfig() (Model, tea.Cmd) {
 	if m.configPath == "" {
-		return
+		return m, nil
 	}
-	_ = config.Save(m.configPath, m.cfg)
+	if err := config.Save(m.configPath, m.cfg); err != nil {
+		m.keyhints = m.keyhints.WithNotice(configSaveErrPrefix + err.Error())
+		return m, noticeClearAfter(errNoticeDuration)
+	}
+	return m, nil
 }
 
 // View composes the full screen.
@@ -1130,8 +1152,9 @@ func (m Model) handleRatioKey(key string) (tea.Model, tea.Cmd) {
 	m = m.relayout()
 	// T6 / B3: skip saveConfig at clamp-pin or preset no-op — unconditional
 	// save advanced config mtime on every repeated boundary press.
+	var saveCmd tea.Cmd
 	if newR != current {
-		m.saveConfig() // T-099: persist ratio change immediately.
+		m, saveCmd = m.saveConfig() // T-099: persist ratio change immediately.
 	}
-	return m, nil
+	return m, saveCmd
 }
