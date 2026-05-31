@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Syntax controls how a filter's Pattern is interpreted.
@@ -15,6 +16,11 @@ const (
 	Glob                  // * = any chars, ? = one char; translated to RE2 internally
 	Regex                 // raw RE2 pattern
 )
+
+// SyntaxCount is the number of Syntax values. Cycle helpers (prompt enum-row
+// ←/→) derive their modulo from this so adding a Syntax does not silently break
+// wraparound (B42). Keep this as the last-value+1 expression, not a literal.
+const SyntaxCount = int(Regex) + 1
 
 func (s Syntax) String() string {
 	switch s {
@@ -66,9 +72,11 @@ type FilterSet struct {
 	savedEnabled     map[int]bool // saved Enabled per filter ID at time of global disable
 }
 
-// NewFilterSet creates an empty FilterSet.
+// NewFilterSet creates an empty FilterSet with all internal maps initialized,
+// so every public mutation is safe from a fresh ctor regardless of call order
+// (V40 — no implicit "ToggleAll-ran-first" precondition).
 func NewFilterSet() *FilterSet {
-	return &FilterSet{}
+	return &FilterSet{savedEnabled: make(map[int]bool)}
 }
 
 // Add appends a filter and returns its ID.
@@ -77,6 +85,9 @@ func (fs *FilterSet) Add(f Filter) int {
 	fs.nextID++
 	// If globally disabled, save the new filter's state and disable it.
 	if fs.globallyDisabled {
+		if fs.savedEnabled == nil { // V40 defense: never write a nil map
+			fs.savedEnabled = make(map[int]bool)
+		}
 		fs.savedEnabled[id] = f.Enabled
 		f.Enabled = false
 	}
@@ -142,11 +153,17 @@ func (fs *FilterSet) exitGloballyDisabled() {
 }
 
 // Validate checks that f is a valid filter before Add/Edit commit:
-// empty Pattern is rejected; Regex syntax with a bad pattern is rejected.
+// blank Pattern is rejected; Regex syntax with a bad pattern is rejected.
 // Glob translation is deterministic and never fails (no validation needed).
 // Returns a descriptive error to surface to the user via V15-pattern notice.
+//
+// V35 AMEND / B36: reject whitespace-only Pattern (TrimSpace), not just the
+// empty string — a Pattern of spaces builds a filter that matches/excludes
+// ~everything, indistinguishable from a working filter. The stored Pattern is
+// NOT trimmed (leading/trailing spaces can be a deliberate literal); only the
+// all-whitespace case is rejected.
 func (fs *FilterSet) Validate(f Filter) error {
-	if f.Pattern == "" {
+	if strings.TrimSpace(f.Pattern) == "" {
 		return errors.New("pattern required")
 	}
 	if f.Syntax == Regex {

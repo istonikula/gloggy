@@ -2,7 +2,6 @@ package logsource
 
 import (
 	"bufio"
-	"log/slog"
 	"os"
 	"time"
 
@@ -14,6 +13,11 @@ type LoadProgressMsg struct{ Count int }
 
 // LoadDoneMsg signals that loading is complete.
 type LoadDoneMsg struct{}
+
+// LoadErrMsg signals that loading failed (open error or a mid-stream scanner
+// error). Replaces the silent LoadDoneMsg(0) that hid a missing/unreadable
+// file as an empty load (V37d, V43).
+type LoadErrMsg struct{ Err error }
 
 // EntryBatchMsg carries a batch of newly parsed entries.
 type EntryBatchMsg struct{ Entries []Entry }
@@ -29,7 +33,7 @@ func LoadFile(path string) tea.Cmd {
 		defer close(ch)
 		f, err := os.Open(path)
 		if err != nil {
-			ch <- LoadDoneMsg{}
+			ch <- LoadErrMsg{Err: err}
 			return
 		}
 		defer f.Close()
@@ -84,7 +88,10 @@ func streamEntries(scanner *bufio.Scanner, ch chan<- tea.Msg) {
 	}
 	flush()
 	if err := scanner.Err(); err != nil {
-		slog.Error("stream entries scan error", "error", err)
+		// Surface the partial-load failure instead of logging it and
+		// reporting "done" (B33, V43).
+		ch <- LoadErrMsg{Err: err}
+		return
 	}
 	ch <- LoadDoneMsg{}
 }

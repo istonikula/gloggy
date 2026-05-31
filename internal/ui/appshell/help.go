@@ -50,7 +50,7 @@ func DefaultKeybindings() KeybindingRegistry {
 			{Key: "a", Desc: "Add filter (blank prompt)"},
 			{Key: "e", Desc: "Edit highlighted filter"},
 			{Key: "Space", Desc: "Toggle filter enabled/disabled"},
-			{Key: "d", Desc: "Delete highlighted filter"},
+			{Key: "d", Desc: "Delete filter"},
 			{Key: "Esc", Desc: "Close filter panel"},
 		},
 		DomainGlobal: {

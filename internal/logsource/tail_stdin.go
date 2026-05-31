@@ -95,6 +95,23 @@ func TailStdin(ctx context.Context, r io.Reader) tea.Cmd {
 		for {
 			select {
 			case <-ctx.Done():
+				// V43/B34: drain readerDone before returning so a genuine
+				// reader error is surfaced rather than leaked when the ctx.Done
+				// race beats the parsed-channel-closed path. Non-blocking: the
+				// reader may still be parked in scanner.Scan() awaiting input,
+				// in which case nothing has been reported yet and a blocking
+				// receive would hang the flusher. ctx.Canceled / nil are normal
+				// shutdown and stay silent.
+				select {
+				case err := <-readerDone:
+					if err != nil && err != context.Canceled {
+						select {
+						case ch <- TailErrMsg{Err: err, Retryable: false}:
+						default:
+						}
+					}
+				default:
+				}
 				return
 			case <-ticker.C:
 				// Drain all currently-available parsed entries into batch.

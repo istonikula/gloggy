@@ -201,6 +201,24 @@ func TestPromptModel_Backspace_RemovesLastChar(t *testing.T) {
 	assert.Equal(t, "INF", m.Pattern(), "Backspace removes last char")
 }
 
+// V36 (B15): backspace on multibyte (CJK/emoji) input removes exactly one rune
+// via []rune round-trip, never corrupting the buffer with a mid-byte cut.
+func TestPromptModel_Backspace_Multibyte_V36(t *testing.T) {
+	m := defaultPrompt().OpenBlank() // focusRow = rowPattern
+	for _, ch := range "日本🎉" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+	}
+	require.Equal(t, "日本🎉", m.Pattern())
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, "日本", m.Pattern(), "one rune (emoji) removed, not a byte")
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, "日", m.Pattern(), "one CJK rune removed cleanly")
+	// Backspace on empty buffer is a no-op (no panic).
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, "", m.Pattern())
+}
+
 // ---------- Enter — Add path ----------
 
 // T-044 R4.3: Enter confirms new filter → FilterConfirmedMsg{IsNew: true}.

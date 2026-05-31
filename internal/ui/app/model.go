@@ -50,6 +50,25 @@ func formatClipboardCopiedNotice(count int) string {
 	return "copied " + strconv.Itoa(count) + " entries"
 }
 
+// V37/V43: load + tail IO-error feedback strings (never-silent).
+const errNoticeDuration = 4 * time.Second
+
+func formatLoadErrNotice(err error) string { return "load error: " + err.Error() }
+
+// V43/B32: config-save failure feedback (never-silent). B35: ratio key pressed
+// with no detail pane open — there is no divider to move, so signal rather than
+// swallow the keypress.
+const (
+	configSaveErrPrefix = "config save failed: "
+	ratioNoPaneNotice   = "no detail pane to resize — open an entry first"
+)
+func formatTailErrNotice(err error, retryable bool) string {
+	if retryable {
+		return "tail error (retrying): " + err.Error()
+	}
+	return "tail stopped: " + err.Error()
+}
+
 // V32: global filter-toggle `F` feedback strings (V15-pattern never-silent).
 const (
 	filterToggleDisabledNotice  = "filters disabled"
@@ -147,7 +166,9 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 		m.loading = m.loading.Start()
 	}
 
-	return m
+	// Seed the V42 compose flags so the first frame (rendered before the
+	// initial WindowSizeMsg arrives) reflects the real focus/pane state.
+	return m.syncPaneState()
 }
 
 // WithStdinReader wires a stdin follower source (V23/V31). main.go
@@ -178,8 +199,35 @@ func (m Model) Init() tea.Cmd {
 	return logsource.LoadFile(m.sourceName)
 }
 
-// Update is the central message dispatcher.
+// Update is the central message dispatcher. It delegates to update() and then
+// runs syncPaneState() at the single exit so the V42 focus + compose
+// invariants hold for EVERY message path — View() stays pure (read-only) and
+// m.focus can never reference a hidden pane after a close.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	return next.(Model).syncPaneState(), cmd
+}
+
+// syncPaneState enforces the V42 invariants in Update (never in View). It
+// (a) re-homes focus to a visible pane when the detail pane closed under it —
+// auto-close, drag-collapse, ratio-min, or explicit (B30); and (b) sets the
+// per-pane Focused/Alone flags and attaches the live paneSearch so View() only
+// reads pre-computed state (B29). Compose-time writes in View() are a
+// stale-state hazard because bubbletea calls View() more than once per frame.
+func (m Model) syncPaneState() Model {
+	if m.focus == appshell.FocusDetailPane && !m.pane.IsOpen() {
+		m.focus = appshell.FocusEntryList
+		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	}
+	m.list.Focused = m.focus == appshell.FocusEntryList
+	m.list.Alone = !m.pane.IsOpen()
+	m.pane.Focused = m.focus == appshell.FocusDetailPane
+	m.pane = m.pane.WithSearch(m.paneSearch)
+	return m
+}
+
+// update is the central message dispatcher.
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Help overlay intercepts everything while open. When closed, the
 	// `?`-opens-help logic lives in handleKey so V14 can suppress it
 	// while a pane-search is in input mode.
@@ -216,6 +264,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// config write). Opening `T` is handled in handleKey so V14 can
 	// suppress it while a pane-search is in input mode.
 	if m.themesel.IsOpen() {
+		var saveCmd tea.Cmd
 		if _, ok := msg.(tea.KeyMsg); ok {
 			var action appshell.ThemeSelectorAction
 			m.themesel, action = m.themesel.Update(msg)
@@ -225,12 +274,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case appshell.ThemeSelCommit:
 				m.cfg.Config.Theme = m.themesel.Highlighted()
 				m = m.applyTheme(theme.GetTheme(m.cfg.Config.Theme))
-				m.saveConfig()
+				m, saveCmd = m.saveConfig()
 			case appshell.ThemeSelRevert:
 				m = m.applyTheme(theme.GetTheme(m.themesel.PreOpen()))
 			}
 		}
-		return m, nil
+		return m, saveCmd
 	}
 
 	switch msg := msg.(type) {
@@ -307,12 +356,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = msg.Next()
 		case logsource.LoadDoneMsg:
 			m.loading = m.loading.Done()
+		case logsource.LoadErrMsg:
+			// V37d/V43: surface a failed/partial load instead of silently
+			// finishing as an empty "done".
+			m.loading = m.loading.Done()
+			m.keyhints = m.keyhints.WithNotice(formatLoadErrNotice(inner.Err))
+			cmd = noticeClearAfter(errNoticeDuration)
 		}
 		return m, cmd
 
 	case logsource.LoadDoneMsg:
 		m.loading = m.loading.Done()
 		return m, nil
+
+	case logsource.LoadErrMsg:
+		m.loading = m.loading.Done()
+		m.keyhints = m.keyhints.WithNotice(formatLoadErrNotice(msg.Err))
+		return m, noticeClearAfter(errNoticeDuration)
 
 	// Tail stream.
 	case logsource.TailStreamMsg:
@@ -324,6 +384,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.appendToList(inner.Entries)
 			m.header = m.header.WithCounts(len(m.entries), m.visibleCount())
 			cmd = msg.Next()
+		case logsource.TailErrMsg:
+			// V37c/V43: a drain IO error is surfaced as a notice; the watcher
+			// is backing off + reopening by path, so keep draining the stream
+			// (the goroutine continues, and a non-recoverable failure will
+			// arrive as a following TailStopMsg). [FOLLOW] stays live on
+			// retryable errors (V3 unaffected).
+			m.keyhints = m.keyhints.WithNotice(formatTailErrNotice(inner.Err, inner.Retryable))
+			cmd = tea.Batch(msg.Next(), noticeClearAfter(errNoticeDuration))
 		case logsource.TailStopMsg:
 			// V31: stdin EOF (pipe closed) → drop [FOLLOW] badge but keep
 			// TUI interactive. Leave file-follow TailStop behavior unchanged
@@ -390,14 +458,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uifilter.FilterCancelledMsg:
 		return m, nil
 
-	// Panel `a`/`e` request the shared filter prompt to open.
-	case uifilter.OpenPromptMsg:
-		if msg.IsEdit {
-			m.filterPrompt = m.filterPrompt.OpenEdit(msg.Filter, msg.FilterID)
-		} else {
-			m.filterPrompt = m.filterPrompt.OpenBlank()
-		}
-		return m, nil
+	// NOTE: uifilter.OpenPromptMsg has NO top-level case here by design — the
+	// FocusFilterPanel branch in handleKey eagerly resolves the panel's cmd and
+	// opens the prompt inline (B38: a duplicate global case was dead code that
+	// could only diverge from the live handler).
 
 	// Filter panel changed.
 	case uifilter.FilterChangedMsg:
@@ -493,8 +557,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			next := theme.NextName(m.cfg.Config.Theme)
 			m.cfg.Config.Theme = next
 			m = m.applyTheme(theme.GetTheme(next))
-			m.saveConfig()
-			return m, nil
+			var saveCmd tea.Cmd
+			m, saveCmd = m.saveConfig()
+			return m, saveCmd
 		}
 	}
 
@@ -536,6 +601,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// extend the query rather than resizing.
 		} else if m.pane.IsOpen() {
 			return m.handleRatioKey(msg.String())
+		} else {
+			// V43/B35: no detail pane ⇒ no divider to move. The key was a
+			// deliberate resize attempt — signal it instead of swallowing.
+			m.keyhints = m.keyhints.WithNotice(ratioNoPaneNotice)
+			return m, noticeClearAfter(clipboardNoticeDuration)
 		}
 	}
 
@@ -730,12 +800,13 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				wasDirty := m.dragDirty
 				m.draggingDivider = false
 				m.dragDirty = false
+				var saveCmd tea.Cmd
 				if wasDirty {
-					m.saveConfig() // T-099: persist final ratio on drag release.
+					m, saveCmd = m.saveConfig() // T-099: persist final ratio on drag release.
 				}
 				// T-164 (F-129): a bare Press+Release with no Motion
 				// leaves the config file untouched.
-				return m, nil
+				return m, saveCmd
 			}
 			// Only Motion events move the divider. Ignore repeated
 			// Press or other mouse actions that arrive during an
@@ -831,15 +902,21 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// saveConfig writes the current config to disk (T-099). Errors are
-// intentionally swallowed — a failed write should not interrupt the UI.
-// The user will see their edits take effect live regardless; the next
-// launch picks up whatever the last successful write left on disk.
-func (m Model) saveConfig() {
+// saveConfig writes the current config to disk (T-099) and surfaces a write
+// failure as a keyhints notice (V43/B32). A failed write must not vanish —
+// the user keeps their live edits, but a silent drop would leave them
+// believing a theme/ratio change persisted when it did not. Returns the model
+// (notice attached on error) and a clear-after cmd; callers MUST thread the
+// returned cmd so the notice auto-clears like every other status message.
+func (m Model) saveConfig() (Model, tea.Cmd) {
 	if m.configPath == "" {
-		return
+		return m, nil
 	}
-	_ = config.Save(m.configPath, m.cfg)
+	if err := config.Save(m.configPath, m.cfg); err != nil {
+		m.keyhints = m.keyhints.WithNotice(configSaveErrPrefix + err.Error())
+		return m, noticeClearAfter(errNoticeDuration)
+	}
+	return m, nil
 }
 
 // View composes the full screen.
@@ -865,19 +942,13 @@ func (m Model) View() string {
 		WithFollow(m.followMode && m.list.IsAtTail()).
 		View()
 
-	// T-100/T-101: set per-pane focus + alone state before View() so each
-	// pane applies the DESIGN.md §4 visual matrix.
-	paneOpen := m.pane.IsOpen()
-	m.list.Focused = (m.focus == appshell.FocusEntryList)
-	m.list.Alone = !paneOpen
+	// T-100/T-101: per-pane focus + alone state and the attached paneSearch
+	// are set in syncPaneState() during Update (V42 — View() is pure). Here
+	// we only read them so each pane applies the DESIGN.md §4 visual matrix.
 	list := m.list.View()
 
 	paneView := ""
-	if paneOpen {
-		m.pane.Focused = (m.focus == appshell.FocusDetailPane)
-		// T-114: attach the app's paneSearch so the pane renders the
-		// prompt row, (cur/total) counter, and highlights.
-		m.pane = m.pane.WithSearch(m.paneSearch)
+	if m.pane.IsOpen() {
 		paneView = m.pane.View()
 	}
 
@@ -962,7 +1033,13 @@ func (m Model) SetEntries(entries []logsource.Entry) Model {
 func (m Model) appendToList(entries []logsource.Entry) Model {
 	prevCursor := m.list.Cursor()
 	m.list = m.list.AppendEntries(entries)
-	if m.pane.IsOpen() && m.list.Cursor() != prevCursor {
+	// V42 (B31): an active in-pane search owns the pane's scroll + query.
+	// Re-opening the pane on a new entry resets scroll to 0 and re-renders
+	// against different content, silently destroying the user's mid-search
+	// interaction state. Skip the cursor-follow re-sync while pane search is
+	// active so the query + scroll survive the append; the user dismisses
+	// search (Esc) to resume live-preview following.
+	if m.pane.IsOpen() && m.list.Cursor() != prevCursor && !m.paneSearch.IsActive() {
 		if entry, ok := m.list.SelectedEntry(); ok {
 			m.pane = m.pane.
 				WithScrolloff(m.cfg.Config.Scrolloff).
@@ -1071,8 +1148,9 @@ func (m Model) handleRatioKey(key string) (tea.Model, tea.Cmd) {
 	m = m.relayout()
 	// T6 / B3: skip saveConfig at clamp-pin or preset no-op — unconditional
 	// save advanced config mtime on every repeated boundary press.
+	var saveCmd tea.Cmd
 	if newR != current {
-		m.saveConfig() // T-099: persist ratio change immediately.
+		m, saveCmd = m.saveConfig() // T-099: persist ratio change immediately.
 	}
-	return m, nil
+	return m, saveCmd
 }

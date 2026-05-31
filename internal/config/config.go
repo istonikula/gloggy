@@ -10,6 +10,12 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+// crashEnvBeforeRename is a test-only instrument: when set to "1", atomicWrite
+// exits the process after the temp file is durably written but before the
+// rename, simulating a crash/power-loss mid-Save so V38's "intact or absent,
+// never partial" guarantee can be asserted from a subprocess.
+const crashEnvBeforeRename = "GLOGGY_TEST_CRASH_BEFORE_RENAME"
+
 // Config holds all gloggy configuration fields.
 type Config struct {
 	Theme        string     `toml:"theme"`
@@ -77,7 +83,18 @@ func DefaultConfigPath() (string, error) {
 
 // Load reads and parses a config file at the given path.
 // If the file does not exist, defaults are returned without error.
+//
+// B45 — caller-trust contract: `path` is assumed pre-resolved and trusted.
+// Today the only caller is DefaultConfigPath() (derived from os.UserConfigDir),
+// so no symlink/`..` traversal resolution is performed here. If a user-supplied
+// `--config`/env path is ever wired in, that entry point MUST resolve the path
+// (filepath.Abs + filepath.EvalSymlinks) and validate it before calling Load —
+// otherwise a crafted symlink could redirect the atomic write (V38) outside the
+// intended directory.
 func Load(path string) LoadResult {
+	// Best-effort cleanup of temp files orphaned by a crash mid-Save (V38).
+	cleanupOrphanTemps(filepath.Dir(path))
+
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -270,5 +287,57 @@ func Save(path string, result LoadResult) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(path, data, 0o644)
+	return atomicWrite(path, data)
+}
+
+// atomicWrite writes data to path crash-safely (V38): it marshals into a
+// sibling temp file (`.cfgtmp-<pid>`), fsyncs it, then atomically renames it
+// over path. A crash before the rename leaves path at its last-good state (or
+// absent on first write) — never a truncated/partial file, which would break
+// V22's unknown-key preservation. On any error the temp file is removed.
+func atomicWrite(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp := filepath.Join(dir, fmt.Sprintf(".cfgtmp-%d", os.Getpid()))
+
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("create temp config: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()      //nolint:errcheck // cleanup on error path; the write/sync err below is what's returned
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; primary err already wraps the cause
+		return fmt.Errorf("write temp config: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()      //nolint:errcheck // cleanup on error path; the write/sync err below is what's returned
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; primary err already wraps the cause
+		return fmt.Errorf("sync temp config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; close err is returned
+		return fmt.Errorf("close temp config: %w", err)
+	}
+
+	if os.Getenv(crashEnvBeforeRename) == "1" {
+		// Simulate power-loss: temp written + synced, rename not yet done.
+		os.Exit(99)
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp) //nolint:errcheck // best-effort temp removal; rename err is returned
+		return fmt.Errorf("rename temp config: %w", err)
+	}
+	return nil
+}
+
+// cleanupOrphanTemps removes any `.cfgtmp-*` files left in dir by a crashed
+// Save. Best-effort: all errors (glob failure, removal races) are ignored.
+func cleanupOrphanTemps(dir string) {
+	matches, err := filepath.Glob(filepath.Join(dir, ".cfgtmp-*"))
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		_ = os.Remove(m) //nolint:errcheck // best-effort orphan cleanup; removal races are expected
+	}
 }

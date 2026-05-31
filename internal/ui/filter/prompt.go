@@ -169,7 +169,15 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 				}
 			}
 			id := *m.editID
-			m.fs.Update(id, f)
+			// V35 AMEND / B37: the edited filter may have been removed between
+			// OpenEdit and this Submit (e.g. panel `d` in another frame). A
+			// discarded Update return would close the prompt clean with no
+			// mutation and no signal — surface it + keep the prompt open.
+			if !m.fs.Update(id, f) {
+				reason := "filter not found"
+				m.rejectedReason = reason
+				return m, func() tea.Msg { return FilterRejectedMsg{Reason: reason} }
+			}
 			m = m.Close()
 			fs := m.fs
 			return m, func() tea.Msg {
@@ -204,13 +212,9 @@ func (m PromptModel) Update(msg tea.Msg) (PromptModel, tea.Cmd) {
 			m.rejectedReason = ""
 			switch m.focusRow {
 			case rowField:
-				if len(m.field) > 0 {
-					m.field = m.field[:len([]rune(m.field))-1]
-				}
+				m.field = dropLastRune(m.field)
 			case rowPattern:
-				if len(m.pattern) > 0 {
-					m.pattern = m.pattern[:len([]rune(m.pattern))-1]
-				}
+				m.pattern = dropLastRune(m.pattern)
 			}
 
 		default:
@@ -354,11 +358,21 @@ func (m PromptModel) footerHints() string {
 }
 
 func cycleSyntaxNext(s filter.Syntax) filter.Syntax {
-	return filter.Syntax((int(s) + 1) % 3)
+	return filter.Syntax((int(s) + 1) % filter.SyntaxCount)
 }
 
 func cycleSyntaxPrev(s filter.Syntax) filter.Syntax {
-	return filter.Syntax((int(s) + 2) % 3)
+	return filter.Syntax((int(s) + filter.SyntaxCount - 1) % filter.SyntaxCount)
+}
+
+// dropLastRune removes the final rune from s via a []rune round-trip so that
+// multibyte (CJK/emoji) input is not corrupted by byte-position slicing (V36).
+func dropLastRune(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
+	}
+	return string(r[:len(r)-1])
 }
 
 func cycleModeToggle(m filter.Mode) filter.Mode {

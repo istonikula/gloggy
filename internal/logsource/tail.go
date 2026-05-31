@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -23,8 +24,120 @@ import (
 // message triggers its own snap.
 type TailMsg struct{ Entries []Entry }
 
-// TailStopMsg signals that the tail watcher stopped.
+// TailStopMsg signals that the tail watcher stopped. Emitted only on a
+// non-recoverable condition (cavekit-log-source.md R8, V37c): a transient
+// drain IO error is reported via TailErrMsg and retried with backoff before
+// any TailStopMsg is sent.
 type TailStopMsg struct{ Err error }
+
+// TailErrMsg reports a drain IO error that did not (yet) stop the tail.
+// Retryable=true means the watcher is backing off and reopening by path and
+// the [FOLLOW] badge should stay live; Retryable=false means retries were
+// exhausted and a TailStopMsg follows (V37c, V43).
+type TailErrMsg struct {
+	Err       error
+	Retryable bool
+}
+
+const (
+	maxTailRetries = 3
+	tailBackoffCap = 5 * time.Second
+)
+
+// tailReader owns the persistent file handle, partial-line buffer, and the
+// byte offset consumed so far. It is the testable core of TailFile: rotation
+// and truncate-in-place survival (V37a/b) live here, decoupled from fsnotify
+// so they can be exercised deterministically.
+type tailReader struct {
+	path         string
+	f            *os.File
+	pending      []byte
+	lineNum      int
+	startLineNum int
+	offset       int64 // bytes consumed from the current file handle
+}
+
+func newTailReader(path string, startLineNum int) (*tailReader, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return &tailReader{path: path, f: f, startLineNum: startLineNum}, nil
+}
+
+func (tr *tailReader) close() {
+	if tr.f != nil {
+		_ = tr.f.Close() //nolint:errcheck // read-only handle teardown; nothing to recover on close err
+	}
+}
+
+// reopen closes the current handle and reopens path from the start, resetting
+// the partial-line buffer and offset. Used when a size-shrink (truncate or
+// rotation) is detected, or as a recovery step after a transient IO error.
+func (tr *tailReader) reopen() error {
+	if tr.f != nil {
+		_ = tr.f.Close() //nolint:errcheck // read-only handle; reopen err below is the one that matters
+		tr.f = nil
+	}
+	f, err := os.Open(tr.path)
+	if err != nil {
+		return err
+	}
+	tr.f = f
+	tr.pending = tr.pending[:0]
+	tr.offset = 0
+	return nil
+}
+
+// drain reads all currently-available newline-terminated lines and returns
+// them as one batch (cavekit-log-source.md R8 batched emission — one batch per
+// filesystem event keeps cavekit-entry-list.md R14 tail-follow to a single
+// cursor snap).
+//
+// Before reading, drain stats the path: if the file is now smaller than the
+// bytes already consumed, the file was truncated in place or rotated, so it
+// reopens by path and drops the stale partial-line buffer (V37b). A fresh
+// bufio.Reader is created per call to sidestep bufio's sticky io.EOF state.
+func (tr *tailReader) drain() ([]Entry, error) {
+	if fi, err := os.Stat(tr.path); err == nil && fi.Size() < tr.offset {
+		if rerr := tr.reopen(); rerr != nil {
+			return nil, rerr
+		}
+	}
+
+	reader := bufio.NewReaderSize(tr.f, 512*1024)
+	var batch []Entry
+	for {
+		chunk, err := reader.ReadBytes('\n')
+		tr.offset += int64(len(chunk))
+		tr.pending = append(tr.pending, chunk...)
+		if len(tr.pending) > 0 && tr.pending[len(tr.pending)-1] == '\n' {
+			tr.lineNum++
+			line := tr.pending[:len(tr.pending)-1]
+			lineCopy := make([]byte, len(line))
+			copy(lineCopy, line)
+			tr.pending = tr.pending[:0]
+			if tr.lineNum > tr.startLineNum {
+				batch = append(batch, parseTailLine(lineCopy, tr.lineNum))
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return batch, nil
+		}
+		if err != nil {
+			return batch, err
+		}
+	}
+}
+
+func parseTailLine(line []byte, lineNum int) Entry {
+	switch Classify(line) {
+	case LineTypeJSONL:
+		return ParseJSONL(line, lineNum)
+	default:
+		return NewRawEntry(line, lineNum)
+	}
+}
 
 // TailFile returns a tea.Cmd that watches path and emits TailMsg for every
 // newline-terminated line, across an unbounded number of filesystem Write
@@ -55,64 +168,56 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 		}
 		defer watcher.Close()
 
-		f, err := os.Open(path)
+		tr, err := newTailReader(path, startLineNum)
 		if err != nil {
 			ch <- TailStopMsg{Err: err}
 			return
 		}
-		defer f.Close()
+		defer tr.close()
 
-		var pending []byte
-		lineNum := 0
+		// emit sends a batch as a single TailMsg, honouring cancellation.
+		// Returns false when ctx is cancelled mid-send.
+		emit := func(batch []Entry) bool {
+			if len(batch) == 0 {
+				return true
+			}
+			select {
+			case <-ctx.Done():
+				return false
+			case ch <- TailMsg{Entries: batch}:
+				return true
+			}
+		}
 
-		// drain reads all currently-available bytes from f and accumulates
-		// the resulting entries into a single batch, emitting one TailMsg
-		// at end-of-drain (cavekit-log-source.md R8 batched emission). This
-		// keeps cavekit-entry-list.md R14 tail-follow to one cursor snap
-		// per filesystem event — without batching, `gloggy -f bigfile`
-		// would snap the cursor N times during the initial drain, visible
-		// as a per-row scroll animation.
-		drain := func() error {
-			reader := bufio.NewReaderSize(f, 512*1024)
-			var batch []Entry
-			flush := func() error {
-				if len(batch) == 0 {
-					return nil
+		// drainAndRetry drains once and, on a drain IO error, reports
+		// TailErrMsg + reopens by path with exponential backoff (cap 5s,
+		// max 3 attempts) before giving up (V37c). Returns alive=false when
+		// ctx is cancelled and a non-nil fatal error when retries are
+		// exhausted (caller then sends TailStopMsg).
+		drainAndRetry := func() (alive bool, fatal error) {
+			backoff := 100 * time.Millisecond
+			for attempt := 0; ; attempt++ {
+				batch, derr := tr.drain()
+				if !emit(batch) {
+					return false, nil
 				}
+				if derr == nil {
+					return true, nil
+				}
+				if attempt >= maxTailRetries {
+					ch <- TailErrMsg{Err: derr, Retryable: false}
+					return true, derr
+				}
+				ch <- TailErrMsg{Err: derr, Retryable: true}
 				select {
 				case <-ctx.Done():
-					return ctx.Err()
-				case ch <- TailMsg{Entries: batch}:
+					return false, nil
+				case <-time.After(backoff):
 				}
-				batch = nil
-				return nil
-			}
-			for {
-				chunk, err := reader.ReadBytes('\n')
-				pending = append(pending, chunk...)
-				if len(pending) > 0 && pending[len(pending)-1] == '\n' {
-					lineNum++
-					line := pending[:len(pending)-1]
-					lineCopy := make([]byte, len(line))
-					copy(lineCopy, line)
-					pending = pending[:0]
-					if lineNum > startLineNum {
-						var e Entry
-						switch Classify(lineCopy) {
-						case LineTypeJSONL:
-							e = ParseJSONL(lineCopy, lineNum)
-						default:
-							e = NewRawEntry(lineCopy, lineNum)
-						}
-						batch = append(batch, e)
-					}
+				if backoff *= 2; backoff > tailBackoffCap {
+					backoff = tailBackoffCap
 				}
-				if errors.Is(err, io.EOF) {
-					return flush()
-				}
-				if err != nil {
-					return err
-				}
+				_ = tr.reopen() //nolint:errcheck // best-effort; persistent failure surfaces on next drain
 			}
 		}
 
@@ -120,8 +225,10 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 		// watcher. Arming must happen after this initial drain — otherwise
 		// a Write that lands between open() and Add() would be missed, and
 		// its lines would stay invisible until a second append arrived.
-		if err := drain(); err != nil {
-			ch <- TailStopMsg{Err: err}
+		if alive, ferr := drainAndRetry(); ferr != nil {
+			ch <- TailStopMsg{Err: ferr}
+			return
+		} else if !alive {
 			return
 		}
 
@@ -138,11 +245,20 @@ func TailFile(ctx context.Context, path string, startLineNum int) tea.Cmd {
 				if !ok {
 					return
 				}
-				if event.Op&fsnotify.Write == 0 {
+				// Rotation: on Rename/Remove the path may now point to a new
+				// inode (logrotate) — re-arm the watcher so subsequent writes
+				// to the replacement file are seen. drain's size-shrink check
+				// reopens the handle (V37a/b).
+				if event.Op&(fsnotify.Rename|fsnotify.Remove) != 0 {
+					_ = watcher.Remove(path) //nolint:errcheck // re-arm: old path may already be gone
+					_ = watcher.Add(path)    //nolint:errcheck // re-arm best-effort; size-shrink reopen covers misses
+				} else if event.Op&fsnotify.Write == 0 {
 					continue
 				}
-				if err := drain(); err != nil {
-					ch <- TailStopMsg{Err: err}
+				if alive, ferr := drainAndRetry(); ferr != nil {
+					ch <- TailStopMsg{Err: ferr}
+					return
+				} else if !alive {
 					return
 				}
 			case err, ok := <-watcher.Errors:

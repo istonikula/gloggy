@@ -73,3 +73,48 @@ func TestParseArgs_PipedStdin_WithFollowFlag_RedundantAccepted(t *testing.T) {
 	assert.True(t, args.FollowMode, "FollowMode should be true (redundant -f is accepted)")
 	assert.Empty(t, args.FilePath)
 }
+
+// V39b: piped stdin AND a positional file is a conflict — rejected, never a
+// silent file-wins-stdin-dropped. Exercised through the pure core.
+func TestParseArgs_StdinPlusFile_Conflict_V39(t *testing.T) {
+	_, err := parseArgs([]string{"app.log"}, true)
+	require.Error(t, err, "piped stdin + file must conflict")
+	assert.Contains(t, err.Error(), "both", "error should explain the stdin/file conflict")
+}
+
+// V39b end-to-end: the conflict also fires through ParseArgs against a real
+// piped stdin.
+func TestParseArgs_StdinPlusFile_Conflict_RealStdin_V39(t *testing.T) {
+	restore := swapStdinPipe(t)
+	defer restore()
+
+	_, err := ParseArgs([]string{"app.log"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "both")
+}
+
+// V39c: `-f` with no file and no pipe is invalid (follow has nothing to tail).
+func TestParseArgs_FollowNoFileNoPipe_Invalid_V39(t *testing.T) {
+	_, err := parseArgs([]string{"-f"}, false)
+	require.Error(t, err, "-f without a file or pipe must be invalid")
+	assert.Contains(t, err.Error(), "usage")
+}
+
+// V39c: no args and no pipe is invalid.
+func TestParseArgs_NoArgsNoPipe_Invalid_V39(t *testing.T) {
+	_, err := parseArgs([]string{}, false)
+	require.Error(t, err)
+}
+
+// V39a: a stdin whose Stat fails (e.g. closed/revoked fd) is treated as
+// non-pipe — no nil-deref panic.
+func TestStdinIsPiped_StatErr_NonPipe_V39(t *testing.T) {
+	pr, pw, err := os.Pipe()
+	require.NoError(t, err)
+	require.NoError(t, pr.Close())
+	require.NoError(t, pw.Close())
+
+	assert.NotPanics(t, func() {
+		assert.False(t, stdinIsPiped(pr), "closed fd → Stat err → treated as non-pipe")
+	})
+}
