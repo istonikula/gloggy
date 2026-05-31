@@ -45,9 +45,28 @@ type CLIArgs struct {
 	FromStdin  bool
 }
 
-// ParseArgs parses raw argument slices into CLIArgs.
-// Returns an error for invalid/missing arguments.
+// ParseArgs parses raw argument slices into CLIArgs, resolving the stdin
+// source from the real os.Stdin. Returns an error for invalid/missing or
+// conflicting arguments.
 func ParseArgs(args []string) (CLIArgs, error) {
+	return parseArgs(args, stdinIsPiped(os.Stdin))
+}
+
+// stdinIsPiped reports whether f (stdin) is a pipe/redirect rather than a tty.
+// V39a: a Stat error is treated as "not piped" — never dereferenced — so a
+// revoked/unusable stdin fd cannot panic ParseArgs.
+func stdinIsPiped(f *os.File) bool {
+	st, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (st.Mode() & os.ModeCharDevice) == 0
+}
+
+// parseArgs is the pure core of ParseArgs: input-source resolution given an
+// explicit fromStdin flag (V39). Valid modes: {tty + file}, {pipe-stdin (+
+// redundant -f)}, {tty + -f + file}.
+func parseArgs(args []string, fromStdin bool) (CLIArgs, error) {
 	fs := flag.NewFlagSet("gloggy", flag.ContinueOnError)
 	follow := fs.Bool("f", false, "tail/follow mode")
 
@@ -55,17 +74,18 @@ func ParseArgs(args []string) (CLIArgs, error) {
 		return CLIArgs{}, err
 	}
 
-	// Check if stdin is piped (not a tty).
-	stdinStat, _ := os.Stdin.Stat()
-	fromStdin := (stdinStat.Mode() & os.ModeCharDevice) == 0
-
 	switch {
-	case fs.NArg() == 0 && fromStdin:
+	case fromStdin && fs.NArg() == 0:
 		// V23/V31: stdin auto-follows; `-f` is redundant-accepted.
 		return CLIArgs{FromStdin: true, FollowMode: true}, nil
+	case fromStdin && fs.NArg() >= 1:
+		// V39b: piped stdin AND a positional file is ambiguous — reject
+		// rather than silently letting the file win and dropping stdin.
+		return CLIArgs{}, fmt.Errorf("cannot read both piped stdin and file %q; choose one", fs.Arg(0))
 	case fs.NArg() == 1:
 		return CLIArgs{FilePath: fs.Arg(0), FollowMode: *follow}, nil
 	case fs.NArg() == 0:
+		// V39c: no file and no pipe — invalid even with -f.
 		return CLIArgs{}, fmt.Errorf("usage: gloggy [-f] <file>  or  gloggy (with piped stdin)")
 	default:
 		return CLIArgs{}, fmt.Errorf("too many arguments: expected 1 file path")
