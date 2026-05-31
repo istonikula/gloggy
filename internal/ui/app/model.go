@@ -158,7 +158,9 @@ func New(sourceName string, followMode bool, configPath string, cfgResult config
 		m.loading = m.loading.Start()
 	}
 
-	return m
+	// Seed the V42 compose flags so the first frame (rendered before the
+	// initial WindowSizeMsg arrives) reflects the real focus/pane state.
+	return m.syncPaneState()
 }
 
 // WithStdinReader wires a stdin follower source (V23/V31). main.go
@@ -189,8 +191,35 @@ func (m Model) Init() tea.Cmd {
 	return logsource.LoadFile(m.sourceName)
 }
 
-// Update is the central message dispatcher.
+// Update is the central message dispatcher. It delegates to update() and then
+// runs syncPaneState() at the single exit so the V42 focus + compose
+// invariants hold for EVERY message path — View() stays pure (read-only) and
+// m.focus can never reference a hidden pane after a close.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	return next.(Model).syncPaneState(), cmd
+}
+
+// syncPaneState enforces the V42 invariants in Update (never in View). It
+// (a) re-homes focus to a visible pane when the detail pane closed under it —
+// auto-close, drag-collapse, ratio-min, or explicit (B30); and (b) sets the
+// per-pane Focused/Alone flags and attaches the live paneSearch so View() only
+// reads pre-computed state (B29). Compose-time writes in View() are a
+// stale-state hazard because bubbletea calls View() more than once per frame.
+func (m Model) syncPaneState() Model {
+	if m.focus == appshell.FocusDetailPane && !m.pane.IsOpen() {
+		m.focus = appshell.FocusEntryList
+		m.keyhints = m.keyhints.WithFocus(appshell.FocusEntryList)
+	}
+	m.list.Focused = m.focus == appshell.FocusEntryList
+	m.list.Alone = !m.pane.IsOpen()
+	m.pane.Focused = m.focus == appshell.FocusDetailPane
+	m.pane = m.pane.WithSearch(m.paneSearch)
+	return m
+}
+
+// update is the central message dispatcher.
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Help overlay intercepts everything while open. When closed, the
 	// `?`-opens-help logic lives in handleKey so V14 can suppress it
 	// while a pane-search is in input mode.
@@ -895,19 +924,13 @@ func (m Model) View() string {
 		WithFollow(m.followMode && m.list.IsAtTail()).
 		View()
 
-	// T-100/T-101: set per-pane focus + alone state before View() so each
-	// pane applies the DESIGN.md §4 visual matrix.
-	paneOpen := m.pane.IsOpen()
-	m.list.Focused = (m.focus == appshell.FocusEntryList)
-	m.list.Alone = !paneOpen
+	// T-100/T-101: per-pane focus + alone state and the attached paneSearch
+	// are set in syncPaneState() during Update (V42 — View() is pure). Here
+	// we only read them so each pane applies the DESIGN.md §4 visual matrix.
 	list := m.list.View()
 
 	paneView := ""
-	if paneOpen {
-		m.pane.Focused = (m.focus == appshell.FocusDetailPane)
-		// T-114: attach the app's paneSearch so the pane renders the
-		// prompt row, (cur/total) counter, and highlights.
-		m.pane = m.pane.WithSearch(m.paneSearch)
+	if m.pane.IsOpen() {
 		paneView = m.pane.View()
 	}
 
@@ -992,7 +1015,13 @@ func (m Model) SetEntries(entries []logsource.Entry) Model {
 func (m Model) appendToList(entries []logsource.Entry) Model {
 	prevCursor := m.list.Cursor()
 	m.list = m.list.AppendEntries(entries)
-	if m.pane.IsOpen() && m.list.Cursor() != prevCursor {
+	// V42 (B31): an active in-pane search owns the pane's scroll + query.
+	// Re-opening the pane on a new entry resets scroll to 0 and re-renders
+	// against different content, silently destroying the user's mid-search
+	// interaction state. Skip the cursor-follow re-sync while pane search is
+	// active so the query + scroll survive the append; the user dismisses
+	// search (Esc) to resume live-preview following.
+	if m.pane.IsOpen() && m.list.Cursor() != prevCursor && !m.paneSearch.IsActive() {
 		if entry, ok := m.list.SelectedEntry(); ok {
 			m.pane = m.pane.
 				WithScrolloff(m.cfg.Config.Scrolloff).
