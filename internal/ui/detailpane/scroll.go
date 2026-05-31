@@ -169,6 +169,46 @@ func (m ScrollModel) SetCursor(idx int) ScrollModel {
 	return m
 }
 
+// SetCursorViewport sets the cursor to an absolute document line and adjusts
+// the offset for scrolloff context within a viewport of `viewport` visible
+// rows — WITHOUT mutating m.height (V41, B28). PaneModel.ScrollToLine threads
+// the search-adjusted viewport here when the search prompt shrinks the visible
+// content area below ContentHeight; both the scrolloff margins AND the offset
+// clamp see that final viewport, so the cursor lands with correct context and
+// the offset never lands outside the visible bounds. The prior impl mutated
+// s.height temporarily then restored it, leaving followCursor to compute
+// margins against one height while the post-restore clamp used another.
+func (m ScrollModel) SetCursorViewport(idx, viewport int) ScrollModel {
+	if viewport < 1 {
+		viewport = 1
+	}
+	m.cursor = idx
+	m.clampCursor()
+	so := m.scrolloff
+	if max := viewport / 2; so > max {
+		so = max
+	}
+	top := m.offset + so
+	bottom := m.offset + viewport - 1 - so
+	if m.cursor < top {
+		m.offset = m.cursor - so
+	} else if m.cursor > bottom {
+		m.offset = m.cursor - viewport + 1 + so
+	}
+	// Clamp offset against the SAME viewport (not m.height) so the last line
+	// can reach the bottom visible row.
+	if m.offset < 0 {
+		m.offset = 0
+	}
+	if max := len(m.lines) - viewport; m.offset > max {
+		if max < 0 {
+			max = 0
+		}
+		m.offset = max
+	}
+	return m
+}
+
 // Update handles tea.KeyMsg and tea.MouseMsg.
 // T-132 (F-026): keyboard navigation operates on cursor first; offset
 // follows via scrolloff. T-133 handles mouse wheel (offset-first with

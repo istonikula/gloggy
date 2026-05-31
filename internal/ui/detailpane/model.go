@@ -266,18 +266,10 @@ func (m PaneModel) ScrollToLine(idx int) PaneModel {
 	if m.search.IsActive() && viewport > 1 {
 		viewport-- // prompt row reserves the same row as View() does.
 	}
-	if viewport < 1 {
-		viewport = 1
-	}
-	// Use a local model whose height reflects the search-adjusted viewport
-	// so followCursor computes margins against the visible content area,
-	// not the full ContentHeight (which would include the prompt row).
-	s := m.scroll
-	s.height = viewport
-	s = s.SetCursor(idx)
-	m.scroll = s
-	m.scroll.height = m.ContentHeight()
-	m.scroll = m.scroll.Clamp()
+	// Thread the search-adjusted viewport via param (V41, B28) so followCursor
+	// and the offset clamp both see the visible content area — no temp-height
+	// mutation of m.scroll.
+	m.scroll = m.scroll.SetCursorViewport(idx, viewport)
 	return m
 }
 

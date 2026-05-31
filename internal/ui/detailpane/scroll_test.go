@@ -301,6 +301,56 @@ func TestScrollModel_View_EmptyContentReturnsFullHeightBlank(t *testing.T) {
 	assert.Equal(t, 5, rows, "empty View() rows")
 }
 
+// V41 (B27): the no-lines branch (lines == nil, distinct from a single ""
+// line) MUST emit EXACTLY h blank rows — not h-1 — so panes below it in
+// below-mode do not shift up by one. Ground truth: a height-h pane occupies h
+// terminal rows ⇔ h-1 newlines; cross-checked against the full-content branch
+// (NewScrollModel("a\nb\nc\nd\ne", h) which renders h rows for the same h).
+func TestScrollModel_View_NilLinesExactlyHBlankRows_V41(t *testing.T) {
+	for _, h := range []int{1, 3, 5, 8} {
+		m := NewScrollModel("", h)
+		m.lines = nil // force the genuine len==0 branch
+		got := m.View()
+		rows := strings.Count(got, "\n") + 1
+		assert.Equalf(t, h, rows, "nil-lines View() must emit exactly h=%d rows, got %q", h, got)
+
+		// Ground-truth cross-check: a full pane of the same height renders h rows.
+		full := NewScrollModel(strings.Repeat("x\n", h+2), h)
+		fullRows := strings.Count(full.View(), "\n") + 1
+		assert.Equalf(t, fullRows, rows, "blank pane row-count must match full pane at h=%d", h)
+	}
+}
+
+// V41 (B28): ScrollToLine threads the search-adjusted viewport via param and
+// must NOT temp-mutate the scroll model's height. After the call the stored
+// height is left untouched and the cursor lands within the search-visible area
+// (ContentHeight-1 rows). Ground-truth offset derived independently: to show
+// the last line at the bottom search-visible row, offset == lineCount - vp.
+func TestPaneModel_ScrollToLine_SearchActive_ThreadsViewport_V41(t *testing.T) {
+	const lines, contentH = 100, 10
+	m := paneWithNLines(contentH+2, 40, lines).WithScrolloff(0)
+	heightBefore := m.scroll.height
+	m = m.WithSearch(NewSearchModel(theme.GetTheme("tokyo-night")).Activate())
+	require.True(t, m.search.IsActive(), "setup: search must be active")
+
+	m = m.ScrollToLine(lines - 1) // jump to last line
+
+	// Height untouched — no temp-mutate-then-restore artifact.
+	assert.Equalf(t, heightBefore, m.scroll.height,
+		"ScrollToLine must not mutate scroll.height (was %d)", heightBefore)
+
+	// Search-visible viewport reserves one row for the prompt.
+	vp := m.ContentHeight() - 1
+	// Independent ground truth: last line visible at bottom ⇒ offset = N - vp.
+	wantOffset := lines - vp
+	assert.Equalf(t, wantOffset, m.scroll.Offset(),
+		"offset must place last line at bottom search-visible row (vp=%d)", vp)
+	assert.Equal(t, lines-1, m.scroll.Cursor(), "cursor at last line")
+	// Cursor sits within the visible content area, not below the prompt row.
+	assert.LessOrEqualf(t, m.scroll.Cursor()-m.scroll.Offset(), vp-1,
+		"cursor must be within the %d search-visible rows", vp)
+}
+
 // T-115 (F-005): ScrollToLine brings an out-of-window line into view.
 // Uses many-line content so the viewport can actually be smaller than
 // the line count.
