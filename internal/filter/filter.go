@@ -17,6 +17,11 @@ const (
 	Regex                 // raw RE2 pattern
 )
 
+// SyntaxCount is the number of Syntax values. Cycle helpers (prompt enum-row
+// ←/→) derive their modulo from this so adding a Syntax does not silently break
+// wraparound (B42). Keep this as the last-value+1 expression, not a literal.
+const SyntaxCount = int(Regex) + 1
+
 func (s Syntax) String() string {
 	switch s {
 	case Literal:

@@ -83,6 +83,14 @@ func DefaultConfigPath() (string, error) {
 
 // Load reads and parses a config file at the given path.
 // If the file does not exist, defaults are returned without error.
+//
+// B45 — caller-trust contract: `path` is assumed pre-resolved and trusted.
+// Today the only caller is DefaultConfigPath() (derived from os.UserConfigDir),
+// so no symlink/`..` traversal resolution is performed here. If a user-supplied
+// `--config`/env path is ever wired in, that entry point MUST resolve the path
+// (filepath.Abs + filepath.EvalSymlinks) and validate it before calling Load —
+// otherwise a crafted symlink could redirect the atomic write (V38) outside the
+// intended directory.
 func Load(path string) LoadResult {
 	// Best-effort cleanup of temp files orphaned by a crash mid-Save (V38).
 	cleanupOrphanTemps(filepath.Dir(path))

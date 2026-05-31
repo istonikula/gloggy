@@ -45,6 +45,9 @@ func TestTailMode_NewEntriesAppear(t *testing.T) {
 		ch <- result{msg: msg}
 	}()
 
+	// B44: an environment without working fsnotify must mark this test SKIPPED
+	// (explicit, visible), never silently PASS via t.Log — a slow-CI / no-inotify
+	// run would otherwise mask a genuine tail-mode regression as a green test.
 	select {
 	case r := <-ch:
 		switch m := r.msg.(type) {
@@ -52,20 +55,20 @@ func TestTailMode_NewEntriesAppear(t *testing.T) {
 			inner := m.Unwrap()
 			switch inner.(type) {
 			case logsource.TailMsg:
-				// Good — new entry detected.
+				// Good — new entry detected. Test passes.
 			case logsource.TailStopMsg:
-				t.Log("TailStopMsg — fsnotify may not fire in this environment")
+				t.Skip("TailStopMsg before any TailMsg — fsnotify unavailable in this environment")
 			default:
-				t.Logf("unexpected inner type: %T", inner)
+				t.Skipf("unexpected inner tail type %T — environment-dependent", inner)
 			}
 		case logsource.TailMsg:
-			// Good — direct tail msg.
+			// Good — direct tail msg. Test passes.
 		case logsource.TailStopMsg:
-			t.Log("TailStopMsg — fsnotify may not fire in this environment")
+			t.Skip("TailStopMsg before any TailMsg — fsnotify unavailable in this environment")
 		default:
-			t.Logf("unexpected tail msg type: %T — may be environment-dependent", r.msg)
+			t.Skipf("unexpected tail msg type %T — environment-dependent", r.msg)
 		}
 	case <-time.After(3 * time.Second):
-		t.Log("tail timeout — fsnotify did not emit within 3s (environment-dependent, skipping)")
+		t.Skip("tail timeout — fsnotify did not emit within 3s (environment lacks working inotify)")
 	}
 }

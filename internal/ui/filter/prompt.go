@@ -358,11 +358,11 @@ func (m PromptModel) footerHints() string {
 }
 
 func cycleSyntaxNext(s filter.Syntax) filter.Syntax {
-	return filter.Syntax((int(s) + 1) % 3)
+	return filter.Syntax((int(s) + 1) % filter.SyntaxCount)
 }
 
 func cycleSyntaxPrev(s filter.Syntax) filter.Syntax {
-	return filter.Syntax((int(s) + 2) % 3)
+	return filter.Syntax((int(s) + filter.SyntaxCount - 1) % filter.SyntaxCount)
 }
 
 // dropLastRune removes the final rune from s via a []rune round-trip so that

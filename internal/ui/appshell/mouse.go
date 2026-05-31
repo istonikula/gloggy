@@ -75,6 +75,12 @@ func (r MouseRouter) Zone(x, y int) MouseZone {
 		// (listEnd=LCW+1, divider=LCW+2) was 2 cols past the visible
 		// divider, so drag-initiation Presses on the real divider were
 		// misrouted to ZoneDetailPane.
+		// B40: degenerate terminal — ListContentWidth() of 0 would make
+		// listRightBorder = -1, collapsing the `x < listRightBorder` list zone
+		// and routing every click into the divider/unknown buffer.
+		if r.layout.ListContentWidth() < 1 {
+			return ZoneUnknown
+		}
 		listRightBorder := r.layout.ListContentWidth() - 1
 		divider := r.layout.ListContentWidth()
 		detailLeftBorder := divider + 1

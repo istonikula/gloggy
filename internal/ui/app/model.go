@@ -458,14 +458,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uifilter.FilterCancelledMsg:
 		return m, nil
 
-	// Panel `a`/`e` request the shared filter prompt to open.
-	case uifilter.OpenPromptMsg:
-		if msg.IsEdit {
-			m.filterPrompt = m.filterPrompt.OpenEdit(msg.Filter, msg.FilterID)
-		} else {
-			m.filterPrompt = m.filterPrompt.OpenBlank()
-		}
-		return m, nil
+	// NOTE: uifilter.OpenPromptMsg has NO top-level case here by design — the
+	// FocusFilterPanel branch in handleKey eagerly resolves the panel's cmd and
+	// opens the prompt inline (B38: a duplicate global case was dead code that
+	// could only diverge from the live handler).
 
 	// Filter panel changed.
 	case uifilter.FilterChangedMsg:
